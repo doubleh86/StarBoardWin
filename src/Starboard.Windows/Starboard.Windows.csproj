@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>Starboard</AssemblyName>
+    <RootNamespace>Starboard.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Starboard.SharedKernel\Starboard.SharedKernel.csproj" />
+    <ProjectReference Include="..\Modules\Starboard.Modules.Terminal\Starboard.Modules.Terminal.csproj" />
+    <ProjectReference Include="..\Modules\Starboard.Modules.DesktopIntegration\Starboard.Modules.DesktopIntegration.csproj" />
+    <ProjectReference Include="..\Modules\Starboard.Modules.Preferences\Starboard.Modules.Preferences.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\THIRD-PARTY-NOTICES.md"
+             CopyToOutputDirectory="PreserveNewest"
+             Link="THIRD-PARTY-NOTICES.md" />
+    <Content Include="..\..\licenses\Microsoft.Web.WebView2-LICENSE.txt"
+             CopyToOutputDirectory="PreserveNewest"
+             Link="ThirdParty\Microsoft.Web.WebView2-LICENSE.txt" />
+    <Content Include="..\..\licenses\Microsoft.Web.WebView2-NOTICE.txt"
+             CopyToOutputDirectory="PreserveNewest"
+             Link="ThirdParty\Microsoft.Web.WebView2-NOTICE.txt" />
+  </ItemGroup>
+</Project>

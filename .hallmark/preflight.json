@@ -1,0 +1,15 @@
+{
+  "scannedAt": "2026-09-01",
+  "framework": ".NET 10 WPF host with a local WebView2/xterm renderer",
+  "fontStack": "Cascadia Mono/Cascadia Code/Consolas with Segoe UI for status copy",
+  "palette": "Tokyo Night dark canvas with restrained cyan accent and amber focus",
+  "motion": "motion-cut",
+  "spacing": "4pt scale selected by architecture",
+  "preserve": [],
+  "introduce": [
+    "shared WPF/xterm theme tokens",
+    "explicit interaction states",
+    "focus-visible treatment",
+    "restrained terminal-first visual hierarchy"
+  ]
+}

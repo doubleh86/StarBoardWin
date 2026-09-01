@@ -1,0 +1,28 @@
+# .NET build output
+bin/
+obj/
+out/
+artifacts/
+TestResults/
+node_modules/
+
+# IDE and user settings
+.vs/
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Runtime-local data
+*.log
+*.dmp
+*.hdmp
+WebView2Data/
+Starboard.settings.json
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store

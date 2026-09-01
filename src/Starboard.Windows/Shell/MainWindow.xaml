@@ -1,0 +1,23 @@
+<Window x:Class="Starboard.Windows.Shell.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Starboard"
+        Width="900"
+        Height="116"
+        MinWidth="300"
+        MinHeight="96"
+        AllowsTransparency="False"
+        Background="{StaticResource CanvasBrush}"
+        Foreground="{StaticResource ForegroundBrush}"
+        ResizeMode="NoResize"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="False"
+        WindowStyle="None">
+    <Border BorderBrush="{StaticResource RuleBrush}"
+            BorderThickness="1,1,1,0">
+        <Grid>
+            <ContentPresenter x:Name="TerminalContent" />
+        </Grid>
+    </Border>
+</Window>

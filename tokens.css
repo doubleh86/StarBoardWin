@@ -1,0 +1,32 @@
+/* Hallmark · macrostructure: Workbench · tone: technical/austere · anchor hue: cyan-blue
+ * theme: Terminal · genre: atmospheric · enrichment: none · motion: caret-only
+ * contrast: pass (40–41) · nav: none · footer: none · slop: pass (42–45)
+ * honest: pass (46) · chrome: pass (47) · tokens: pass (48) · responsive: pass (49)
+ * icons: pass (30) · mobile: pass (34, 49, 50–57)
+ */
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+:root {
+  --color-canvas: #1a1b26;
+  --color-canvas-raised: #202231;
+  --color-ink: #c0caf5;
+  --color-neutral: #9da5c3;
+  --color-muted: #8b92b5;
+  --color-rule: #343b58;
+  --color-rule-strong: #4a5274;
+  --color-accent: #7dcfff;
+  --color-accent-ink: #0c1720;
+  --color-focus: #e0af68;
+  --color-error: #f7768e;
+  --color-success: #9ece6a;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --font-size-terminal: 13px;
+  --line-height-terminal: 1.35;
+  --space-3xs: 4px;
+  --space-2xs: 8px;
+  --space-xs: 12px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --rule-width: 1px;
+  --focus-width: 2px;
+}

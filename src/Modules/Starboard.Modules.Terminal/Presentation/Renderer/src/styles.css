@@ -1,0 +1,68 @@
+/* Hallmark · macrostructure: Workbench · tone: technical/austere · anchor hue: cyan-blue */
+@import "../../../../../../tokens.css";
+
+html,
+body,
+#terminal {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+html,
+body {
+  min-width: 0;
+  overflow: clip;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+body {
+  box-sizing: border-box;
+  padding: var(--space-xs) var(--space-sm);
+  font-family: var(--font-mono);
+}
+
+#terminal {
+  position: relative;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+.xterm {
+  height: 100%;
+  padding: 0;
+}
+
+.xterm.focus::after {
+  position: absolute;
+  inset: calc(var(--space-3xs) * -1);
+  border: var(--focus-width) solid var(--color-focus);
+  pointer-events: none;
+  content: "";
+}
+
+.xterm .xterm-viewport,
+.xterm .xterm-screen {
+  background-color: var(--color-canvas) !important;
+}
+
+.xterm .composition-view {
+  background-color: var(--color-canvas-raised);
+  color: var(--color-ink);
+}
+
+.xterm .xterm-scrollable-element > .shadow {
+  box-shadow: none;
+}
+
+.xterm .xterm-scrollable-element > .visible,
+.xterm .xterm-scrollable-element > .invisible.fade {
+  transition: none !important;
+}
+
+@media (forced-colors: active) {
+  .xterm.focus::after {
+    border-color: Highlight;
+  }
+}
