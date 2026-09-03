@@ -156,18 +156,27 @@ runtime을 사용하므로 장시간 실행 앱의 update 안내는 후속 배�
 
 ```json
 {
-  "version": 1,
-  "type": "ready|input|resize|copy|paste-request|renderer-error",
+  "version": 2,
+  "type": "input|resize|copy|paste-request|select-session|close-session|restart-session",
+  "sessionId": "32-character-guid",
   "payload": {}
 }
 ```
 
-- 알 수 없는 version/type은 무시하고 diagnostics에 metadata만 남긴다.
+- `ready`, `new-tab`, next/previous 선택과 renderer 자체 오류만 global message이며
+  `sessionId`를 갖지 않는다. input/output, resize, clipboard, 선택, 닫기, restart,
+  remove와 session 오류처럼 session을 대상으로 하는 message는 비어 있지 않은
+  `N` 형식 GUID를 반드시 포함한다.
+- 알 수 없는 version/type, global message의 session ID, session message의 누락되거나
+  잘못된 ID는 무시하고 diagnostics에 metadata만 남긴다.
 - input payload는 UTF-8로 encoding해 ConPTY input queue로 보낸다.
-- output은 host가 최대 batch 크기와 짧은 flush interval로 묶어 renderer에 보낸다.
-- host는 `initialize`, `output`, `paste`, `reset` message만 renderer에 보내며 renderer source는
-  bundled local asset으로만 제공한다.
-- resize는 양의 column/row와 상한을 검증한 뒤 `ResizePseudoConsole`에 전달한다.
+- output은 host가 session별 bounded buffer와 최대 batch 크기로 묶어 대상 xterm에
+  보낸다. 느린 session의 backlog는 다른 session과 공유하지 않는다.
+- host는 global `initialize`와 session별 `session-upsert`, `activate-session`,
+  `output`, `paste`, `reset`, `remove-session`, `session-error`를 보내며 renderer
+  source는 bundled local asset으로만 제공한다.
+- resize는 양의 column/row와 상한을 검증한 뒤 해당 session의
+  `ResizePseudoConsole`에만 전달한다.
 - bridge log에는 payload text, command 또는 terminal output을 기록하지 않는다.
 - oversized/malformed message는 session을 종료하지 않고 거부한다.
 
@@ -200,6 +209,37 @@ output decoder는 byte chunk 사이에 걸친 UTF-8 sequence를 보존한다.
 shell은 executable path와 argument array를 분리해 저장하고 한 문자열을 다시
 shell parsing하지 않는다.
 
+### Multi-session workspace
+
+Phase 1.3A부터 `TerminalSessionCoordinator`가 ordered tab registry와 실제 terminal
+transport의 수명을 함께 조정한다.
+
+- 각 tab은 host가 발급한 opaque `Guid` session ID, 생성 순번을 재사용하지 않는
+  `PowerShell N` 이름과 `Starting`, `Running`, `Restarting`, `Exited`, `Failed`
+  상태를 가진다.
+- 첫 tab과 새 tab은 즉시 active가 된다. 직접 선택과 next/previous는 registry
+  순서를 따르고 끝에서 순환한다. active tab close는 오른쪽 이웃을 우선하고 끝이면
+  왼쪽 이웃을 선택하며 inactive tab close는 active ID를 바꾸지 않는다.
+- 마지막 tab close는 닫힌 ConPTY 정리를 기다리기 전에 새 기본 tab과 별도 shell을
+  생성·활성화한다. 동시에 유지할 수 있는 tab은 8개이며 초과 요청은 shell process
+  생성 전에 거부한다.
+- tab마다 `ITerminalSession` 한 개와 별도 ConPTY, pipe, shell process를 소유한다.
+  restart는 tab ID와 이름을 보존하면서 해당 transport만 교체하고 다른 tab registry
+  entry나 transport는 건드리지 않는다.
+- output/exit callback은 session ID뿐 아니라 coordinator가 보관한 실제 session
+  instance와 일치할 때만 전달한다. close/restart 뒤 도착한 이전 instance callback은
+  새 session 상태를 변경하지 않는다.
+
+Phase 1.3B부터 WPF view와 renderer는 protocol v2를 사용한다. WebView2 document는
+하나만 유지하고 session ID를 key로 xterm과 fit addon을 하나씩 보관한다. 비활성
+tabpanel은 숨기기만 하므로 output buffer, scrollback과 emulator state가 유지되며,
+선택할 때 다시 fit한 결과만 해당 ConPTY에 전달한다. 가로 overflow tablist는 최대
+8개 session, session별 loading/error 상태와 restart action을 제공한다.
+
+기본 collapsed 높이는 schema 3의 148 DIP다. 32 DIP tab strip과 기존 약 5행
+terminal body 116 DIP를 합친 값이며, schema 2 이하의 이전 기본값 116 DIP만
+migration한다. 다른 설정 높이는 사용자 지정으로 보존한다.
+
 ### Shutdown order
 
 `ClosePseudoConsole`은 Windows 11 24H2 이전 환경에서 client/output 상태에 따라
@@ -214,6 +254,11 @@ shell parsing하지 않는다.
 7. renderer를 dispose한다.
 
 SafeHandle이 handle 소유권을 표현하며 같은 native handle을 두 객체가 소유하지
+않는다.
+
+단일 tab close/restart 정리는 6초를 상한으로 삼고, 앱 종료에서는 모든 session
+정리를 병렬로 시작한 뒤 workspace 전체 8초 deadline을 적용한다. deadline을 넘긴
+session은 late completion의 예외를 계속 관찰하되 다른 tab 정리나 앱 종료를 막지
 않는다.
 
 ## Taskbar와 monitor

@@ -7,7 +7,7 @@ namespace Starboard.Modules.DesktopIntegration.Tests;
 public sealed class PanelGeometryCalculatorTests
 {
     [TestMethod]
-    public void CalculateCollapsedWithDefaultFiveLineHeightUses116Dip()
+    public void CalculateCollapsedWithTabStripAndFiveLineBodyUses148Dip()
     {
         var snapshot = new TaskbarSnapshot(
             TaskbarEdge.Bottom,
@@ -17,9 +17,9 @@ public sealed class PanelGeometryCalculatorTests
             false,
             96);
 
-        var result = PanelGeometryCalculator.CalculateCollapsed(snapshot, 116);
+        var result = PanelGeometryCalculator.CalculateCollapsed(snapshot, 148);
 
-        Assert.AreEqual(new PixelRect(0, 924, 1920, 1040), result);
+        Assert.AreEqual(new PixelRect(0, 892, 1920, 1040), result);
     }
 
     [TestMethod]

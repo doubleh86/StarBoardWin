@@ -163,6 +163,7 @@ task-local 변수로 user-local `dotnet.exe`를 선택한다.
 - standard WebView2와 offline xterm.js asset
 - 직접 구현한 최소 ConPTY host
 - persistent PowerShell/cmd session
+- 최대 8개의 독립적인 terminal tab과 tab별 persistent shell session
 - UTF-8, ANSI/VT, 한글, IME와 clipboard
 - terminal resize
 - non-stealing start/reposition과 deliberate click activation
@@ -178,7 +179,9 @@ task-local 변수로 user-local `dotnet.exe`를 선택한다.
 
 ### v0.1 제외 또는 후순위
 
-- tab, split pane와 여러 terminal session
+- split pane, tab 분리 창, drag reorder와 여러 window
+- tab/session의 앱 재시작 간 복원과 사용자 지정 tab 이름
+- shell title escape sequence를 해석한 동적 tab 이름
 - SSH profile manager
 - command palette와 theme picker shortcut
 - GPU/WebGL renderer
@@ -370,14 +373,18 @@ service를 명시적으로 생성하고 연결한다.
 3. host가 validated preference를 Terminal/DesktopIntegration option으로 매핑한다.
 4. DesktopIntegration module이 taskbar/display snapshot을 조회한다.
 5. host가 main window HWND를 만들되 활성화하지 않고 첫 geometry를 적용한다.
-6. Terminal module이 WebView2/xterm renderer를 초기화한다.
-7. renderer의 `ready` 이후 Terminal module이 ConPTY shell을 시작한다.
+6. Terminal module이 하나의 WebView2 renderer와 terminal workspace를 초기화한다.
+7. renderer의 protocol v2 `ready` 이후 Terminal module이 첫 tab과 그 tab 전용
+   ConPTY shell을 시작한다.
 8. DesktopIntegration module이 watcher, hotkey와 foreground hook을 연결한다.
-9. 명시적 종료에서 host가 DesktopIntegration watcher → terminal input → shell →
-   ConPTY output drain → renderer 순으로 module의 bounded shutdown을 조정한다.
-10. unexpected shell exit는 앱을 유지하고 renderer에 restart action을 표시한다.
-11. renderer crash는 ConPTY를 즉시 폐기하지 않고 짧은 recovery window 동안
-    재생성한 뒤 실패하면 session restart를 제안한다.
+9. 명시적 종료에서 host가 DesktopIntegration watcher를 먼저 중단하고 Terminal
+   module은 모든 tab의 input 차단 → shell 종료 → ConPTY output drain → renderer
+   순으로 bounded shutdown을 병렬 조정한다.
+10. unexpected shell exit는 앱과 다른 tab을 유지하고 해당 tab에만 restart action을
+    표시한다.
+11. renderer crash는 모든 ConPTY session을 즉시 폐기하지 않고 짧은 recovery
+    window 동안 renderer를 재생성한다. 재연결 실패 시에도 session 간 output이나
+    input을 섞지 않고 전역 WPF 오류 surface에서 재시도를 제공한다.
 
 ### Window policy state
 
@@ -480,27 +487,54 @@ WebView2는 local asset만 탐색할 수 있게 구성한다.
 - runtime CDN/font/script request 없음
 - renderer source와 build asset license 기록
 
-bridge message에는 `protocolVersion`과 명시적인 `type`을 둔다.
+현재 구현이 사용하는 JSON field 이름 `version`을 유지하되 다중 탭 bridge는
+protocol version 2로 한 번에 전환한다. envelope는 `{ version, type, sessionId?,
+payload }`이며 `sessionId`는 host가 생성하는 32자리 lowercase hex GUID를 opaque
+identifier로 취급하고 process lifetime 동안 재사용하지 않는다. renderer가 임의로
+만든 ID, registry에 없는 ID, 이미 닫히는 session의 ID와 version 1 message는 host가
+side effect 없이 거부한다. version 1로 자동 downgrade하면 input/output을 잘못된
+session에 전달할 수 있으므로 호환 shim을 두지 않는다.
 
 Web → host:
 
-- ready
-- input
-- resize
-- copy
-- paste-request
-- renderer-error
+- workspace scope: `ready`, `new-session`, `resize`, `renderer-error`
+- session scope: `activate-session`, `close-session`, `restart-session`, `input`, `copy`,
+  `paste-request`
 
 Host → web:
 
-- initialize
-- output
-- paste
-- reset
+- workspace scope: `initialize`
+- session scope: `session-added`, `session-activated`, `session-state`, `session-removed`,
+  `output`, `paste`, `reset`
 
-output은 ConPTY UTF-8 stream을 incremental decoder로 처리하고 최대 64KiB 단위로
-batching한다. pending buffer는 4MiB로 제한하며 renderer가 장시간 따라오지 못하면
-가장 오래된 output을 버리고 payload 없이 overflow diagnostic만 기록한다.
+`initialize` payload에는 font/theme, `maxSessions`, ordered tab snapshot과
+`activeSessionId`를 포함한다. tab snapshot은 `sessionId`, 표시용 `title`과
+`starting|running|exited|failed|closing` state만 노출하며 command, working directory와
+terminal output은 포함하지 않는다. session scope message는 모두 envelope의
+`sessionId`가 필수다. `resize`만 workspace scope이며 최신 cell size를 모든 running
+session과 이후 생성되는 session에 적용한다. input/copy/paste는 host가 확인한 active
+session에서만 처리한다.
+
+host는 tab registry, 순서, active session과 state의 정본이다. renderer는
+`new/activate/close/restart` 의도만 보내고 host의 응답 전에는 registry를 확정하지
+않는다. close/restart 중 늦게 도착한 output callback은 controller가 현재 registry와
+session instance를 다시 확인한 뒤 버린다. unknown/stale ID, 잘못된 state 전이,
+누락된 payload, 범위를 벗어난 resize와 1MiB 초과 message를 protocol test로 거부한다.
+
+renderer는 WebView2 하나 안에 session별 xterm.js `Terminal`과 `FitAddon`을 만들고
+active terminal의 DOM surface만 표시한다. inactive terminal도 routed output을 받아
+scrollback과 interactive state를 유지한다. WebView2를 tab마다 만들지 않아 browser
+process, airspace, focus와 DPI 수명을 tab 수만큼 늘리지 않는다. renderer 재시작 시
+host가 registry snapshot을 다시 보내고 끊긴 동안의 bounded pending output만
+재전송한다. 이미 renderer에 전달된 과거 scrollback은 개인정보와 memory 상한 때문에
+host transcript로 복제하지 않으며 renderer crash 뒤에는 복원되지 않는 제한을
+명시한다.
+
+output은 session별 ConPTY UTF-8 stream을 incremental decoder로 처리하고 최대
+64KiB 단위로 batching한다. pending buffer는 session당 4MiB, 동시 session은 최대
+8개로 제한해 host pending output 상한을 32MiB로 고정한다. renderer가 따라오지
+못하면 해당 noisy session의 가장 오래된 output만 버리고 payload 없이 session ID와
+overflow 횟수만 diagnostic에 기록한다.
 
 ### ConPTY session
 
@@ -516,6 +550,48 @@ batching한다. pending buffer는 4MiB로 제한하며 renderer가 장시간 따
 - shutdown 시 output drain이 막히지 않도록 child 종료, pipe close와 HPCON close
   순서를 integration test로 고정한다.
 - command나 terminal output은 log에 기록하지 않는다.
+
+### 다중 탭 책임과 session lifecycle
+
+- 다중 탭은 새 module이나 host 책임으로 올리지 않고 Terminal module 내부의
+  application/presentation 책임으로 둔다. `TerminalModule`은 계속 단일 `Surface`와
+  시작/종료 facade만 공개하고 `AppCoordinator`, `MainWindow`, DesktopIntegration과
+  Preferences는 tab collection이나 `ConPtySession`을 알지 않는다.
+- application 계층의 workspace/controller가 ordered tab registry, active ID,
+  최대 8개 제한과 state transition을 소유한다. native/test boundary가 있는 session
+  factory만 좁은 internal seam으로 두고 실제 pipe/HPCON/process 소유권은 기존
+  `ConPtySession`에 남긴다.
+- backend state는 `starting → running|failed|exited`,
+  `running → exited|failed|restarting`, `exited|failed → restarting → starting`으로
+  전환한다. close는 registry와 session instance mapping을 같은 lock에서 제거해 이후
+  input/resize와 stale callback을 거부한다.
+- tab 하나는 정확히 하나의 `ConPtySession`을 소유한다. 새 tab은 현재 shell option과
+  최신 rows/columns로 새 process를 시작하며 다른 tab의 working directory,
+  environment, history, foreground job과 exit state를 공유하지 않는다.
+- 최초 실행은 `PowerShell 1` tab 하나를 만들고 이후 생성 순번을 재사용하지 않는
+  `PowerShell N` 이름을 붙인다. 마지막 tab을 닫으면 이전 transport cleanup보다 먼저
+  새 기본 tab과 shell을 생성·활성화해 terminal surface를 항상 하나 유지한다. 새 tab
+  button과 keyboard shortcut은 Phase 1.3B renderer 범위다.
+- tab 전환은 process를 suspend/restart하지 않는다. active ID만 바꾸고 선택된 xterm에
+  focus를 옮긴 뒤 latest resize를 모든 running session에 적용한다. panel hide,
+  expand/collapse와 background geometry 변경도 session 수명에 영향을 주지 않는다.
+- 새 shell 시작 실패나 shell exit는 해당 tab을 `failed` 또는 `exited`로 바꾸고 그
+  tab에만 restart/close를 제공한다. restart는 같은 tab ID 아래 새 ConPTY instance를
+  만들고 기존 instance의 event를 먼저 분리한다. renderer 전체 실패만 WPF 전역 오류
+  surface를 사용하며 이 경우 기존 ConPTY session은 recovery 동안 계속 실행한다.
+- close는 해당 tab의 registry entry와 instance mapping을 먼저 제거해 새 input/resize를
+  거부하고, 오른쪽 이웃 우선·없으면 왼쪽 이웃을 active로 정한 뒤 그 session만
+  비동기로 정리한다. 마지막 tab이면 새 기본 session을 cleanup 전에 시작한다.
+- session 하나의 disposal은 input 차단, cancellation, input pipe close, child
+  terminate/wait, HPCON close, output pump 관찰과 나머지 SafeHandle dispose 순서를
+  유지하고 총 6초 이내의 bounded wait를 사용한다. 앱 종료에서는 최대 8개 session을
+  순차 처리하지 않고 병렬 정리해 workspace 전체 deadline을 8초로 제한한다. 각 단계
+  timeout 뒤에도 남은 owned handle dispose를 계속하고 command/output 없는 local
+  diagnostic만 기록한다.
+- session coordinator의 registry mutation은 lock과 operation gate로 직렬화하고
+  process I/O와 disposal은 UI synchronization context를 캡처하지 않는다.
+  close/restart 뒤 callback은 controller instance identity와 state를 확인해 다른
+  tab으로 재사용되지 않게 한다.
 
 ### Shortcut와 clipboard
 
@@ -574,6 +650,26 @@ Phase 0에서 다음 문서를 수정·추가했다.
 
 Phase 1에서 solution과 product/test 파일, renderer source/dist, third-party notice와
 README를 생성했다. 이후 phase도 동일한 module 경계 안에서 확장한다.
+
+다중 탭 Phase의 예상 변경 범위는 다음과 같다. host composition과 다른 module은
+contract 회귀 확인 대상이지만 기본 변경 대상은 아니다.
+
+- `src/Modules/Starboard.Modules.Terminal/Application/RendererMessage.cs`
+- `src/Modules/Starboard.Modules.Terminal/Application/RendererProtocol.cs`
+- `src/Modules/Starboard.Modules.Terminal/Application/`의 tab registry/session
+  controller와 test seam 새 파일
+- `src/Modules/Starboard.Modules.Terminal/Infrastructure/ConPtySession.cs`
+- `src/Modules/Starboard.Modules.Terminal/Presentation/TerminalView.xaml`
+- `src/Modules/Starboard.Modules.Terminal/Presentation/TerminalView.xaml.cs`
+- `src/Modules/Starboard.Modules.Terminal/Presentation/Renderer/src/index.html`
+- `src/Modules/Starboard.Modules.Terminal/Presentation/Renderer/src/index.ts`
+- `src/Modules/Starboard.Modules.Terminal/Presentation/Renderer/src/styles.css`
+- renderer build가 재생성하는 `Presentation/Renderer/dist/*`
+- `tests/Starboard.Modules.Terminal.Tests/RendererProtocolTests.cs`
+- `tests/Starboard.Modules.Terminal.Tests/`의 workspace/session lifecycle test 새 파일
+- `tests/Starboard.IntegrationTests/ConPtyLifecycleTests.cs`와 필요 시 test host
+- 실제 동작과 검증 결과를 반영할 `docs/architecture.md`, `docs/test-plan.md`,
+  `README.md`
 
 ## 구현 단계
 
@@ -690,6 +786,71 @@ README를 생성했다. 이후 phase도 동일한 module 경계 안에서 확장
 - 숨긴 panel을 실제 notification-area icon 왼쪽 클릭으로 표시·활성화할 수 있다.
 - 호출 후에도 `WS_EX_TOPMOST`가 없고 다른 앱이 다시 자연스럽게 panel을 덮을 수 있다.
 
+### Phase 1.3 — 다중 terminal tab
+
+예상: 5~8시간
+
+이번 `terminal-session-tabs` 작업은 1.3A의 backend/session 수명 경계와 그 자동
+검증까지만 구현한다. renderer protocol v2, tab chrome과 shortcut은 1.3B에 남긴다.
+직접 할당된 동작에 맞춰 마지막 tab close는 거부하지 않고 기존 session을 정리한
+뒤 새 기본 tab을 같은 전환에서 즉시 생성·활성화한다. tab 이름은 생성 순번을
+재사용하지 않는 `PowerShell N` 형식이며 restart는 tab ID와 이름을 보존한다.
+
+사전 조건: `feature/terminal-tabs`의 전용 worktree에서만 제품 수정, renderer build와
+.NET 검증을 수행한다. 기존 worktree나 branch가 있으면 삭제/reset하지 않고 clean
+상태와 기준 commit을 확인한 뒤 재사용한다.
+
+#### 1.3A. Workspace와 독립 session
+
+- [x] Terminal module 내부에 ordered tab registry, active ID, state transition과
+  최대 8개 제한을 구현한다.
+- [x] tab마다 별도 `ConPtySession`을 생성하고 working directory, environment,
+  history, job과 exit/restart 수명이 섞이지 않게 한다.
+- [x] create/activate/close/restart race와 stale callback을 instance identity로
+  차단한다.
+- [x] 한 session의 launch/resize/input/exit 실패가 다른 session을 중단하거나 전역
+  error surface를 열지 않게 한다.
+- [x] single close 6초, 최대 8개 병렬 app shutdown 8초 deadline과 handle 정리 순서를
+  자동 test로 고정한다.
+
+#### 1.3B. Renderer protocol v2와 tab UI
+
+- [ ] bridge를 protocol version 2와 host 발급 `sessionId` schema로 전환하고 v1,
+  unknown/stale ID, malformed/oversized payload를 거부한다.
+- [ ] 하나의 WebView2 안에 tab별 xterm instance를 만들고 inactive session의
+  scrollback/output을 유지한다.
+- [ ] new/activate/close/restart intent와 host-confirmed state rendering을 구현한다.
+- [ ] 새 tab, tab 전환, tab 닫기 button에 hover, focus-visible, pressed, disabled,
+  error/closing state와 접근 가능한 이름을 제공한다.
+- [ ] `Ctrl+Shift+T`, `Ctrl+Tab`, `Ctrl+Shift+Tab`, `Ctrl+Shift+W`를 IME composition과
+  기존 copy/paste/interrupt shortcut을 깨지 않도록 연결한다.
+- [ ] renderer crash 재연결 시 tab snapshot과 bounded pending output만 복원하고,
+  protocol mismatch에서는 input을 차단한 전역 오류 fallback을 표시한다.
+
+#### 1.3C. 통합과 문서
+
+- [ ] renderer source를 build해 `dist`를 재생성하고 runtime network request가 없는지
+  확인한다.
+- [ ] unit/integration test와 실제 두 session smoke를 수행하고 session별 PID,
+  working directory 유지, failure isolation과 bounded shutdown을 확인한다.
+- [ ] `docs/architecture.md`, `docs/test-plan.md`와 README의 multi-tab 동작, shortcut,
+  crash 시 scrollback 제한과 수행 결과를 실제 구현에 맞게 갱신한다.
+
+완료 gate:
+
+- 두 개 이상의 tab이 서로 다른 shell process와 interactive state를 유지한다.
+- inactive tab의 long-running command와 output이 계속 진행되며 tab 전환 뒤 확인된다.
+- 한 tab을 종료/restart/close해도 나머지 tab의 PID와 working directory가 유지된다.
+- renderer는 잘못된 session routing을 거부하고 tab별 output을 다른 xterm에 쓰지 않는다.
+- 마지막 tab close는 새 기본 tab을 즉시 생성·활성화하며, 최대 8개를 넘는 생성은
+  process를 만들기 전에 명확히 거부된다.
+- renderer crash/retry 동안 shell session은 유지되고 과거 scrollback 비복원 제한이
+  사용자에게 숨겨지지 않는다.
+- close와 app shutdown이 정한 deadline 안에 끝나고 남은 Starboard 소유 shell,
+  pipe와 HPCON handle이 없다.
+- 기존 panel focus, tray summon, expand/collapse와 offline renderer 동작이 회귀하지
+  않는다.
+
 ### Phase 2 — Windows windowing 완성
 
 예상: 5~8시간
@@ -773,7 +934,9 @@ README를 생성했다. 이후 phase도 동일한 module 경계 안에서 확장
 | `ShellResolver` | pwsh 우선순위, fallback, missing executable, custom arguments |
 | `SettingsStore` | missing, partial, old schema, invalid JSON, atomic replace |
 | theme | 필수 token, ANSI 16색, contrast와 JSON/resource validation |
-| renderer bridge | version/type validation, malformed/oversized message, batching |
+| renderer bridge | v2 version/type/session ID validation, stale/unknown ID, malformed/oversized message, tab별 routing과 batching |
+| terminal workspace | create/activate/close/restart state, 8개 상한, 마지막 tab 대체, 실패 격리와 stale callback |
+| session cleanup | single 6초/전체 8초 deadline, 병렬 종료, timeout 뒤 handle 정리 |
 | startup command | quoting, enable/disable와 executable path |
 | virtual desktop | supported/fallback capability 반환 |
 
@@ -788,6 +951,10 @@ README를 생성했다. 이후 phase도 동일한 module 경계 안에서 확장
 - long-running command interrupt
 - shell exit와 restart
 - output drain과 bounded shutdown
+- 두 ConPTY session의 PID, working directory, environment와 output 격리
+- 한 session close/restart 뒤 다른 session round trip 유지
+- 한 session launch/exit 실패 뒤 다른 session과 renderer 유지
+- 최대 8개 session의 병렬 shutdown과 child process/handle 잔존 여부
 
 UI/Explorer/display에 의존하는 test는 CI에서 불안정하면 자동 test로 위장하지 않고
 manual test로 분리한다.
@@ -809,6 +976,12 @@ manual test로 분리한다.
 - PowerShell, Windows PowerShell, cmd와 WSL
 - 한글 IME composition
 - clipboard shortcut와 selection
+- mouse/keyboard tab 생성, 순환, 전환, 닫기와 마지막 tab 대체
+- tab 전환 뒤 cwd, history, foreground job, scrollback과 한글 IME 유지
+- inactive tab의 long-running output 중 active tab 입력 응답성
+- 한 tab shell crash/restart와 다른 tab PID/state 보존
+- 8개 tab 상한의 disabled/error feedback
+- renderer crash/retry 뒤 session 유지와 scrollback 비복원 안내
 - expand/collapse hotkey conflict
 - WebView2 renderer process failure
 - startup login simulation
@@ -821,6 +994,10 @@ manual test로 분리한다.
 | standard WebView2 opacity/transparent background 제약 | opacity와 rounded visual 저하 | Phase 1에서 early spike | opaque/tint opacity → 검증된 top-level opacity, composition은 opt-in |
 | composition control monitor hot-plug crash | 앱 freeze/crash | default로 사용하지 않음 | standard WebView2 유지 |
 | ConPTY synchronous pipe deadlock | terminal/app 종료 hang | input/output 별도 worker, bounded shutdown | child kill 후 pipe/HPCON 순차 close |
+| 여러 ConPTY의 순차 종료 | tab 수에 비례한 app 종료 지연 | session별 6초 bounded cleanup을 병렬 실행하고 전체 8초 deadline 적용 | timeout session의 남은 handle을 강제 순서로 dispose하고 payload 없는 diagnostic 기록 |
+| stale session message/callback | 닫거나 restart한 tab의 input/output이 다른 tab으로 오염 | host 발급 opaque ID, registry/state/instance identity 재검증 | message 폐기 후 해당 tab state snapshot 재전송 |
+| 한 tab의 output 폭주 | 다른 tab 지연과 memory 증가 | session별 4MiB buffer, 64KiB batch, 최대 8 session | noisy session의 oldest output만 폐기하고 1회 diagnostic |
+| renderer crash 또는 v1/v2 mismatch | 모든 tab UI 소실 또는 잘못된 routing | ConPTY session 유지, v2 snapshot으로 renderer만 재연결 | input 차단 WPF 오류 surface; 자동 v1 downgrade 금지 |
 | permanent NOACTIVATE | click/IME 입력 불가 | 적용하지 않고 no-activate move만 사용 | `WM_MOUSEACTIVATE` 정책을 격리해 검토 |
 | panel과 fullscreen 충돌 | 게임/영상 방해 | normal z-order 유지 후 필요 시 conceal | 사용자가 fullscreen conceal policy를 끌 수 있게 설정 |
 | taskbar auto-hide animation event 누락 | panel이 stranded | event + reconciliation + 짧은 fast sampling | unknown 상태에서 last safe frame 사용 |
@@ -865,6 +1042,30 @@ manual test로 분리한다.
   문제를 실제 tray 종료 smoke에서 발견하고 non-capturing 정리 경로로 수정했다.
 - 한글 IME, taskbar auto-hide, mixed-DPI/multi-monitor, fullscreen과 settings UI는
   다음 phase의 구현·수동 검증으로 남겼다.
+
+### 2026-09-03
+
+- 다중 terminal tab을 v0.1 Phase 1.3으로 추가하고 기존 single-session 구현의
+  `TerminalView`/`ConPtySession`/renderer bridge 책임을 실제 코드와 대조했다.
+- tab collection은 Terminal module 내부, tab별 ConPTY는 infrastructure 내부,
+  renderer는 view라는 경계를 확정하고 host/다른 module 변경을 기본 범위에서 뺐다.
+- protocol v2 session routing, 오류 격리, 최대 8개, session별 6초 및 전체 8초
+  bounded cleanup과 renderer crash fallback을 제품 코드보다 먼저 고정했다.
+- `git worktree list --porcelain`에서 `feature/terminal-tabs`와
+  `C:/PrivateProject/StarBoardWin-tabs`가 같은 기준 commit에 이미 연결된 것을 확인했다.
+  기존 branch/worktree를 생성, 삭제, reset 또는 checkout하지 않았고 이후 제품 수정과
+  build/test는 그 전용 worktree에서 수행하는 인수인계 경계를 유지한다.
+- `terminal-session-tabs` 구현에서 ordered registry와 session coordinator를 추가하고
+  `TerminalModule`이 coordinator, view가 renderer subscription을 소유하도록 기존
+  단일 `TerminalView -> ConPtySession` 수명 경계를 분리했다.
+- 마지막 tab은 close를 거부하는 이전 초안 대신 직접 할당 기준에 맞춰 새 기본
+  `PowerShell N` tab을 즉시 생성·활성화하고 닫힌 transport만 bounded cleanup한다.
+- unit test 25개와 ConPTY integration test 2개에서 선택/순환/인접 close, 8개 상한,
+  launch/exit/restart 격리, stale callback, 병렬 deadline과 두 실제 PowerShell의
+  서로 다른 PID 및 environment/cwd/history/background job 독립성을 검증했다.
+- Debug solution restore/build와 전체 test 51개를 통과했고 build warning과 error는
+  없었다. task에 지정된 Terminal unit/ConPTY integration 명령도 추가 옵션 없이
+  각각 25개와 2개 통과했다.
 
 ## 미결정 사항
 

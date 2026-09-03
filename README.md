@@ -1,7 +1,7 @@
 # Starboard for Windows
 
 Starboard는 Windows 작업표시줄 바로 위에 계속 머무는 작은 terminal panel이다.
-호출할 때만 나타나는 drop-down terminal과 달리, 하나의 실제 shell session을 앱
+호출할 때만 나타나는 drop-down terminal과 달리, 탭별 실제 shell session을 앱
 수명 동안 유지하면서 현재 사용 중인 창의 focus를 불필요하게 빼앗지 않는 것을
 목표로 한다.
 
@@ -14,11 +14,12 @@ Windows 10 1809 이상은 best-effort 대상이다.
 - `pwsh.exe` → `powershell.exe` → `cmd.exe` 순서의 shell 탐색
 - Windows ConPTY를 통한 실제 양방향 persistent session
 - bundled xterm.js와 local-only WebView2 renderer
+- 하나의 WebView2 안에서 탭별 xterm, scrollback과 shell 상태 유지
 - terminal resize를 ConPTY cell size로 전달
 - shell/renderer 오류 surface와 shell restart
 - `Ctrl+Alt+E` global hotkey로 work area 전체 확장/축소
 - `Ctrl+Alt+S`로 가려졌거나 숨겨진 panel 호출, 활성 panel 숨김
-- 약 5행이 보이는 116 DIP 기본 높이
+- 32 DIP 탭 바 아래 terminal 본문 약 5행이 보이는 148 DIP 기본 높이
 - notification area icon 왼쪽 클릭으로 panel 표시·활성화
 - tray menu의 `터미널 표시/숨기기`와 `종료`
 - 평소에는 다른 앱을 덮어두지 않는 normal z-order, tray 표시 요청 때만 활성화
@@ -90,6 +91,10 @@ renderer는 runtime CDN, 외부 font, remote script를 사용하지 않는다.
 | `Ctrl+C` | 선택이 있으면 복사, 없으면 shell에 ETX 전달 |
 | `Ctrl+Shift+C` | 선택 text 복사 |
 | `Ctrl+V`, `Ctrl+Shift+V` | Windows clipboard text 붙여넣기 |
+| `Ctrl+Shift+T` | 새 terminal 탭 열기 |
+| `Ctrl+Tab`, `Ctrl+Shift+Tab` | 다음/이전 terminal 탭 선택 |
+| `Ctrl+Shift+W` | 현재 terminal 탭 닫기 |
+| `Ctrl+W` | shell에 그대로 전달 |
 | `Ctrl+Alt+E` | collapsed/expanded geometry 전환 |
 | `Ctrl+Alt+S` | 숨김·비활성 panel 호출, 활성 panel 숨김 |
 
