@@ -62,24 +62,6 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
-    internal bool HasActiveSession
-    {
-        get
-        {
-            lock (stateLock)
-            {
-                if (tabRegistry.ActiveSessionId is not { } activeSessionId ||
-                    sessions.ContainsKey(activeSessionId) == false)
-                {
-                    return false;
-                }
-
-                return tabRegistry.GetRequired(activeSessionId).State ==
-                       TerminalSessionState.Running;
-            }
-        }
-    }
-
     internal async Task<TerminalTab> StartAsync(
         ShellLaunchSpec shell,
         int columns,
@@ -275,15 +257,30 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         string data,
         CancellationToken cancellationToken)
     {
+        TerminalSessionId activeSessionId;
+        lock (stateLock)
+        {
+            ThrowIfUnavailable();
+            activeSessionId = tabRegistry.ActiveSessionId
+                ?? throw new InvalidOperationException("No terminal tab is active.");
+        }
+
+        await WriteAsync(activeSessionId, data, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async ValueTask WriteAsync(
+        TerminalSessionId sessionId,
+        string data,
+        CancellationToken cancellationToken)
+    {
         SessionEntry entry;
         lock (stateLock)
         {
             ThrowIfUnavailable();
-            var activeSessionId = tabRegistry.ActiveSessionId
-                ?? throw new InvalidOperationException("No terminal tab is active.");
-            if (sessions.TryGetValue(activeSessionId, out entry!) == false)
+            if (tabRegistry.Contains(sessionId) == false ||
+                sessions.TryGetValue(sessionId, out entry!) == false)
             {
-                throw new InvalidOperationException("The active terminal session is unavailable.");
+                throw new InvalidOperationException("The terminal session is unavailable.");
             }
         }
 
@@ -297,6 +294,31 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             MarkFailed(entry.SessionId, entry);
             throw;
         }
+    }
+
+    internal bool Resize(
+        TerminalSessionId sessionId,
+        int columns,
+        int rows)
+    {
+        ValidateSize(columns, rows);
+
+        SessionEntry? entry;
+        lock (stateLock)
+        {
+            ThrowIfUnavailable();
+            if (tabRegistry.Contains(sessionId) == false)
+            {
+                return false;
+            }
+
+            this.columns = columns;
+            this.rows = rows;
+            sessions.TryGetValue(sessionId, out entry);
+        }
+
+        ResizeEntry(entry, columns, rows);
+        return true;
     }
 
     internal void ResizeAll(int columns, int rows)
@@ -314,7 +336,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
         foreach (var entry in currentSessions)
         {
-            Resize(entry, columns, rows);
+            ResizeEntry(entry, columns, rows);
         }
     }
 
@@ -525,11 +547,11 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
 
         WorkspaceChanged?.Invoke(snapshot);
-        Resize(selectedSession, currentColumns, currentRows);
+        ResizeEntry(selectedSession, currentColumns, currentRows);
         return true;
     }
 
-    private void Resize(SessionEntry? entry, int columns, int rows)
+    private void ResizeEntry(SessionEntry? entry, int columns, int rows)
     {
         if (entry is null)
         {

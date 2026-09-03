@@ -75,6 +75,7 @@
     <Grid>
         <wv2:WebView2 x:Name="Renderer"
                       AllowExternalDrop="False"
+                      AutomationProperties.Name="Starboard terminal tabs and sessions"
                       CreationProperties="{x:Null}"
                       Visibility="Collapsed" />
 
@@ -109,6 +110,7 @@
                         VerticalAlignment="Center"
                         Click="RetryButton_Click"
                         Content="다시 시작"
+                        AutomationProperties.Name="Terminal renderer 다시 시작"
                         Style="{StaticResource RetryButtonStyle}"
                         Visibility="Collapsed" />
             </Grid>
