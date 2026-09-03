@@ -200,6 +200,31 @@ output decoder는 byte chunk 사이에 걸친 UTF-8 sequence를 보존한다.
 shell은 executable path와 argument array를 분리해 저장하고 한 문자열을 다시
 shell parsing하지 않는다.
 
+### Multi-session workspace
+
+Phase 1.3A부터 `TerminalSessionCoordinator`가 ordered tab registry와 실제 terminal
+transport의 수명을 함께 조정한다.
+
+- 각 tab은 host가 발급한 opaque `Guid` session ID, 생성 순번을 재사용하지 않는
+  `PowerShell N` 이름과 `Starting`, `Running`, `Restarting`, `Exited`, `Failed`
+  상태를 가진다.
+- 첫 tab과 새 tab은 즉시 active가 된다. 직접 선택과 next/previous는 registry
+  순서를 따르고 끝에서 순환한다. active tab close는 오른쪽 이웃을 우선하고 끝이면
+  왼쪽 이웃을 선택하며 inactive tab close는 active ID를 바꾸지 않는다.
+- 마지막 tab close는 닫힌 ConPTY 정리를 기다리기 전에 새 기본 tab과 별도 shell을
+  생성·활성화한다. 동시에 유지할 수 있는 tab은 8개이며 초과 요청은 shell process
+  생성 전에 거부한다.
+- tab마다 `ITerminalSession` 한 개와 별도 ConPTY, pipe, shell process를 소유한다.
+  restart는 tab ID와 이름을 보존하면서 해당 transport만 교체하고 다른 tab registry
+  entry나 transport는 건드리지 않는다.
+- output/exit callback은 session ID뿐 아니라 coordinator가 보관한 실제 session
+  instance와 일치할 때만 전달한다. close/restart 뒤 도착한 이전 instance callback은
+  새 session 상태를 변경하지 않는다.
+
+현재 Phase 1.3A의 WPF view는 active session의 output만 기존 renderer protocol v1로
+보낸다. tab별 xterm/scrollback, 사용자 tab 조작과 session ID가 포함된 protocol v2는
+Phase 1.3B 범위이며 backend session은 그 UI와 독립적으로 계속 실행·drain된다.
+
 ### Shutdown order
 
 `ClosePseudoConsole`은 Windows 11 24H2 이전 환경에서 client/output 상태에 따라
@@ -214,6 +239,11 @@ shell parsing하지 않는다.
 7. renderer를 dispose한다.
 
 SafeHandle이 handle 소유권을 표현하며 같은 native handle을 두 객체가 소유하지
+않는다.
+
+단일 tab close/restart 정리는 6초를 상한으로 삼고, 앱 종료에서는 모든 session
+정리를 병렬로 시작한 뒤 workspace 전체 8초 deadline을 적용한다. deadline을 넘긴
+session은 late completion의 예외를 계속 관찰하되 다른 tab 정리나 앱 종료를 막지
 않는다.
 
 ## Taskbar와 monitor

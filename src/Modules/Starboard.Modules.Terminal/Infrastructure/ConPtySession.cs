@@ -3,13 +3,14 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
+using Starboard.Modules.Terminal.Application;
 using Starboard.Modules.Terminal.Domain;
 using Starboard.Modules.Terminal.Infrastructure.Interop;
 using Starboard.SharedKernel.Diagnostics;
 
 namespace Starboard.Modules.Terminal.Infrastructure;
 
-internal sealed class ConPtySession : IAsyncDisposable
+internal sealed class ConPtySession : ITerminalSession
 {
     private readonly IDiagnosticLog diagnosticLog;
     private readonly SafePseudoConsoleHandle pseudoConsole;
@@ -49,9 +50,9 @@ internal sealed class ConPtySession : IAsyncDisposable
         this.outputStream = outputStream;
     }
 
-    internal event Action<string>? OutputReceived;
+    public event Action<string>? OutputReceived;
 
-    internal event Action<uint>? Exited;
+    public event Action<uint>? Exited;
 
     internal static ConPtySession Start(
         ShellLaunchSpec shell,
@@ -152,14 +153,14 @@ internal sealed class ConPtySession : IAsyncDisposable
         }
     }
 
-    internal void BeginReading()
+    public void BeginReading()
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
         outputPump ??= PumpOutputAsync(lifetimeCancellation.Token);
         processWait ??= WaitForExitAsync(lifetimeCancellation.Token);
     }
 
-    internal async ValueTask WriteAsync(
+    public async ValueTask WriteAsync(
         string data,
         CancellationToken cancellationToken)
     {
@@ -178,7 +179,7 @@ internal sealed class ConPtySession : IAsyncDisposable
         }
     }
 
-    internal void Resize(int columns, int rows)
+    public void Resize(int columns, int rows)
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
         var result = NativeMethods.ResizePseudoConsole(

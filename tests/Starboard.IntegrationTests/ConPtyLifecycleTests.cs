@@ -12,6 +12,18 @@ public sealed class ConPtyLifecycleTests
     [Timeout(20_000)]
     public async Task GuiHostCanRoundTripCommandThroughConPty()
     {
+        await RunHostAsync("lifecycle", TimeSpan.FromSeconds(15));
+    }
+
+    [TestMethod]
+    [Timeout(45_000)]
+    public async Task GuiHostKeepsConPtyTabsIndependentThroughExitRestartAndClose()
+    {
+        await RunHostAsync("tabs", TimeSpan.FromSeconds(40));
+    }
+
+    private static async Task RunHostAsync(string mode, TimeSpan timeout)
+    {
         if (OperatingSystem.IsWindows() == false)
         {
             Assert.Inconclusive("ConPTY is only available on Windows.");
@@ -21,8 +33,9 @@ public sealed class ConPtyLifecycleTests
         var helperPath = Path.ChangeExtension(helperAssemblyPath, ".exe");
         var resultPath = Path.Combine(
             Path.GetTempPath(),
-            $"starboard-conpty-{Guid.NewGuid():N}.json");
+            $"starboard-conpty-{mode}-{Guid.NewGuid():N}.json");
 
+        Process? process = null;
         try
         {
             var startInfo = new ProcessStartInfo(helperPath)
@@ -31,11 +44,12 @@ public sealed class ConPtyLifecycleTests
                 UseShellExecute = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
             };
+            startInfo.ArgumentList.Add(mode);
             startInfo.ArgumentList.Add(resultPath);
 
-            using var process = Process.Start(startInfo)
+            process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("The ConPTY test host did not start.");
-            await process.WaitForExitAsync();
+            await process.WaitForExitAsync().WaitAsync(timeout);
 
             Assert.IsTrue(File.Exists(resultPath));
 
@@ -47,11 +61,23 @@ public sealed class ConPtyLifecycleTests
             Assert.IsNotNull(result);
             Assert.IsTrue(
                 result.Succeeded,
-                $"The GUI ConPTY host failed with {result.ErrorType}; exit code {process.ExitCode}.");
+                $"The GUI ConPTY host failed with {result.ErrorType}: {result.ErrorMessage}; " +
+                $"exit code {process.ExitCode}.");
             Assert.AreEqual(0, process.ExitCode);
         }
         finally
         {
+            if (process is not null)
+            {
+                if (process.HasExited == false)
+                {
+                    process.Kill(true);
+                    await process.WaitForExitAsync();
+                }
+
+                process.Dispose();
+            }
+
             if (File.Exists(resultPath) == true)
             {
                 File.Delete(resultPath);
@@ -59,5 +85,8 @@ public sealed class ConPtyLifecycleTests
         }
     }
 
-    private sealed record TestHostResult(bool Succeeded, string? ErrorType);
+    private sealed record TestHostResult(
+        bool Succeeded,
+        string? ErrorType,
+        string? ErrorMessage);
 }
