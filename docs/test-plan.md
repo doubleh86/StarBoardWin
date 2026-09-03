@@ -29,7 +29,7 @@ mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증�
 | Node.js/npm | 설치됨 |
 | PowerShell | PowerShell 7과 Windows PowerShell 설치됨 |
 | WebView2 Runtime | `151.0.4129.107` 발견 |
-| Git 상태 | 현재 workspace는 Git repository가 아님 |
+| Git 상태 | orchestrator가 준비한 격리 Git worktree |
 
 위 환경 값은 2026-09-01에 확인했다. 실제 monitor 수, taskbar 위치, scaling과
 fullscreen application 종류는 실행할 때 별도로 기록한다.
@@ -37,16 +37,27 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 ## 최근 자동 검증 결과
 
 - 실행일: 2026-09-03
-- 범위: terminal multi-session backend
-- 결과: Terminal module unit test 25개 통과, ConPTY integration test 2개 통과
-- 전체 Debug solution build 경고 0개·오류 0개, 전체 test 51개 통과
-- 실제 두 PowerShell session에서 서로 다른 environment, working directory, history와
-  background job을 만들고 첫 session의 exit/restart/close 뒤 두 번째 session 상태가
+- 범위: terminal multi-session backend와 protocol v2 renderer
+- 결과: Terminal module unit test 55개 통과, ConPTY integration test 2개 통과,
+  architecture test 5개 통과
+- 전체 Debug build는 경고 0개·오류 0개, 전체 test 83개 통과. 기본 병렬 build는
+  오류 진단 없이 exit code 1, 기본 병렬 test와 architecture test는 출력 없이
+  정체되어 중단했으며 `--disable-build-servers -maxcpucount:1`로 재검증해 통과
+- 실제 PowerShell session 3개에서 서로 다른 environment, working directory와 history를
+  만들고 첫 session의 exit/restart/close 뒤 두 번째와 세 번째 session 상태가
   유지됨을 hidden GUI test host로 확인
-- 최초 두 shell과 restart shell의 PID가 모두 다르고 exit, tab close와 coordinator
+- 최초 세 shell과 restart shell의 PID가 모두 다르고 exit, tab close와 coordinator
   dispose 뒤 각 PID의 종료가 관찰됨을 확인
 - blocked fake session 3개의 cleanup을 병렬 시작하고 주입한 deadline 안에
   coordinator가 반환함을 unit test로 확인
+- 선택을 세 tab 사이에서 바꾼 입력이 지정 transport 하나에만 기록되고, renderer
+  배포 asset이 session별 xterm map에 output을 쓰며 비활성 pane을 제거하지 않고
+  숨기는 구조와 10,000줄 scrollback 설정을 자동 test로 확인
+- Terminal module의 다른 기능 module 직접 참조 금지와 module entry point/Contracts
+  밖 public type 금지를 architecture test로 확인
+- 실제 WebView2를 조작하는 3-tab UI, 비활성 tab 장기 output/scrollback, 단축키,
+  expand/collapse, 숨김/복원과 tray 종료 smoke는 이번 실행에서 수행하지 않아
+  `MAN-033`~`MAN-035` 및 관련 항목을 `Not run`으로 유지
 
 - 실행일: 2026-09-01
 - 명령: clean restore, Debug solution build, Debug solution test

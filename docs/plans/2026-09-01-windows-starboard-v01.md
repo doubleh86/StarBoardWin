@@ -815,25 +815,25 @@ contract 회귀 확인 대상이지만 기본 변경 대상은 아니다.
 
 #### 1.3B. Renderer protocol v2와 tab UI
 
-- [ ] bridge를 protocol version 2와 host 발급 `sessionId` schema로 전환하고 v1,
+- [x] bridge를 protocol version 2와 host 발급 `sessionId` schema로 전환하고 v1,
   unknown/stale ID, malformed/oversized payload를 거부한다.
-- [ ] 하나의 WebView2 안에 tab별 xterm instance를 만들고 inactive session의
+- [x] 하나의 WebView2 안에 tab별 xterm instance를 만들고 inactive session의
   scrollback/output을 유지한다.
-- [ ] new/activate/close/restart intent와 host-confirmed state rendering을 구현한다.
-- [ ] 새 tab, tab 전환, tab 닫기 button에 hover, focus-visible, pressed, disabled,
+- [x] new/activate/close/restart intent와 host-confirmed state rendering을 구현한다.
+- [x] 새 tab, tab 전환, tab 닫기 button에 hover, focus-visible, pressed, disabled,
   error/closing state와 접근 가능한 이름을 제공한다.
-- [ ] `Ctrl+Shift+T`, `Ctrl+Tab`, `Ctrl+Shift+Tab`, `Ctrl+Shift+W`를 IME composition과
+- [x] `Ctrl+Shift+T`, `Ctrl+Tab`, `Ctrl+Shift+Tab`, `Ctrl+Shift+W`를 IME composition과
   기존 copy/paste/interrupt shortcut을 깨지 않도록 연결한다.
-- [ ] renderer crash 재연결 시 tab snapshot과 bounded pending output만 복원하고,
+- [x] renderer crash 재연결 시 tab snapshot과 bounded pending output만 복원하고,
   protocol mismatch에서는 input을 차단한 전역 오류 fallback을 표시한다.
 
 #### 1.3C. 통합과 문서
 
-- [ ] renderer source를 build해 `dist`를 재생성하고 runtime network request가 없는지
+- [x] renderer source를 build해 `dist`를 재생성하고 runtime network request가 없는지
   확인한다.
-- [ ] unit/integration test와 실제 두 session smoke를 수행하고 session별 PID,
+- [x] unit/integration test와 hidden GUI host의 실제 세 session 검증을 수행하고 session별 PID,
   working directory 유지, failure isolation과 bounded shutdown을 확인한다.
-- [ ] `docs/architecture.md`, `docs/test-plan.md`와 README의 multi-tab 동작, shortcut,
+- [x] `docs/architecture.md`, `docs/test-plan.md`와 README의 multi-tab 동작, shortcut,
   crash 시 scrollback 제한과 수행 결과를 실제 구현에 맞게 갱신한다.
 
 완료 gate:
@@ -1066,6 +1066,20 @@ manual test로 분리한다.
 - Debug solution restore/build와 전체 test 51개를 통과했고 build warning과 error는
   없었다. task에 지정된 Terminal unit/ConPTY integration 명령도 추가 옵션 없이
   각각 25개와 2개 통과했다.
+- 최종 통합 검증에서는 실제 ConPTY session을 3개로 확장해 서로 다른 PID,
+  environment, working directory와 history를 확인하고 첫 session의 exit/restart/close
+  뒤 두 활성 session의 상태가 유지되는지 재검증했다. targeted input, 비활성 renderer
+  pane/scrollback 보존 구조, 3-session bounded shutdown과 module reference/public
+  surface도 자동 test에 포함했다.
+- 2026-09-03 최종 Debug build는 경고 0개·오류 0개, 전체 83개 test가 통과했다.
+  기본 병렬 MSBuild/test가 진단 없이 실패하거나 정체되는 환경 문제는 build server를
+  끄고 `-maxcpucount:1`로 제한해 재검증했다.
+- 검증 worktree는
+  `C:/PrivateProject/.ai-worktrees/20260902-054931-690910-444810d6/verification-docs-and-commit`,
+  검증 시작 HEAD는 `16a3699`다. orchestrator 계약에 따라 이 worktree에서는 commit,
+  merge와 push를 수행하지 않는다. orchestrator가 최종 diff를
+  `[클라이언트, doubleh86] - 다중 터미널 탭 구현`으로 commit한 뒤 hash를 기록하고,
+  별도 후속 단계에서만 `feature/terminal-tabs`를 main에 merge해야 한다.
 
 ## 미결정 사항
 

@@ -15,6 +15,7 @@ Windows 10 1809 이상은 best-effort 대상이다.
 - Windows ConPTY를 통한 실제 양방향 persistent session
 - bundled xterm.js와 local-only WebView2 renderer
 - 하나의 WebView2 안에서 탭별 xterm, scrollback과 shell 상태 유지
+- 최대 8개 탭, 탭별 독립 ConPTY process·working directory·interactive state
 - terminal resize를 ConPTY cell size로 전달
 - shell/renderer 오류 surface와 shell restart
 - `Ctrl+Alt+E` global hotkey로 work area 전체 확장/축소
@@ -31,6 +32,12 @@ Windows 10 1809 이상은 best-effort 대상이다.
 settings UI, 자동 시작과 virtual desktop 보강은 구현되지 않았다. 자세한 범위는
 [`docs/plans/2026-09-01-windows-starboard-v01.md`](docs/plans/2026-09-01-windows-starboard-v01.md)를
 참고한다.
+
+탭은 앱을 다시 시작하면 복원되지 않는다. 비활성 탭은 DOM에서 제거하지 않아
+10,000줄 xterm scrollback과 shell 상태를 유지하지만, renderer process 자체가
+재시작되면 과거 xterm scrollback은 복원하지 않고 살아 있는 ConPTY의 이후 output과
+현재 탭 snapshot만 다시 연결한다. 실제 mixed-DPI, 한글 IME와 3-tab WebView2 조작
+smoke는 아직 수동 검증이 필요하다.
 
 ## 요구 사항
 
