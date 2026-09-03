@@ -24,6 +24,8 @@ view에 끝까지 연결한다.
 ## 현재 상태
 
 - protocol v2, session별 xterm registry, tab UI와 schema 3 migration 구현 완료
+- post-implementation 검토에서 확인한 TypeScript envelope scope와 tablist 방향키
+  focus 공백 보완 완료
 - renderer/Terminal/Preferences/DesktopIntegration 및 전체 solution 자동 검증 완료
 - 실제 WebView2의 overflow, IME, focus와 148 DIP 본문 행 수는 수동 확인 대기
 
@@ -68,6 +70,8 @@ view에 끝까지 연결한다.
 - renderer 전역 메시지(`ready`, renderer 자체 오류)는 session id가 없고,
   session을 대상으로 하는 생성/선택/output/input/resize/clipboard/reset/remove
   메시지는 session id가 필수다.
+- TypeScript envelope도 global/session message discriminated union으로 분리해
+  session 대상 message를 session ID 없이 생성할 수 없게 한다.
 - C# view는 coordinator snapshot을 tab UI state로 투영하며 shell 수명은 계속
   coordinator가 소유한다. module 간 새 참조나 event bus를 추가하지 않는다.
 - output backlog는 session별 bounded buffer로 분리해 느린 한 session이 다른
@@ -98,10 +102,13 @@ view에 끝까지 연결한다.
 - [x] collapsed 높이 schema migration과 테스트
 - [x] renderer dist 재생성 및 문서 동기화
 - [x] 지정된 build/test와 추가 관련 suite 실행
+- [x] TypeScript contract scope와 tablist 방향키 focus 보완 후 재검증
 
 ## 검증 방법
 
 - `npm --prefix src/Modules/Starboard.Modules.Terminal/Presentation/Renderer run build`
+- `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution Bundler
+  --lib ES2022,DOM --skipLibCheck src/index.ts src/style-imports.d.ts`
 - `C:\Users\round1studio_14\.dotnet\dotnet.exe build src/Modules/Starboard.Modules.Terminal/Starboard.Modules.Terminal.csproj --configuration Debug`
 - `C:\Users\round1studio_14\.dotnet\dotnet.exe test tests/Starboard.Modules.Terminal.Tests/Starboard.Modules.Terminal.Tests.csproj --configuration Debug`
 - `C:\Users\round1studio_14\.dotnet\dotnet.exe test tests/Starboard.Modules.Preferences.Tests/Starboard.Modules.Preferences.Tests.csproj --configuration Debug`
@@ -122,6 +129,13 @@ view에 끝까지 연결한다.
   했다.
 - 2026-09-03: renderer build, strict TypeScript 검사, 지정된 project build/test,
   DesktopIntegration test와 전체 solution build/test를 통과했다.
+- 2026-09-03: 완료 후 재검토에서 TypeScript의 단일 optional `sessionId` envelope와
+  tab 방향키 선택이 terminal focus를 요청하는 문제를 확인해 보완 범위에 추가했다.
+- 2026-09-03: TypeScript envelope를 global/session discriminated union으로 분리하고
+  허용된 host message type을 명시적으로 검증한다. tab 방향키는 새 active tab에
+  focus를 유지하고 click과 application shortcut만 terminal focus를 요청한다.
+- 2026-09-03: strict TypeScript, renderer deterministic rebuild, 지정된 Terminal/
+  Preferences 명령, 전체 Debug build와 83개 전체 test가 통과했다.
 
 ## 미결정 사항
 
@@ -131,11 +145,12 @@ view에 끝까지 연결한다.
 ## 완료 요약
 
 protocol v2는 global/session message scope를 분리하고 session message의 비어 있거나
-잘못된 GUID를 거부한다. 하나의 WebView2 document가 최대 8개의 xterm과 fit addon을
-session ID별로 유지하며, 숨긴 tab도 output과 emulator state를 계속 보존한다.
-tablist는 가로 overflow, 상태별 시각/접근성 label, 새 탭·닫기·재시작 affordance와
-요구 단축키를 제공한다. collapsed 기본 높이는 schema 3의 148 DIP로 올렸고 이전
-기본값만 migration한다.
+잘못된 GUID를 거부하며 TypeScript 타입도 session message의 ID를 필수로 한다.
+하나의 WebView2 document가 최대 8개의 xterm과 fit addon을 session ID별로 유지하며,
+숨긴 tab도 output과 emulator state를 계속 보존한다. tablist는 가로 overflow,
+상태별 시각/접근성 label, 새 탭·닫기·재시작 affordance와 요구 단축키를 제공한다.
+방향키 tab 선택은 tablist focus를 유지한다. collapsed 기본 높이는 schema 3의
+148 DIP로 올렸고 이전 기본값만 migration한다.
 
 자동 검증은 renderer build와 strict TypeScript 검사, Terminal/Preferences/
 DesktopIntegration 집중 test, 전체 solution build 및 총 83개 test를 통과했다.

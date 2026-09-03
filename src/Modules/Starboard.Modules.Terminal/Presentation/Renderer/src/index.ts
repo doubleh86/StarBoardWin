@@ -8,12 +8,61 @@ const MaximumTabs = 8;
 const SessionIdPattern = /^[0-9a-f]{32}$/i;
 const EmptySessionId = "00000000000000000000000000000000";
 
-type RendererMessage = {
-  version: number;
-  type: string;
-  sessionId?: string;
-  payload: Record<string, unknown>;
-};
+type GlobalRendererMessageType =
+  | "ready"
+  | "new-tab"
+  | "select-next"
+  | "select-previous"
+  | "renderer-error";
+
+type SessionRendererMessageType =
+  | "select-session"
+  | "input"
+  | "resize"
+  | "copy"
+  | "paste-request"
+  | "close-session"
+  | "restart-session"
+  | "session-error";
+
+type RendererMessage =
+  | {
+      version: number;
+      type: GlobalRendererMessageType;
+      sessionId?: never;
+      payload: Record<string, unknown>;
+    }
+  | {
+      version: number;
+      type: SessionRendererMessageType;
+      sessionId: string;
+      payload: Record<string, unknown>;
+    };
+
+type GlobalHostMessageType = "initialize";
+
+type SessionHostMessageType =
+  | "session-upsert"
+  | "activate-session"
+  | "output"
+  | "paste"
+  | "reset"
+  | "remove-session"
+  | "session-error";
+
+type HostMessage =
+  | {
+      version: number;
+      type: GlobalHostMessageType;
+      sessionId?: never;
+      payload: InitializePayload;
+    }
+  | {
+      version: number;
+      type: SessionHostMessageType;
+      sessionId: string;
+      payload: Record<string, unknown>;
+    };
 
 type InitializePayload = {
   fontFamily: string;
@@ -95,8 +144,9 @@ const sessions = new Map<string, SessionEntry>();
 let activeSessionId: string | undefined;
 let initializePayload: InitializePayload | undefined;
 let canAddSession = true;
-let requestedFocusSessionId: string | undefined;
-let focusNextActivation = false;
+let requestedTerminalFocusSessionId: string | undefined;
+let requestedTabFocusSessionId: string | undefined;
+let focusTerminalOnNextActivation = false;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && Array.isArray(value) === false;
@@ -119,7 +169,69 @@ function getPayload(message: Record<string, unknown>): Record<string, unknown> |
   return isRecord(message.payload) ? message.payload : undefined;
 }
 
-function postGlobal(type: string, payload: Record<string, unknown> = {}): void {
+function isGlobalHostMessageType(value: string): value is GlobalHostMessageType {
+  return value === "initialize";
+}
+
+function isSessionHostMessageType(value: string): value is SessionHostMessageType {
+  return (
+    value === "session-upsert" ||
+    value === "activate-session" ||
+    value === "output" ||
+    value === "paste" ||
+    value === "reset" ||
+    value === "remove-session" ||
+    value === "session-error"
+  );
+}
+
+function parseHostMessage(value: unknown): HostMessage | undefined {
+  if (
+    isRecord(value) === false ||
+    value.version !== ProtocolVersion ||
+    typeof value.type !== "string"
+  ) {
+    return undefined;
+  }
+
+  const payload = getPayload(value);
+  if (payload === undefined) {
+    return undefined;
+  }
+
+  if (isGlobalHostMessageType(value.type) === true) {
+    if (value.sessionId !== undefined || isInitializePayload(payload) === false) {
+      return undefined;
+    }
+
+    return {
+      version: ProtocolVersion,
+      type: value.type,
+      payload,
+    };
+  }
+
+  if (isSessionHostMessageType(value.type) === false) {
+    return undefined;
+  }
+
+  const sessionId = getSessionIdentifier(value);
+  if (sessionId === undefined) {
+    return undefined;
+  }
+
+  return {
+    version: ProtocolVersion,
+    type: value.type,
+    sessionId,
+    payload,
+  };
+}
+
+function postGlobal(
+  type: GlobalRendererMessageType,
+  payload: Record<string, unknown> = {},
+): void {
   window.chrome?.webview?.postMessage({
     version: ProtocolVersion,
     type,
@@ -128,7 +240,7 @@ function postGlobal(type: string, payload: Record<string, unknown> = {}): void {
 }
 
 function postSession(
-  type: string,
+  type: SessionRendererMessageType,
   sessionId: string,
   payload: Record<string, unknown> = {},
 ): void {
@@ -229,7 +341,7 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
   restartButton.type = "button";
   restartButton.textContent = "다시 시작";
   restartButton.addEventListener("click", () => {
-    requestedFocusSessionId = sessionId;
+    requestedTerminalFocusSessionId = sessionId;
     postSession("restart-session", sessionId);
   });
   status.append(statusMessage, restartButton);
@@ -262,7 +374,7 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
   closeButton.type = "button";
   closeButton.textContent = "×";
   closeButton.addEventListener("click", () => {
-    focusNextActivation = true;
+    focusTerminalOnNextActivation = true;
     postSession("close-session", sessionId);
   });
   tabItem.append(tabButton, closeButton);
@@ -353,8 +465,13 @@ function applyInitialize(payload: InitializePayload): void {
   fitActiveSession(true);
 }
 
-function requestSelection(sessionId: string): void {
-  requestedFocusSessionId = sessionId;
+function requestSelection(sessionId: string, focusTab = false): void {
+  if (focusTab === true) {
+    requestedTabFocusSessionId = sessionId;
+  } else {
+    requestedTerminalFocusSessionId = sessionId;
+  }
+
   postSession("select-session", sessionId);
 }
 
@@ -385,7 +502,7 @@ function handleTabKeyDown(event: KeyboardEvent, sessionId: string): void {
   }
 
   event.preventDefault();
-  requestSelection(entries[nextIndex].id);
+  requestSelection(entries[nextIndex].id, true);
 }
 
 function renderTab(entry: SessionEntry): void {
@@ -481,17 +598,26 @@ function activateSession(sessionId: string): void {
   }
 
   nextEntry.tabItem.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const shouldFocusTab = requestedTabFocusSessionId === sessionId;
+  const shouldFocusTerminal =
+    requestedTerminalFocusSessionId === sessionId || focusTerminalOnNextActivation === true;
+  if (shouldFocusTab === true) {
+    requestedTabFocusSessionId = undefined;
+  }
+  if (requestedTerminalFocusSessionId === sessionId) {
+    requestedTerminalFocusSessionId = undefined;
+  }
+  focusTerminalOnNextActivation = false;
+
   requestAnimationFrame(() => {
     fitSession(nextEntry, true);
-    if (
-      document.hasFocus() === true &&
-      (requestedFocusSessionId === sessionId || focusNextActivation === true)
-    ) {
-      nextEntry.terminal.focus();
+    if (document.hasFocus() === true) {
+      if (shouldFocusTab === true) {
+        nextEntry.tabButton.focus();
+      } else if (shouldFocusTerminal === true) {
+        nextEntry.terminal.focus();
+      }
     }
-
-    requestedFocusSessionId = undefined;
-    focusNextActivation = false;
   });
 }
 
@@ -610,46 +736,32 @@ function isSessionPayload(
 }
 
 function handleHostMessage(value: unknown): void {
-  if (
-    isRecord(value) === false ||
-    value.version !== ProtocolVersion ||
-    typeof value.type !== "string"
-  ) {
+  const message = parseHostMessage(value);
+  if (message === undefined) {
     return;
   }
 
-  const payload = getPayload(value);
-  if (payload === undefined) {
+  if (message.type === "initialize") {
+    applyInitialize(message.payload);
     return;
   }
 
-  if (value.type === "initialize") {
-    if (value.sessionId !== undefined || isInitializePayload(payload) === false) {
-      return;
-    }
+  const sessionId = message.sessionId;
+  const payload = message.payload;
 
-    applyInitialize(payload);
-    return;
-  }
-
-  const sessionId = getSessionIdentifier(value);
-  if (sessionId === undefined) {
-    return;
-  }
-
-  if (value.type === "session-upsert") {
+  if (message.type === "session-upsert") {
     if (isSessionPayload(payload) === true) {
       upsertSession(sessionId, payload);
     }
     return;
   }
 
-  if (value.type === "activate-session") {
+  if (message.type === "activate-session") {
     activateSession(sessionId);
     return;
   }
 
-  if (value.type === "remove-session") {
+  if (message.type === "remove-session") {
     removeSession(sessionId);
     return;
   }
@@ -659,24 +771,24 @@ function handleHostMessage(value: unknown): void {
     return;
   }
 
-  if (value.type === "output" && typeof payload.data === "string") {
+  if (message.type === "output" && typeof payload.data === "string") {
     entry.terminal.write(payload.data);
     return;
   }
 
-  if (value.type === "paste" && typeof payload.data === "string") {
+  if (message.type === "paste" && typeof payload.data === "string") {
     entry.terminal.paste(payload.data);
     return;
   }
 
-  if (value.type === "reset") {
+  if (message.type === "reset") {
     entry.terminal.reset();
     entry.errorMessage = undefined;
     updateSessionStatus(entry);
     return;
   }
 
-  if (value.type === "session-error" && typeof payload.message === "string") {
+  if (message.type === "session-error" && typeof payload.message === "string") {
     setSessionError(sessionId, payload.message);
   }
 }
@@ -694,12 +806,12 @@ function handleApplicationShortcut(event: KeyboardEvent): void {
   let handled = false;
   if (event.shiftKey === true && event.code === "KeyT") {
     if (newTabButton.disabled === false) {
-      focusNextActivation = true;
+      focusTerminalOnNextActivation = true;
       postGlobal("new-tab");
     }
     handled = true;
   } else if (event.code === "Tab") {
-    focusNextActivation = true;
+    focusTerminalOnNextActivation = true;
     postGlobal(event.shiftKey === true ? "select-previous" : "select-next");
     handled = true;
   } else if (
@@ -707,7 +819,7 @@ function handleApplicationShortcut(event: KeyboardEvent): void {
     event.code === "KeyW" &&
     activeSessionId !== undefined
   ) {
-    focusNextActivation = true;
+    focusTerminalOnNextActivation = true;
     postSession("close-session", activeSessionId);
     handled = true;
   }
@@ -720,7 +832,7 @@ function handleApplicationShortcut(event: KeyboardEvent): void {
 
 newTabButton.addEventListener("click", () => {
   if (newTabButton.disabled === false) {
-    focusNextActivation = true;
+    focusTerminalOnNextActivation = true;
     postGlobal("new-tab");
   }
 });
