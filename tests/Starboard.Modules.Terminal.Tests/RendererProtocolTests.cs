@@ -1,16 +1,20 @@
 using System.Text.Json;
 using Starboard.Modules.Terminal.Application;
+using Starboard.Modules.Terminal.Domain;
 
 namespace Starboard.Modules.Terminal.Tests;
 
 [TestClass]
 public sealed class RendererProtocolTests
 {
+    private static readonly TerminalSessionId SessionId = new(
+        Guid.Parse("10000000-0000-0000-0000-000000000001"));
+
     [TestMethod]
     public void TryParseWithValidResizeReturnsDimensions()
     {
         const string Json = """
-            {"version":1,"type":"resize","payload":{"columns":132,"rows":42}}
+            {"version":2,"type":"resize","sessionId":"10000000000000000000000000000001","payload":{"columns":132,"rows":42}}
             """;
 
         var parsed = RendererProtocol.TryParse(Json, out var message);
@@ -18,6 +22,7 @@ public sealed class RendererProtocolTests
         Assert.IsTrue(parsed);
         Assert.IsNotNull(message);
         Assert.AreEqual(RendererMessageType.Resize, message.Type);
+        Assert.AreEqual(SessionId, message.SessionId);
         Assert.AreEqual(132, message.Columns);
         Assert.AreEqual(42, message.Rows);
     }
@@ -26,7 +31,7 @@ public sealed class RendererProtocolTests
     public void TryParseWithUnknownVersionRejectsMessage()
     {
         const string Json = """
-            {"version":2,"type":"ready","payload":{}}
+            {"version":1,"type":"ready","payload":{}}
             """;
 
         var parsed = RendererProtocol.TryParse(Json, out var message);
@@ -42,7 +47,8 @@ public sealed class RendererProtocolTests
         var json = JsonSerializer.Serialize(
             new
             {
-                version = 1,
+                version = RendererProtocol.CurrentVersion,
+                sessionId = SessionId.ToString(),
                 type = "input",
                 payload = new { data },
             });
@@ -57,12 +63,189 @@ public sealed class RendererProtocolTests
     public void TryParseWithNonStringInputRejectsMessageWithoutThrowing()
     {
         const string Json = """
-            {"version":1,"type":"input","payload":{"data":42}}
+            {"version":2,"type":"input","sessionId":"10000000000000000000000000000001","payload":{"data":42}}
             """;
 
         var parsed = RendererProtocol.TryParse(Json, out var message);
 
         Assert.IsFalse(parsed);
         Assert.IsNull(message);
+    }
+
+    [TestMethod]
+    [DataRow("input", "Input")]
+    [DataRow("copy", "Copy")]
+    public void TryParseDataMessageReturnsTargetSessionAndData(
+        string type,
+        string expectedType)
+    {
+        var json = JsonSerializer.Serialize(
+            new
+            {
+                version = 2,
+                type,
+                sessionId = SessionId.ToString(),
+                payload = new { data = "한글 input" },
+            });
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(expectedType, message.Type.ToString());
+        Assert.AreEqual(SessionId, message.SessionId);
+        Assert.AreEqual("한글 input", message.Data);
+    }
+
+    [TestMethod]
+    [DataRow("input", "{\"data\":\"text\"}")]
+    [DataRow("resize", "{\"columns\":80,\"rows\":24}")]
+    [DataRow("copy", "{\"data\":\"text\"}")]
+    [DataRow("paste-request", "{}")]
+    [DataRow("select-session", "{}")]
+    [DataRow("close-session", "{}")]
+    [DataRow("restart-session", "{}")]
+    [DataRow("session-error", "{}")]
+    public void TryParseSessionMessageWithoutIdentifierRejectsMessage(
+        string type,
+        string payload)
+    {
+        var json = $"{{\"version\":2,\"type\":\"{type}\",\"payload\":{payload}}}";
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(message);
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("not-a-guid")]
+    [DataRow("00000000000000000000000000000000")]
+    [DataRow("10000000-0000-0000-0000-000000000001")]
+    public void TryParseSessionMessageWithInvalidIdentifierRejectsMessage(string sessionId)
+    {
+        var json = JsonSerializer.Serialize(
+            new
+            {
+                version = 2,
+                type = "paste-request",
+                sessionId,
+                payload = new { },
+            });
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(message);
+    }
+
+    [TestMethod]
+    public void TryParseGlobalMessageWithSessionIdentifierRejectsMessage()
+    {
+        const string Json = """
+            {"version":2,"type":"ready","sessionId":"10000000000000000000000000000001","payload":{}}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(message);
+    }
+
+    [TestMethod]
+    [DataRow("select-session", "SelectSession")]
+    [DataRow("paste-request", "PasteRequest")]
+    [DataRow("close-session", "CloseSession")]
+    [DataRow("restart-session", "RestartSession")]
+    [DataRow("session-error", "SessionError")]
+    public void TryParseSessionCommandReturnsItsIdentifier(
+        string type,
+        string expectedType)
+    {
+        var json = JsonSerializer.Serialize(
+            new
+            {
+                version = 2,
+                type,
+                sessionId = SessionId.ToString(),
+                payload = new { },
+            });
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(expectedType, message.Type.ToString());
+        Assert.AreEqual(SessionId, message.SessionId);
+    }
+
+    [TestMethod]
+    public void TryParseMessageWithoutPayloadRejectsMessage()
+    {
+        const string Json = """
+            {"version":2,"type":"ready"}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(message);
+    }
+
+    [TestMethod]
+    public void SerializeSessionMessageIncludesProtocolVersionAndIdentifier()
+    {
+        var json = RendererProtocol.SerializeSessionMessage(
+            "output",
+            SessionId,
+            new { data = "hello" });
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.AreEqual(2, root.GetProperty("version").GetInt32());
+        Assert.AreEqual("output", root.GetProperty("type").GetString());
+        Assert.AreEqual(SessionId.ToString(), root.GetProperty("sessionId").GetString());
+        Assert.AreEqual("hello", root.GetProperty("payload").GetProperty("data").GetString());
+    }
+
+    [TestMethod]
+    public void SerializeGlobalMessageOmitsSessionIdentifier()
+    {
+        var json = RendererProtocol.SerializeGlobalMessage("initialize", new { });
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.AreEqual(2, root.GetProperty("version").GetInt32());
+        Assert.IsFalse(root.TryGetProperty("sessionId", out _));
+    }
+
+    [TestMethod]
+    public void SerializeSessionMessageWithEmptyIdentifierThrows()
+    {
+        Assert.ThrowsExactly<ArgumentException>(
+            () => RendererProtocol.SerializeSessionMessage(
+                "output",
+                default,
+                new { data = "hello" }));
+    }
+
+    [TestMethod]
+    public void SerializeGlobalMessageWithSessionTargetTypeThrows()
+    {
+        Assert.ThrowsExactly<ArgumentException>(
+            () => RendererProtocol.SerializeGlobalMessage(
+                "output",
+                new { data = "hello" }));
+    }
+
+    [TestMethod]
+    public void SerializeSessionMessageWithGlobalTypeThrows()
+    {
+        Assert.ThrowsExactly<ArgumentException>(
+            () => RendererProtocol.SerializeSessionMessage(
+                "initialize",
+                SessionId,
+                new { }));
     }
 }

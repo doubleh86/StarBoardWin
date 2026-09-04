@@ -21,7 +21,7 @@ public sealed class DesktopIntegrationModule : IDisposable
 
     private System.Threading.Timer? reconciliationTimer;
     private nint windowHandle;
-    private PanelOptions options = new(116);
+    private PanelOptions options = new(148);
     private TrayIconService? _trayIconService;
     private bool isExpanded;
     private bool _isPanelVisible = true;

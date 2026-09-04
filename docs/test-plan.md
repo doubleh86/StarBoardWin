@@ -132,6 +132,8 @@ npm run build
 | TRM-012 | 마지막 tab close와 8개 상한 | 새 기본 tab 즉시 생성, 상한 초과는 process 생성 전 거부 | Passed |
 | TRM-013 | session exit/failure/restart 격리 | 대상 tab 상태/transport만 변경하고 stale callback 무시 | Passed |
 | TRM-014 | multi-session bounded shutdown | 모든 session cleanup 병렬 시작, 전체 deadline 안에 반환 | Passed |
+| TRM-015 | renderer protocol v2 session ID | session message serialize/parse 및 missing/empty/malformed ID 거부 | Passed |
+| TRM-016 | targeted input/resize routing | 선택 변경 없이 지정 session transport 하나만 호출 | Passed |
 
 ### Preferences와 theme
 
@@ -234,6 +236,9 @@ build hash를 함께 기록한다.
 | MAN-030 | WebView2 Runtime missing simulation | local error와 설치 안내 | Not run |
 | MAN-031 | login startup | 일반 user 권한으로 한 instance만 실행 | Not run |
 | MAN-032 | Release folder offline | renderer가 network 없이 로드 | Not run |
+| MAN-033 | multi-tab renderer | 비활성 탭 output/scrollback/state 유지, 대상 session routing | Not run |
+| MAN-034 | tab 접근성·overflow·shortcut | 상태/이름/focus-visible, 8개 overflow, 탭 단축키와 Ctrl+W 전달 | Not run |
+| MAN-035 | schema 3 collapsed height | 148 DIP에서 tab strip 아래 약 5행, 사용자 높이 보존 | Not run |
 
 ## Focus 검증 절차
 

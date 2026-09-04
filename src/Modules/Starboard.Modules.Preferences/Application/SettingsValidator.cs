@@ -14,10 +14,16 @@ internal static class SettingsValidator
         var theme = ThemeCatalog.IsKnown(candidate.Theme) == true
             ? candidate.Theme
             : "Tokyo Night";
-        var collapsedHeightDip = candidate.SchemaVersion < 2 &&
-                                 candidate.CollapsedHeightDip == 96
-            ? 116
-            : candidate.CollapsedHeightDip;
+        var collapsedHeightDip = candidate.CollapsedHeightDip;
+        if (candidate.SchemaVersion < 2 && collapsedHeightDip == 96)
+        {
+            collapsedHeightDip = 116;
+        }
+
+        if (candidate.SchemaVersion < 3 && collapsedHeightDip == 116)
+        {
+            collapsedHeightDip = 148;
+        }
 
         return candidate with
         {

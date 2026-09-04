@@ -36,7 +36,7 @@ public sealed class SettingsValidatorTests
 
         Assert.AreEqual(AppSettings.CurrentSchemaVersion, result.SchemaVersion);
         Assert.AreEqual("Tokyo Night", result.Theme);
-        Assert.AreEqual(116, result.CollapsedHeightDip);
+        Assert.AreEqual(148, result.CollapsedHeightDip);
     }
 
     [TestMethod]
@@ -51,7 +51,37 @@ public sealed class SettingsValidatorTests
         var result = SettingsValidator.Normalize(candidate);
 
         Assert.AreEqual(AppSettings.CurrentSchemaVersion, result.SchemaVersion);
-        Assert.AreEqual(116, result.CollapsedHeightDip);
+        Assert.AreEqual(148, result.CollapsedHeightDip);
+    }
+
+    [TestMethod]
+    public void NormalizeWithSchemaTwoDefaultHeightAddsTabStripHeight()
+    {
+        var candidate = new AppSettings
+        {
+            SchemaVersion = 2,
+            CollapsedHeightDip = 116,
+        };
+
+        var result = SettingsValidator.Normalize(candidate);
+
+        Assert.AreEqual(AppSettings.CurrentSchemaVersion, result.SchemaVersion);
+        Assert.AreEqual(148, result.CollapsedHeightDip);
+    }
+
+    [TestMethod]
+    public void NormalizeWithPreviousSchemaCustomHeightPreservesConfiguredHeight()
+    {
+        var candidate = new AppSettings
+        {
+            SchemaVersion = 2,
+            CollapsedHeightDip = 164,
+        };
+
+        var result = SettingsValidator.Normalize(candidate);
+
+        Assert.AreEqual(AppSettings.CurrentSchemaVersion, result.SchemaVersion);
+        Assert.AreEqual(164, result.CollapsedHeightDip);
     }
 
     [TestMethod]

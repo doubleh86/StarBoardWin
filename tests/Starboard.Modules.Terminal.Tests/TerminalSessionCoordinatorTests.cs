@@ -51,6 +51,37 @@ public sealed class TerminalSessionCoordinatorTests
     }
 
     [TestMethod]
+    public async Task WriteAsyncWithSessionIdentifierRoutesWithoutChangingSelection()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var second = await coordinator.AddAsync(CancellationToken.None);
+
+        await coordinator.WriteAsync(first.SessionId, "first", CancellationToken.None);
+
+        CollectionAssert.AreEqual(new List<string> { "first" }, factory.Sessions[0].Writes);
+        Assert.AreEqual(0, factory.Sessions[1].Writes.Count);
+        Assert.AreEqual(second.SessionId, coordinator.Snapshot.ActiveSessionId);
+    }
+
+    [TestMethod]
+    public async Task ResizeWithSessionIdentifierRoutesOnlyToRequestedSession()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var second = await coordinator.AddAsync(CancellationToken.None);
+
+        var resized = coordinator.Resize(first.SessionId, 120, 40);
+
+        Assert.IsTrue(resized);
+        Assert.AreEqual(1, factory.Sessions[0].ResizeCount);
+        Assert.AreEqual(0, factory.Sessions[1].ResizeCount);
+        Assert.AreEqual(second.SessionId, coordinator.Snapshot.ActiveSessionId);
+    }
+
+    [TestMethod]
     public async Task SessionExitOnOneTabMarksOnlyThatTabExited()
     {
         var factory = new FakeTerminalSessionFactory();
