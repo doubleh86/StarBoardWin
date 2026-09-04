@@ -36,6 +36,18 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-03
+- 범위: terminal multi-session backend
+- 결과: Terminal module unit test 25개 통과, ConPTY integration test 2개 통과
+- 전체 Debug solution build 경고 0개·오류 0개, 전체 test 51개 통과
+- 실제 두 PowerShell session에서 서로 다른 environment, working directory, history와
+  background job을 만들고 첫 session의 exit/restart/close 뒤 두 번째 session 상태가
+  유지됨을 hidden GUI test host로 확인
+- 최초 두 shell과 restart shell의 PID가 모두 다르고 exit, tab close와 coordinator
+  dispose 뒤 각 PID의 종료가 관찰됨을 확인
+- blocked fake session 3개의 cleanup을 병렬 시작하고 주입한 deadline 안에
+  coordinator가 반환함을 unit test로 확인
+
 - 실행일: 2026-09-01
 - 명령: clean restore, Debug solution build, Debug solution test
 - 결과: build 경고 0개·오류 0개, test 32개 통과
@@ -113,8 +125,13 @@ npm run build
 | TRM-005 | split UTF-8 sequence | chunk 경계에서도 문자 손실 없음 | Planned |
 | TRM-006 | output batching | 순서 보존, 최대 batch와 flush interval 준수 | Planned |
 | TRM-007 | renderer message version/type | unknown/malformed/oversized message 거부 | Passed |
-| TRM-008 | shell exit | app은 유지되고 restart 가능 state로 전환 | Planned |
+| TRM-008 | shell exit | app은 유지되고 restart 가능 state로 전환 | Passed |
 | TRM-009 | bounded shutdown | timeout 안에 resource 정리 완료 | Passed |
+| TRM-010 | tab add/direct/next/previous 선택 | ordered registry와 끝 순환, `PowerShell N` 이름 및 opaque ID 유지 | Passed |
+| TRM-011 | active/inactive tab close | 오른쪽 우선 인접 선택, inactive close 시 active 유지 | Passed |
+| TRM-012 | 마지막 tab close와 8개 상한 | 새 기본 tab 즉시 생성, 상한 초과는 process 생성 전 거부 | Passed |
+| TRM-013 | session exit/failure/restart 격리 | 대상 tab 상태/transport만 변경하고 stale callback 무시 | Passed |
+| TRM-014 | multi-session bounded shutdown | 모든 session cleanup 병렬 시작, 전체 deadline 안에 반환 | Passed |
 
 ### Preferences와 theme
 
@@ -158,6 +175,9 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-008 | output drain + dispose | hang 없이 timeout 내 종료 | Passed |
 | INT-009 | bundled renderer load | network request 없이 ready message | Planned |
 | INT-010 | WebView2 process failure simulation | app 유지, surface recovery 또는 오류 표시 | Planned |
+| INT-011 | 두 PowerShell session의 독립 상태 | environment, cwd, history와 background job이 서로 섞이지 않음 | Passed |
+| INT-012 | 한 session exit/restart/close | 다른 session의 interactive state가 그대로 유지됨 | Passed |
+| INT-013 | multi-session output drain + dispose | hidden GUI host가 8초 cleanup deadline 안에 정상 종료 | Passed |
 
 ConPTY test는 각 case에 timeout을 두고 실패 시 orphan child process를 남기지 않는다.
 

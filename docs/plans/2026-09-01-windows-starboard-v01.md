@@ -561,17 +561,17 @@ overflow 횟수만 diagnostic에 기록한다.
   최대 8개 제한과 state transition을 소유한다. native/test boundary가 있는 session
   factory만 좁은 internal seam으로 두고 실제 pipe/HPCON/process 소유권은 기존
   `ConPtySession`에 남긴다.
-- 허용 state transition은 `starting → running|failed|closing`,
-  `running → exited|failed|closing`, `exited|failed → starting|closing`과
-  `closing → removed`로 제한한다. restart는 `starting` 전이 뒤 새 instance를
-  붙이며 invalid transition은 process나 renderer side effect 전에 거부한다.
+- backend state는 `starting → running|failed|exited`,
+  `running → exited|failed|restarting`, `exited|failed → restarting → starting`으로
+  전환한다. close는 registry와 session instance mapping을 같은 lock에서 제거해 이후
+  input/resize와 stale callback을 거부한다.
 - tab 하나는 정확히 하나의 `ConPtySession`을 소유한다. 새 tab은 현재 shell option과
   최신 rows/columns로 새 process를 시작하며 다른 tab의 working directory,
   environment, history, foreground job과 exit state를 공유하지 않는다.
-- 최초 실행은 tab 하나를 만들고 새 tab은 `Terminal 2`, `Terminal 3`처럼 runtime
-  내에서만 안정적인 표시 이름을 가진다. 새 tab button과 `Ctrl+Shift+T`, tab click과
-  `Ctrl+Tab`/`Ctrl+Shift+Tab`, close button과 `Ctrl+Shift+W`를 제공한다. 마지막 tab은
-  닫지 않고 retry 가능한 terminal surface를 항상 하나 유지한다.
+- 최초 실행은 `PowerShell 1` tab 하나를 만들고 이후 생성 순번을 재사용하지 않는
+  `PowerShell N` 이름을 붙인다. 마지막 tab을 닫으면 이전 transport cleanup보다 먼저
+  새 기본 tab과 shell을 생성·활성화해 terminal surface를 항상 하나 유지한다. 새 tab
+  button과 keyboard shortcut은 Phase 1.3B renderer 범위다.
 - tab 전환은 process를 suspend/restart하지 않는다. active ID만 바꾸고 선택된 xterm에
   focus를 옮긴 뒤 latest resize를 모든 running session에 적용한다. panel hide,
   expand/collapse와 background geometry 변경도 session 수명에 영향을 주지 않는다.
@@ -579,20 +579,19 @@ overflow 횟수만 diagnostic에 기록한다.
   tab에만 restart/close를 제공한다. restart는 같은 tab ID 아래 새 ConPTY instance를
   만들고 기존 instance의 event를 먼저 분리한다. renderer 전체 실패만 WPF 전역 오류
   surface를 사용하며 이 경우 기존 ConPTY session은 recovery 동안 계속 실행한다.
-- close는 해당 tab을 먼저 `closing`으로 전환해 새 input/resize를 거부하고, 오른쪽
-  이웃 우선·없으면 왼쪽 이웃을 active로 정한 뒤 그 session만 비동기로 정리한다.
-  UI thread에서 process/pipe close를 기다리지 않으며 정리가 끝난 뒤
-  `session-removed`를 보낸다.
+- close는 해당 tab의 registry entry와 instance mapping을 먼저 제거해 새 input/resize를
+  거부하고, 오른쪽 이웃 우선·없으면 왼쪽 이웃을 active로 정한 뒤 그 session만
+  비동기로 정리한다. 마지막 tab이면 새 기본 session을 cleanup 전에 시작한다.
 - session 하나의 disposal은 input 차단, cancellation, input pipe close, child
   terminate/wait, HPCON close, output pump 관찰과 나머지 SafeHandle dispose 순서를
   유지하고 총 6초 이내의 bounded wait를 사용한다. 앱 종료에서는 최대 8개 session을
   순차 처리하지 않고 병렬 정리해 workspace 전체 deadline을 8초로 제한한다. 각 단계
   timeout 뒤에도 남은 owned handle dispose를 계속하고 command/output 없는 local
   diagnostic만 기록한다.
-- renderer와 session controller callback은 UI Dispatcher에 collection mutation을
-  직렬화하되 process I/O와 disposal은 UI thread 밖에서 실행한다. close/restart 뒤
-  queued callback은 controller instance identity와 state를 확인해 다른 tab으로
-  재사용되지 않게 한다.
+- session coordinator의 registry mutation은 lock과 operation gate로 직렬화하고
+  process I/O와 disposal은 UI synchronization context를 캡처하지 않는다.
+  close/restart 뒤 callback은 controller instance identity와 state를 확인해 다른
+  tab으로 재사용되지 않게 한다.
 
 ### Shortcut와 clipboard
 
@@ -791,21 +790,27 @@ contract 회귀 확인 대상이지만 기본 변경 대상은 아니다.
 
 예상: 5~8시간
 
+이번 `terminal-session-tabs` 작업은 1.3A의 backend/session 수명 경계와 그 자동
+검증까지만 구현한다. renderer protocol v2, tab chrome과 shortcut은 1.3B에 남긴다.
+직접 할당된 동작에 맞춰 마지막 tab close는 거부하지 않고 기존 session을 정리한
+뒤 새 기본 tab을 같은 전환에서 즉시 생성·활성화한다. tab 이름은 생성 순번을
+재사용하지 않는 `PowerShell N` 형식이며 restart는 tab ID와 이름을 보존한다.
+
 사전 조건: `feature/terminal-tabs`의 전용 worktree에서만 제품 수정, renderer build와
 .NET 검증을 수행한다. 기존 worktree나 branch가 있으면 삭제/reset하지 않고 clean
 상태와 기준 commit을 확인한 뒤 재사용한다.
 
 #### 1.3A. Workspace와 독립 session
 
-- [ ] Terminal module 내부에 ordered tab registry, active ID, state transition과
+- [x] Terminal module 내부에 ordered tab registry, active ID, state transition과
   최대 8개 제한을 구현한다.
-- [ ] tab마다 별도 `ConPtySession`을 생성하고 working directory, environment,
+- [x] tab마다 별도 `ConPtySession`을 생성하고 working directory, environment,
   history, job과 exit/restart 수명이 섞이지 않게 한다.
-- [ ] create/activate/close/restart race와 stale callback을 instance identity로
+- [x] create/activate/close/restart race와 stale callback을 instance identity로
   차단한다.
-- [ ] 한 session의 launch/resize/input/exit 실패가 다른 session을 중단하거나 전역
+- [x] 한 session의 launch/resize/input/exit 실패가 다른 session을 중단하거나 전역
   error surface를 열지 않게 한다.
-- [ ] single close 6초, 최대 8개 병렬 app shutdown 8초 deadline과 handle 정리 순서를
+- [x] single close 6초, 최대 8개 병렬 app shutdown 8초 deadline과 handle 정리 순서를
   자동 test로 고정한다.
 
 #### 1.3B. Renderer protocol v2와 tab UI
@@ -837,8 +842,8 @@ contract 회귀 확인 대상이지만 기본 변경 대상은 아니다.
 - inactive tab의 long-running command와 output이 계속 진행되며 tab 전환 뒤 확인된다.
 - 한 tab을 종료/restart/close해도 나머지 tab의 PID와 working directory가 유지된다.
 - renderer는 잘못된 session routing을 거부하고 tab별 output을 다른 xterm에 쓰지 않는다.
-- 마지막 tab은 닫히지 않고, 최대 8개를 넘는 생성은 process를 만들기 전에 명확히
-  거부된다.
+- 마지막 tab close는 새 기본 tab을 즉시 생성·활성화하며, 최대 8개를 넘는 생성은
+  process를 만들기 전에 명확히 거부된다.
 - renderer crash/retry 동안 shell session은 유지되고 과거 scrollback 비복원 제한이
   사용자에게 숨겨지지 않는다.
 - close와 app shutdown이 정한 deadline 안에 끝나고 남은 Starboard 소유 shell,
@@ -930,7 +935,7 @@ contract 회귀 확인 대상이지만 기본 변경 대상은 아니다.
 | `SettingsStore` | missing, partial, old schema, invalid JSON, atomic replace |
 | theme | 필수 token, ANSI 16색, contrast와 JSON/resource validation |
 | renderer bridge | v2 version/type/session ID validation, stale/unknown ID, malformed/oversized message, tab별 routing과 batching |
-| terminal workspace | create/activate/close/restart state, 8개 상한, 마지막 tab 보호, 실패 격리와 stale callback |
+| terminal workspace | create/activate/close/restart state, 8개 상한, 마지막 tab 대체, 실패 격리와 stale callback |
 | session cleanup | single 6초/전체 8초 deadline, 병렬 종료, timeout 뒤 handle 정리 |
 | startup command | quoting, enable/disable와 executable path |
 | virtual desktop | supported/fallback capability 반환 |
@@ -971,7 +976,7 @@ manual test로 분리한다.
 - PowerShell, Windows PowerShell, cmd와 WSL
 - 한글 IME composition
 - clipboard shortcut와 selection
-- mouse/keyboard tab 생성, 순환, 전환, 닫기와 마지막 tab 보호
+- mouse/keyboard tab 생성, 순환, 전환, 닫기와 마지막 tab 대체
 - tab 전환 뒤 cwd, history, foreground job, scrollback과 한글 IME 유지
 - inactive tab의 long-running output 중 active tab 입력 응답성
 - 한 tab shell crash/restart와 다른 tab PID/state 보존
@@ -1050,6 +1055,17 @@ manual test로 분리한다.
   `C:/PrivateProject/StarBoardWin-tabs`가 같은 기준 commit에 이미 연결된 것을 확인했다.
   기존 branch/worktree를 생성, 삭제, reset 또는 checkout하지 않았고 이후 제품 수정과
   build/test는 그 전용 worktree에서 수행하는 인수인계 경계를 유지한다.
+- `terminal-session-tabs` 구현에서 ordered registry와 session coordinator를 추가하고
+  `TerminalModule`이 coordinator, view가 renderer subscription을 소유하도록 기존
+  단일 `TerminalView -> ConPtySession` 수명 경계를 분리했다.
+- 마지막 tab은 close를 거부하는 이전 초안 대신 직접 할당 기준에 맞춰 새 기본
+  `PowerShell N` tab을 즉시 생성·활성화하고 닫힌 transport만 bounded cleanup한다.
+- unit test 25개와 ConPTY integration test 2개에서 선택/순환/인접 close, 8개 상한,
+  launch/exit/restart 격리, stale callback, 병렬 deadline과 두 실제 PowerShell의
+  서로 다른 PID 및 environment/cwd/history/background job 독립성을 검증했다.
+- Debug solution restore/build와 전체 test 51개를 통과했고 build warning과 error는
+  없었다. task에 지정된 Terminal unit/ConPTY integration 명령도 추가 옵션 없이
+  각각 25개와 2개 통과했다.
 
 ## 미결정 사항
 

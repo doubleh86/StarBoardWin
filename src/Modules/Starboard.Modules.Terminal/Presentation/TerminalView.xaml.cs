@@ -9,7 +9,6 @@ using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
 using Starboard.Modules.Terminal.Application;
 using Starboard.Modules.Terminal.Contracts;
-using Starboard.Modules.Terminal.Infrastructure;
 using Starboard.SharedKernel.Diagnostics;
 
 namespace Starboard.Modules.Terminal.Presentation;
@@ -21,13 +20,13 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private const int MaximumPendingOutputLength = 4 * 1024 * 1024;
 
     private readonly IDiagnosticLog diagnosticLog;
+    private readonly TerminalSessionCoordinator sessionCoordinator;
     private readonly Lock outputLock = new();
     private readonly StringBuilder pendingOutput = new();
     private readonly CancellationTokenSource lifetimeCancellation = new();
 
     private TaskCompletionSource rendererReady = CreateCompletionSource();
     private TerminalOptions? options;
-    private ConPtySession? session;
     private bool outputFlushScheduled;
     private bool outputOverflowReported;
     private bool rendererFailed;
@@ -35,9 +34,14 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private int columns = 80;
     private int rows = 24;
 
-    internal TerminalView(IDiagnosticLog diagnosticLog)
+    internal TerminalView(
+        IDiagnosticLog diagnosticLog,
+        TerminalSessionCoordinator sessionCoordinator)
     {
         this.diagnosticLog = diagnosticLog;
+        this.sessionCoordinator = sessionCoordinator;
+        sessionCoordinator.OutputReceived += Session_OutputReceived;
+        sessionCoordinator.SessionExited += Session_Exited;
         InitializeComponent();
         var canvas = ((SolidColorBrush)FindResource("CanvasBrush")).Color;
         SetRendererBackground(canvas);
@@ -55,7 +59,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         try
         {
             await InitializeRendererAsync(cancellationToken);
-            await StartSessionAsync(cancellationToken);
+            await StartWorkspaceAsync(cancellationToken);
             ShowTerminal();
         }
         catch (Exception exception) when (
@@ -71,20 +75,21 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         if (isDisposed == true)
         {
-            return;
+            return ValueTask.CompletedTask;
         }
 
         isDisposed = true;
         lifetimeCancellation.Cancel();
+        sessionCoordinator.OutputReceived -= Session_OutputReceived;
+        sessionCoordinator.SessionExited -= Session_Exited;
         Renderer.Dispose();
-
-        await StopSessionAsync().ConfigureAwait(false);
-
         lifetimeCancellation.Dispose();
+
+        return ValueTask.CompletedTask;
     }
 
     private async Task InitializeRendererAsync(CancellationToken cancellationToken)
@@ -151,26 +156,19 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         core.ProcessFailed += Core_ProcessFailed;
     }
 
-    private async Task StartSessionAsync(CancellationToken cancellationToken)
+    private async Task StartWorkspaceAsync(CancellationToken cancellationToken)
     {
         if (options is null)
         {
             throw new InvalidOperationException("Terminal options are unavailable.");
         }
 
-        await StopSessionAsync();
-
         var shell = ShellResolver.Resolve(options.ShellExecutable);
-        session = ConPtySession.Start(
+        await sessionCoordinator.StartAsync(
             shell,
             columns,
             rows,
-            diagnosticLog);
-        session.OutputReceived += Session_OutputReceived;
-        session.Exited += Session_Exited;
-        session.BeginReading();
-
-        cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken);
     }
 
     private void Core_WebMessageReceived(
@@ -256,7 +254,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             return;
         }
 
-        var reconnectRendererOnly = rendererFailed && session is not null;
+        var reconnectRendererOnly = rendererFailed && sessionCoordinator.HasActiveSession;
         RetryButton.IsEnabled = false;
         ShowLoading(
             reconnectRendererOnly
@@ -286,7 +284,18 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             }
 
             SendMessage("reset", new { });
-            await StartSessionAsync(lifetimeCancellation.Token);
+            var activeSessionId = sessionCoordinator.Snapshot.ActiveSessionId;
+            if (activeSessionId is null)
+            {
+                await StartWorkspaceAsync(lifetimeCancellation.Token);
+            }
+            else
+            {
+                await sessionCoordinator.RestartAsync(
+                    activeSessionId.Value,
+                    lifetimeCancellation.Token);
+            }
+
             ShowTerminal();
         }
         catch (Exception exception) when (
@@ -308,15 +317,14 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private async Task WriteInputAsync(string data)
     {
-        var currentSession = session;
-        if (currentSession is null || isDisposed == true)
+        if (isDisposed == true)
         {
             return;
         }
 
         try
         {
-            await currentSession.WriteAsync(data, lifetimeCancellation.Token);
+            await sessionCoordinator.WriteActiveAsync(data, lifetimeCancellation.Token);
         }
         catch (Exception exception) when (
             exception is IOException or ObjectDisposedException or OperationCanceledException)
@@ -338,7 +346,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     {
         try
         {
-            session?.Resize(requestedColumns, requestedRows);
+            sessionCoordinator.ResizeAll(requestedColumns, requestedRows);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or ObjectDisposedException)
@@ -352,8 +360,14 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
-    private void Session_OutputReceived(string data)
+    private void Session_OutputReceived(TerminalSessionOutput output)
     {
+        if (sessionCoordinator.Snapshot.ActiveSessionId != output.SessionId)
+        {
+            return;
+        }
+
+        var data = output.Data;
         var reportOverflow = false;
         var scheduleFlush = false;
 
@@ -434,12 +448,19 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
-    private void Session_Exited(uint exitCode)
+    private void Session_Exited(TerminalSessionExit sessionExit)
     {
         if (isDisposed == true)
         {
             return;
         }
+
+        if (sessionCoordinator.Snapshot.ActiveSessionId != sessionExit.SessionId)
+        {
+            return;
+        }
+
+        var exitCode = sessionExit.ExitCode;
 
         diagnosticLog.Write(
             DiagnosticLevel.Warning,
@@ -562,21 +583,6 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 "The clipboard was temporarily unavailable.",
                 exception);
         }
-    }
-
-    private async Task StopSessionAsync()
-    {
-        var previousSession = session;
-        session = null;
-
-        if (previousSession is null)
-        {
-            return;
-        }
-
-        previousSession.OutputReceived -= Session_OutputReceived;
-        previousSession.Exited -= Session_Exited;
-        await previousSession.DisposeAsync().ConfigureAwait(false);
     }
 
     private void ShowLoading(string message)
