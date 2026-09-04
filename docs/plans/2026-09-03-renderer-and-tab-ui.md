@@ -27,7 +27,9 @@ view에 끝까지 연결한다.
 - post-implementation 검토에서 확인한 TypeScript envelope scope와 tablist 방향키
   focus 공백 보완 완료
 - renderer/Terminal/Preferences/DesktopIntegration 및 전체 solution 자동 검증 완료
-- 실제 WebView2의 overflow, IME, focus와 148 DIP 본문 행 수는 수동 확인 대기
+- 실제 WebView2의 overflow, IME, focus와 200 DIP 본문 행 수는 수동 확인 대기
+- 2026-09-04 후속 조정으로 terminal focus ring 제거와 collapsed 본문 약 3행 확대,
+  schema 4 migration 및 배포 갱신 완료
 
 ## 구현 범위
 
@@ -40,6 +42,8 @@ view에 끝까지 연결한다.
 - session별 loading, running, exited/error 상태와 해당 session만 restart하는 action
 - renderer 측정값과 실제 tab bar 높이를 반영한 약 5행 collapsed 기본 높이 및
   이전 schema migration
+- terminal 내부 focus를 나타내던 노란 외곽선 제거
+- 기본 collapsed 높이를 200 DIP로 올리고 schema 3의 148 DIP 기본값만 migration
 - source/dist 동기화와 관련 자동 테스트·문서 검증
 
 ## 제외 범위
@@ -59,6 +63,8 @@ view에 끝까지 연결한다.
 - `src/Modules/Starboard.Modules.Terminal/Presentation/Renderer/dist/**`
 - `src/Modules/Starboard.Modules.Preferences/Contracts/AppSettings.cs`
 - `src/Modules/Starboard.Modules.Preferences/Application/SettingsValidator.cs`
+- `src/Modules/Starboard.Modules.DesktopIntegration/DesktopIntegrationModule.cs`
+- `src/Starboard.Windows/Shell/MainWindow.xaml`
 - 필요한 `src/Starboard.Windows/Composition/**` 호출부
 - Terminal/Preferences의 집중 test와 관련 documentation
 
@@ -81,6 +87,11 @@ view에 끝까지 연결한다.
 - 새 기본 높이는 기존 116 DIP terminal 본문에 32 DIP tab chrome을 더한 148 DIP로
   정의한다. schema 2 이하의 116 DIP만 새 기본값으로 migration하고 다른 높이는
   사용자 지정으로 간주한다.
+- 후속 기본 높이는 13px font와 1.35 line-height에서 약 3행인 52.65 DIP를 더해
+  200 DIP로 정한다. schema 3 이하에서 정확히 148 DIP인 값만 migration하며 다른
+  값은 사용자 지정으로 보존한다.
+- terminal 자체는 caret으로 입력 focus를 충분히 나타내므로 xterm 전체를 두르는
+  focus ring은 제거한다. 탭과 버튼의 keyboard focus-visible 표시는 유지한다.
 
 ## 위험 영역과 fallback
 
@@ -103,6 +114,9 @@ view에 끝까지 연결한다.
 - [x] renderer dist 재생성 및 문서 동기화
 - [x] 지정된 build/test와 추가 관련 suite 실행
 - [x] TypeScript contract scope와 tablist 방향키 focus 보완 후 재검증
+- [x] terminal focus ring 제거와 renderer dist 재생성
+- [x] schema 4의 200 DIP 기본 높이 및 migration 구현·테스트
+- [x] 관련 문서, 전체 build/test와 실제 실행 파일 갱신
 
 ## 검증 방법
 
@@ -114,7 +128,7 @@ view에 끝까지 연결한다.
 - `C:\Users\round1studio_14\.dotnet\dotnet.exe test tests/Starboard.Modules.Preferences.Tests/Starboard.Modules.Preferences.Tests.csproj --configuration Debug`
 - 관련 DesktopIntegration test와 가능한 solution build/test
 - `git diff --check`, renderer source/dist build 재실행 후 clean diff 확인
-- 실제 WebView2에서 tab overflow, keyboard, focus-visible, IME/clipboard와 약 5행
+- 실제 WebView2에서 tab overflow, keyboard, focus-visible, IME/clipboard와 약 8행
   geometry는 수동 확인 항목으로 구분
 
 ## 진행 기록
@@ -136,6 +150,10 @@ view에 끝까지 연결한다.
   focus를 유지하고 click과 application shortcut만 terminal focus를 요청한다.
 - 2026-09-03: strict TypeScript, renderer deterministic rebuild, 지정된 Terminal/
   Preferences 명령, 전체 Debug build와 83개 전체 test가 통과했다.
+- 2026-09-04: xterm surface의 노란 focus ring을 제거하고 button focus-visible은
+  유지했다. 기본 높이는 약 3행을 더한 200 DIP로 올리고 schema 3 이하의 148 DIP만
+  migration하도록 했다. renderer build, 집중 test, 전체 Debug build와 총 86개
+  test가 통과했으며 self-contained Release를 바탕화면 배포 폴더에 교체했다.
 
 ## 미결정 사항
 
@@ -149,10 +167,12 @@ protocol v2는 global/session message scope를 분리하고 session message의 �
 하나의 WebView2 document가 최대 8개의 xterm과 fit addon을 session ID별로 유지하며,
 숨긴 tab도 output과 emulator state를 계속 보존한다. tablist는 가로 overflow,
 상태별 시각/접근성 label, 새 탭·닫기·재시작 affordance와 요구 단축키를 제공한다.
-방향키 tab 선택은 tablist focus를 유지한다. collapsed 기본 높이는 schema 3의
-148 DIP로 올렸고 이전 기본값만 migration한다.
+방향키 tab 선택은 tablist focus를 유지한다. 후속 조정에서 terminal surface의 노란
+focus ring을 제거하되 tab/button focus-visible은 유지했다. collapsed 기본 높이는
+schema 4의 200 DIP로 올렸고 schema 3 이하의 148 DIP 기본값만 migration한다.
 
 자동 검증은 renderer build와 strict TypeScript 검사, Terminal/Preferences/
-DesktopIntegration 집중 test, 전체 solution build 및 총 83개 test를 통과했다.
-실제 WebView2/monitor에서의 tab overflow, IME·clipboard·focus-visible과 약 5행
-geometry는 `docs/test-plan.md`의 수동 항목으로 남겼다.
+DesktopIntegration 집중 test, 전체 solution build 및 후속 기준 총 86개 test를
+통과했다. 실제 WebView2/monitor에서의 tab overflow, IME·clipboard·focus-visible,
+노란 focus ring 제거 상태와 약 8행 geometry는 `docs/test-plan.md`의 수동 항목으로
+남겼다.

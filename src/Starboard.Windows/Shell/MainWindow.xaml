@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Starboard"
         Width="900"
-        Height="148"
+        Height="200"
         MinWidth="300"
         MinHeight="96"
         AllowsTransparency="False"

@@ -36,6 +36,16 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-04
+- 범위: terminal focus border 제거와 schema 4 collapsed 높이 migration
+- 결과: renderer build, Debug solution build 경고 0개·오류 0개, 전체 test 86개 통과
+- renderer 배포 CSS에 `.xterm.focus::after`가 없고 schema 3의 148 DIP 기본값은
+  200 DIP로 migration하며 다른 사용자 높이는 보존함을 자동 test로 확인
+- self-contained `win-x64` Release 501개 파일을 바탕화면 배포 폴더에 덮어쓰고
+  전체 source/destination SHA-256 일치 및 재실행 후 process 응답을 확인
+- 실제 화면에서 노란 focus border 제거와 약 8행 표시 여부는 수행하지 않아
+  `MAN-035`와 `MAN-036`을 `Not run`으로 유지
+
 - 실행일: 2026-09-03
 - 범위: terminal multi-session backend와 protocol v2 renderer
 - 결과: Terminal module unit test 55개 통과, ConPTY integration test 2개 통과,
@@ -249,7 +259,8 @@ build hash를 함께 기록한다.
 | MAN-032 | Release folder offline | renderer가 network 없이 로드 | Not run |
 | MAN-033 | multi-tab renderer | 비활성 탭 output/scrollback/state 유지, 대상 session routing | Not run |
 | MAN-034 | tab 접근성·overflow·shortcut | 상태/이름/focus-visible, 8개 overflow, 탭 단축키와 Ctrl+W 전달 | Not run |
-| MAN-035 | schema 3 collapsed height | 148 DIP에서 tab strip 아래 약 5행, 사용자 높이 보존 | Not run |
+| MAN-035 | schema 4 collapsed height | 200 DIP에서 tab strip 아래 약 8행, 사용자 높이 보존 | Not run |
+| MAN-036 | terminal focus surface | terminal click 후 노란 외곽선 없이 caret과 입력 동작 유지 | Not run |
 
 ## Focus 검증 절차
 

@@ -20,7 +20,7 @@ Windows 10 1809 이상은 best-effort 대상이다.
 - shell/renderer 오류 surface와 shell restart
 - `Ctrl+Alt+E` global hotkey로 work area 전체 확장/축소
 - `Ctrl+Alt+S`로 가려졌거나 숨겨진 panel 호출, 활성 panel 숨김
-- 32 DIP 탭 바 아래 terminal 본문 약 5행이 보이는 148 DIP 기본 높이
+- 32 DIP 탭 바 아래 terminal 본문 약 8행이 보이는 200 DIP 기본 높이
 - notification area icon 왼쪽 클릭으로 panel 표시·활성화
 - tray menu의 `터미널 표시/숨기기`와 `종료`
 - 평소에는 다른 앱을 덮어두지 않는 normal z-order, tray 표시 요청 때만 활성화

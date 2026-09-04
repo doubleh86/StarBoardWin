@@ -193,14 +193,6 @@ button:focus-visible {
   padding: 0;
 }
 
-.xterm.focus::after {
-  position: absolute;
-  inset: calc(var(--space-3xs) * -1);
-  border: var(--focus-width) solid var(--color-focus);
-  pointer-events: none;
-  content: "";
-}
-
 .xterm .xterm-viewport,
 .xterm .xterm-screen {
   background-color: var(--color-canvas) !important;
@@ -270,8 +262,7 @@ button:focus-visible {
 }
 
 @media (forced-colors: active) {
-  button:focus-visible,
-  .xterm.focus::after {
+  button:focus-visible {
     border-color: Highlight;
     outline-color: Highlight;
   }

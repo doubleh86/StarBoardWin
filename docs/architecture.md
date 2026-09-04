@@ -243,9 +243,11 @@ tabpanel은 숨기기만 하므로 output buffer, scrollback과 emulator state�
 다시 확인한다. 실제 WebView2 화면에서 비활성 xterm scrollback을 눈으로 확인하는
 항목은 자동 검증과 구분해 수동 test로 남긴다.
 
-기본 collapsed 높이는 schema 3의 148 DIP다. 32 DIP tab strip과 기존 약 5행
-terminal body 116 DIP를 합친 값이며, schema 2 이하의 이전 기본값 116 DIP만
-migration한다. 다른 설정 높이는 사용자 지정으로 보존한다.
+기본 collapsed 높이는 schema 4의 200 DIP다. 32 DIP tab strip 아래에 13px font와
+1.35 line-height 기준 약 8행의 terminal body를 표시한다. schema 3 이하에서 이전
+기본값인 148 DIP만 200 DIP로 migration하고 다른 설정 높이는 사용자 지정으로
+보존한다. terminal focus는 caret으로 나타내며 xterm surface 전체를 두르는 별도
+focus border는 그리지 않는다. 탭과 버튼의 keyboard focus-visible 표시는 유지한다.
 
 ### Shutdown order
 

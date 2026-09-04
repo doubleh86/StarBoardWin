@@ -34,6 +34,14 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(styles, ".session-pane");
     }
 
+    [TestMethod]
+    public void BundledRendererDoesNotDrawTerminalFocusBorder()
+    {
+        var styles = ReadRendererAsset("app.css");
+
+        Assert.IsFalse(styles.Contains(".xterm.focus::after", StringComparison.Ordinal));
+    }
+
     private static string ReadRendererAsset(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Renderer", fileName);

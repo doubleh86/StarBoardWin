@@ -25,6 +25,11 @@ internal static class SettingsValidator
             collapsedHeightDip = 148;
         }
 
+        if (candidate.SchemaVersion < 4 && collapsedHeightDip == 148)
+        {
+            collapsedHeightDip = 200;
+        }
+
         return candidate with
         {
             SchemaVersion = AppSettings.CurrentSchemaVersion,

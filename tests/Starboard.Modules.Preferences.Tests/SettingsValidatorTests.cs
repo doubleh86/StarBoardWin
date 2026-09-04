@@ -36,11 +36,11 @@ public sealed class SettingsValidatorTests
 
         Assert.AreEqual(AppSettings.CurrentSchemaVersion, result.SchemaVersion);
         Assert.AreEqual("Tokyo Night", result.Theme);
-        Assert.AreEqual(148, result.CollapsedHeightDip);
+        Assert.AreEqual(200, result.CollapsedHeightDip);
     }
 
     [TestMethod]
-    public void NormalizeWithSchemaOneDefaultHeightMigratesToFiveLineHeight()
+    public void NormalizeWithSchemaOneDefaultHeightMigratesToEightLineHeight()
     {
         var candidate = new AppSettings
         {
@@ -51,7 +51,7 @@ public sealed class SettingsValidatorTests
         var result = SettingsValidator.Normalize(candidate);
 
         Assert.AreEqual(AppSettings.CurrentSchemaVersion, result.SchemaVersion);
-        Assert.AreEqual(148, result.CollapsedHeightDip);
+        Assert.AreEqual(200, result.CollapsedHeightDip);
     }
 
     [TestMethod]
@@ -66,11 +66,41 @@ public sealed class SettingsValidatorTests
         var result = SettingsValidator.Normalize(candidate);
 
         Assert.AreEqual(AppSettings.CurrentSchemaVersion, result.SchemaVersion);
-        Assert.AreEqual(148, result.CollapsedHeightDip);
+        Assert.AreEqual(200, result.CollapsedHeightDip);
+    }
+
+    [TestMethod]
+    public void NormalizeWithSchemaThreeDefaultHeightAddsThreeTerminalLines()
+    {
+        var candidate = new AppSettings
+        {
+            SchemaVersion = 3,
+            CollapsedHeightDip = 148,
+        };
+
+        var result = SettingsValidator.Normalize(candidate);
+
+        Assert.AreEqual(AppSettings.CurrentSchemaVersion, result.SchemaVersion);
+        Assert.AreEqual(200, result.CollapsedHeightDip);
     }
 
     [TestMethod]
     public void NormalizeWithPreviousSchemaCustomHeightPreservesConfiguredHeight()
+    {
+        var candidate = new AppSettings
+        {
+            SchemaVersion = 3,
+            CollapsedHeightDip = 180,
+        };
+
+        var result = SettingsValidator.Normalize(candidate);
+
+        Assert.AreEqual(AppSettings.CurrentSchemaVersion, result.SchemaVersion);
+        Assert.AreEqual(180, result.CollapsedHeightDip);
+    }
+
+    [TestMethod]
+    public void NormalizeWithSchemaTwoCustomHeightPreservesConfiguredHeight()
     {
         var candidate = new AppSettings
         {
