@@ -40,14 +40,19 @@ public sealed class TerminalSessionCoordinatorTests
         await using var coordinator = CreateCoordinator(factory);
         var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
         var second = await coordinator.AddAsync(CancellationToken.None);
+        var third = await coordinator.AddAsync(CancellationToken.None);
 
+        await coordinator.WriteActiveAsync("third", CancellationToken.None);
+        Assert.IsTrue(coordinator.Select(second.SessionId));
         await coordinator.WriteActiveAsync("second", CancellationToken.None);
         Assert.IsTrue(coordinator.Select(first.SessionId));
         await coordinator.WriteActiveAsync("first", CancellationToken.None);
 
         CollectionAssert.AreEqual(new List<string> { "first" }, factory.Sessions[0].Writes);
         CollectionAssert.AreEqual(new List<string> { "second" }, factory.Sessions[1].Writes);
+        CollectionAssert.AreEqual(new List<string> { "third" }, factory.Sessions[2].Writes);
         Assert.AreEqual(second.SessionId, coordinator.Snapshot.Tabs[1].SessionId);
+        Assert.AreEqual(third.SessionId, coordinator.Snapshot.Tabs[2].SessionId);
     }
 
     [TestMethod]

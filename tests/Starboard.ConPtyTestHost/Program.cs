@@ -118,6 +118,7 @@ internal static class Program
 
         var cleanupStopwatch = new Stopwatch();
         int? secondProcessId = null;
+        int? thirdProcessId = null;
         try
         {
             var first = await coordinator.StartAsync(
@@ -167,6 +168,30 @@ internal static class Program
             outputProbe.EnsureContains(second.SessionId, "SECOND_ENVIRONMENT_ISOLATED:True");
             outputProbe.EnsureContains(second.SessionId, "SECOND_JOBS_ISOLATED:True");
             outputProbe.EnsureContains(second.SessionId, "SECOND_HISTORY_ISOLATED:True");
+
+            var third = await coordinator.AddAsync(CancellationToken.None);
+            await WriteAndWaitAsync(
+                coordinator,
+                outputProbe,
+                third.SessionId,
+                "$environmentIsolated=[string]::IsNullOrEmpty($env:STARBOARD_TAB_MARKER); " +
+                "$jobsIsolated=@((Get-Job -ErrorAction SilentlyContinue)).Count -eq 0; " +
+                "$historyIsolated=@((Get-History | Where-Object CommandLine " +
+                "-Like '*HISTORY_TOKEN*')).Count -eq 0; " +
+                "$env:STARBOARD_TAB_MARKER='THIRD'; Set-Location $env:ProgramFiles; " +
+                "$thirdHistoryToken='THIRD_HISTORY_TOKEN'; " +
+                "Write-Output ('THIRD_ENVIRONMENT_ISOLATED:'+$environmentIsolated); " +
+                "Write-Output ('THIRD_JOBS_ISOLATED:'+$jobsIsolated); " +
+                "Write-Output ('THIRD_HISTORY_ISOLATED:'+$historyIsolated); " +
+                "Write-Output ('THIRD_'+'PID:'+$PID); Write-Output ('THIRD_'+'READY')",
+                "THIRD_READY");
+            thirdProcessId = outputProbe.GetIntegerAfter(third.SessionId, "THIRD_PID:");
+            Ensure(
+                thirdProcessId != firstProcessId && thirdProcessId != secondProcessId,
+                "The third tab unexpectedly shared a shell process.");
+            outputProbe.EnsureContains(third.SessionId, "THIRD_ENVIRONMENT_ISOLATED:True");
+            outputProbe.EnsureContains(third.SessionId, "THIRD_JOBS_ISOLATED:True");
+            outputProbe.EnsureContains(third.SessionId, "THIRD_HISTORY_ISOLATED:True");
 
             Ensure(coordinator.Select(first.SessionId), "The first tab could not be selected.");
             await WriteAndWaitAsync(
@@ -220,6 +245,16 @@ internal static class Program
                 outputProbe,
                 second.SessionId,
                 "SECOND_AFTER_FIRST_CLOSE");
+            Ensure(coordinator.Select(third.SessionId), "The third tab could not be selected.");
+            await WriteAndWaitAsync(
+                coordinator,
+                outputProbe,
+                third.SessionId,
+                "$preserved=$env:STARBOARD_TAB_MARKER -eq 'THIRD' -and " +
+                "(Get-Location).Path -eq (Get-Item $env:ProgramFiles).FullName -and " +
+                "@((Get-History | Where-Object CommandLine -Like '*THIRD_HISTORY_TOKEN*')).Count -ge 1; " +
+                "Write-Output ('THIRD_AFTER_FIRST_CLOSE:'+$preserved)",
+                "THIRD_AFTER_FIRST_CLOSE:True");
         }
         finally
         {
@@ -229,6 +264,11 @@ internal static class Program
             if (secondProcessId is not null)
             {
                 await EnsureProcessExitedAsync(secondProcessId.Value);
+            }
+
+            if (thirdProcessId is not null)
+            {
+                await EnsureProcessExitedAsync(thirdProcessId.Value);
             }
         }
 

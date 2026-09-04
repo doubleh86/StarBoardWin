@@ -236,6 +236,13 @@ tabpanel은 숨기기만 하므로 output buffer, scrollback과 emulator state�
 선택할 때 다시 fit한 결과만 해당 ConPTY에 전달한다. 가로 overflow tablist는 최대
 8개 session, session별 loading/error 상태와 restart action을 제공한다.
 
+이 경계는 세 session을 오가는 targeted input unit test, session ID별 output probe를
+사용한 실제 ConPTY hidden GUI integration test와 bundled renderer 구조 test로
+검증한다. 통합 test는 서로 다른 PID와 working directory를 가진 세 PowerShell을
+만들고 첫 session의 exit/restart/close 뒤 나머지 session의 상태 및 output routing을
+다시 확인한다. 실제 WebView2 화면에서 비활성 xterm scrollback을 눈으로 확인하는
+항목은 자동 검증과 구분해 수동 test로 남긴다.
+
 기본 collapsed 높이는 schema 3의 148 DIP다. 32 DIP tab strip과 기존 약 5행
 terminal body 116 DIP를 합친 값이며, schema 2 이하의 이전 기본값 116 DIP만
 migration한다. 다른 설정 높이는 사용자 지정으로 보존한다.
