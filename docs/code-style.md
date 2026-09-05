@@ -6,8 +6,9 @@
 규칙이다. `C:/Work/TRK-Server/Docs/CodeStyle.md`의 명시성과 작은 논리적 변경
 원칙을 가져오되, WPF·Win32·ConPTY 데스크톱 앱에 맞게 조정했다.
 
-프로젝트 또는 하위 디렉터리에 더 구체적인 규칙이 생기면 해당 규칙을 먼저
-따르고, 명시되지 않은 부분은 이 문서를 따른다.
+프로젝트 또는 하위 디렉터리에 더 구체적인 규칙이 생기면 루트 `AGENTS.md`의
+제품 제약과 module 경계 안에서 적용하고, 명시되지 않은 부분은 이 문서를 따른다.
+지침 충돌과 확인이 필요한 경우의 처리는 `docs/development-workflow.md`를 따른다.
 
 ## 기본 원칙
 
@@ -157,8 +158,9 @@ return clampedHeight;
 - 예상되는 실패를 빈 모델, 기본값 또는 성공 상태로 숨기지 않는다.
 - 복구 가능한 renderer/shell/platform 실패는 상태로 전환하고 사용자가 재시작할
   수 있게 한다.
-- 빈 `catch`는 best-effort 정리 또는 최후의 오류 UI처럼 예외를 다시 전달할 수
-  없는 매우 제한된 경계에서만 허용하며 이유를 주석으로 남긴다.
+- 빈 `catch`를 사용하지 않는다. best-effort 정리나 최후의 오류 UI 경계에서도
+  사용할 수 있는 로컬 진단 또는 실패 상태로 오류를 관찰 가능하게 처리한다.
+  예외를 다시 전달할 수 없는 이유와 복구 정책은 주석으로 남긴다.
 - 예외를 변환할 때 원래 예외를 inner exception으로 유지한다.
 - terminal command와 terminal output은 기본 로그에 기록하지 않는다.
 - 로그에는 subsystem, operation, recoverability처럼 문제 해결에 필요한 문맥을
@@ -166,7 +168,10 @@ return clampedHeight;
 
 ## Win32 interop
 
-- P/Invoke 선언, constant, struct, enum은 `Platform/Interop` 아래에 모은다.
+- desktop/window P/Invoke 선언, constant, struct, enum과 native handle은
+  `src/Modules/Starboard.Modules.DesktopIntegration/Infrastructure/Interop`에 둔다.
+  ConPTY interop는 `src/Modules/Starboard.Modules.Terminal/Infrastructure/Interop`에
+  둔다. host와 view에는 Win32 구현을 두지 않는다.
 - native struct layout, character set, calling convention, ownership을 명시한다.
 - HWND와 좌표가 physical pixel인지 WPF DIP인지 이름 또는 타입에서 구분한다.
 - message handler에서는 최소한의 상태 수집만 하고 무거운 작업은 서비스로
@@ -186,8 +191,10 @@ return clampedHeight;
 
 ## 테스트
 
-- 기능 변경이나 버그 수정에는 직접 동작을 증명하는 테스트를 함께 추가하거나
-  갱신한다.
+- 기능 변경이나 버그 수정은 기존 테스트로 해당 동작과 회귀 위험을 검증할 수
+  있는지 먼저 확인하고, 부족한 동작·경계 조건에 테스트를 추가하거나 갱신한다.
+  낮은 영향의 변경에 구현을 그대로 재현하는 테스트를 추가하지 않는다.
+- 실행할 검증 범위와 종료 기준은 `docs/development-workflow.md`를 따른다.
 - test 이름은 `Method_Scenario_ExpectedResult` 형식을 기본으로 한다.
 - geometry, state transition, shell resolution, settings migration은 platform 없이
   실행 가능한 순수 테스트로 만든다.

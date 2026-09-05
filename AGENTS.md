@@ -9,11 +9,15 @@
 기계적으로 포팅하지 않는다. 원본의 제품 의도와 상호작용 원칙을 보존하되,
 문서화된 Windows API와 Windows다운 UX로 구현한다.
 
-사용자는 코드를 직접 작성하지 않는다. 에이전트가 분석, 구현, 의존성 선정,
-문서화, 빌드, 테스트와 합리적인 범위의 디버깅을 책임진다. 사소한 선택을
-반복해서 묻지 말고 적절한 기본값을 선택한다. 제품 방향을 크게 바꾸거나,
-되돌리기 어려운 작업이거나, 사용할 수 없는 장비·사용자 권한이 필요하거나,
-요청 범위를 확장해야 할 때만 사용자에게 확인한다.
+사용자는 코드를 직접 작성하지 않는다. 에이전트는 요청과 대화 맥락에서 완료
+조건을 정하고 분석, 구현, 의존성 선정, 문서화, 빌드, 테스트와 디버깅을 수행한다.
+실행 요청은 설명이나 계획 제시에 그치지 않고 요청 범위의 완료까지 진행한다.
+
+요청 범위의 되돌릴 수 있는 변경과 로컬 검증은 스스로 진행하고 사소한 선택은
+적절한 기본값으로 결정한다. 제품 방향·UX 불변 조건이나 호환 정책 변경, 요청
+범위 확장, 되돌리기 어려운 조치 또는 확보되지 않은 권한·장비가 필요할 때만
+확인한다. 이미 받은 승인은 같은 범위에서 다시 묻지 않고 실행 환경의 권한
+제한을 따른다.
 
 ## 작업 규칙과 문서 확인 순서
 
@@ -28,6 +32,10 @@ Starboard에 맞게 조정한 것이다. 이 저장소에 복사한 규약을 �
 3. C# 또는 XAML을 수정하기 전에 `docs/code-style.md`
 4. 현재 작업과 직접 관련된 아키텍처, 테스트 또는 계획 문서
 
+문서와 스킬의 충돌 처리, 질문·위임 기준과 진행 중 요구 변경은
+`docs/development-workflow.md`를 따른다. 계획 작성이나 여러 파일의 수정 자체를
+사용자 승인 조건으로 해석하지 않는다.
+
 공통 작업 규칙은 다음과 같다.
 
 - 불확실한 동작을 추측해서 구현하지 않는다. 로컬 코드, 원본 소스 또는 문서화된
@@ -40,8 +48,8 @@ Starboard에 맞게 조정한 것이다. 이 저장소에 복사한 규약을 �
   삭제하지 않는다.
 - 관련 파일과 symbol은 `rg`로 먼저 찾는다. 작업 전에 저장소 전체나 모든 문서를
   읽지 않는다.
-- 새 기능, 아키텍처 변경, 의존성 변경, 여러 파일에 걸친 리팩터링은 제품 코드를
-  수정하기 전에 `docs/plans/`의 계획 문서를 작성하거나 갱신한다.
+- 계획이 필요한 변경은 `docs/development-workflow.md`의 Plan-first 기준에 따라
+  제품 코드를 수정하기 전에 `docs/plans/`의 계획 문서를 작성하거나 갱신한다.
 - 구현 도중 계획이나 아키텍처를 크게 바꿔야 한다는 사실을 발견하면 먼저 계획을
   갱신한 뒤 작업을 계속한다.
 
@@ -250,8 +258,9 @@ palette와 WPF 주변 색상을 하나의 일관된 theme definition으로 관�
 ## 구현 순서
 
 각 phase 종료 시 애플리케이션을 build하고 실행할 수 있는 상태로 유지한다.
-제품 코드를 수정하기 전에 `docs/plans/README.md`에 정의된 구현 계획을 만들고
-범위, 영향 파일, 위험, 검증 방법과 진행 상태를 기록한다.
+계획 대상은 `docs/development-workflow.md`의 Plan-first 기준을 따른다. 해당
+작업은 제품 코드 수정 전에 `docs/plans/README.md`에 따라 범위, 영향 파일, 위험,
+검증 방법과 진행 상태를 기록하고 구현을 이어 간다.
 
 ### Phase 0 — 원본 분석과 결정
 
@@ -310,19 +319,23 @@ Phase 4 작업을 앞당기지 않는다.
 
 ## 빌드와 검증
 
-solution 생성 후 의미 있는 변경마다 최소한 다음을 검증한다.
+검증 범위는 `docs/development-workflow.md`의 변경 유형별 기준을 따른다. 제품
+동작과 빌드 입력에 영향이 없는 문서 변경은 내용·링크와 diff를 확인한다. solution
+생성 후 제품 변경의 완료 시에는 다음을 검증한다.
 
 ```powershell
-dotnet restore
-dotnet build --configuration Debug
-dotnet test --configuration Debug
+dotnet restore Starboard.Windows.sln
+dotnet build Starboard.Windows.sln --configuration Debug --no-restore
+dotnet test Starboard.Windows.sln --configuration Debug --no-build --no-restore
 ```
 
 먼저 영향받는 가장 작은 project 또는 test target을 검증하고, 완료 보고 전에는
-적용 가능한 전체 suite를 실행한다. 실패한 명령은 원인을 확인하지 않은 채
-반복하지 않는다. geometry, settings, shell resolution, theme parsing과 state
-transition은 자동화된 테스트를 추가한다. CI에서 안정적으로 실행할 수 있다면
-ConPTY lifecycle integration test도 추가한다.
+제품 변경에 적용 가능한 전체 suite를 실행한다. 같은 변경과 configuration에서
+필요한 검증이 통과했다면 새 변경·실패·미해결 위험 없이 반복하지 않는다.
+`--no-restore`와 `--no-build`는 선행 단계가 성공했을 때만 사용한다. 실패한 명령은
+원인을 확인한 뒤 재시도한다. geometry, settings, shell resolution, theme parsing과
+state transition은 자동화된 테스트로 검증한다. CI에서 안정적으로 실행할 수
+있다면 ConPTY lifecycle integration test도 추가한다.
 
 `docs/test-plan.md`를 유지하고 최소한 다음 항목을 다룬다.
 
