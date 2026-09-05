@@ -1,0 +1,303 @@
+# Starboard 실사용 개선 기획 및 오케스트레이터 실행 명세
+
+## 목표
+
+현재 terminal panel을 매일 켜 두고 사용할 수 있도록 Windows 동작을 안정화하고,
+사용자가 재빌드 없이 설정을 바꿀 수 있게 하며, 재현 가능한 portable 배포를 만든다.
+실행 순서는 실사용 기준선 확인 → Windows 안정화 → 설정 창 → 배포 정리다.
+
+이 문서는 오케스트레이터에 전달할 작업 명세다. 문서 작성 시점에는 구현을 시작하지
+않았다. 구현자는 아래 작업 ID, 선행 조건, 파일 소유권과 인수 기준으로 실행한다.
+
+## 참고 문서와 근거
+
+- `AGENTS.md`: 제품 원칙과 모듈러 모놀리스 경계
+- `docs/development-workflow.md`, `docs/code-style.md`: 작업·검증·코드 규칙
+- `docs/plans/2026-09-01-windows-starboard-v01.md`: 기존 Phase 2~4 구현 계획
+- `docs/plans/2026-09-03-renderer-and-tab-ui.md`: 탭과 schema 4 높이 변경
+- `docs/architecture.md`, `docs/test-plan.md`, `README.md`: 설계와 검증 이력
+
+기존 계획을 대체하지 않고 남은 작업을 실행 가능한 묶음으로 구체화한다.
+이번 작업의 기능 범위와 인수 기준은 이 문서를 따른다. 진행 결과는 기존 계획의
+관련 체크박스와 테스트 문서에도 반영한다. 기존 문서의 시간 예상은 완료 보장이
+아니며 오케스트레이터는 기준선 조사 뒤 실제 작업량을 다시 판단한다.
+
+## 현재 상태
+
+기준일 2026-09-05, 확인한 기준 커밋은 `285f6d1`이다. 구현 시작 시 최신 HEAD와
+변경 상태를 다시 확인하고 실제 기준 커밋을 기록한다.
+
+- WPF host + Terminal / DesktopIntegration / Preferences class library 구조다.
+- 하나의 WebView2에서 최대 8개 탭과 탭별 ConPTY shell을 유지한다.
+- 기본 높이는 200 DIP이며 노란 terminal focus border는 제거했다.
+- `Ctrl+Alt+E`는 확장/축소, `Ctrl+Alt+S`는 호출/숨김이다.
+- `TaskbarCreated`, display/settings/DPI 메시지를 받아 geometry를 다시 조회한다.
+  메시지가 연결돼 있다는 사실만으로 hot-plug와 mixed-DPI 복구가 검증된 것은 아니다.
+- 설정 schema 4, JSON 저장, 테마 4종은 있다. 설정 창과 live apply 경로는 없다.
+- DesktopIntegration의 단축키는 현재 코드에 고정돼 있다. `ExpandShortcut` 설정이
+  존재한다는 사실과 실제 등록에 사용되는지는 구분해야 한다.
+- 전체 테스트 86개 통과는 2026-09-04의 기록이다. 실제 UI 검증은 미수행 항목이 있다.
+- `.ai-orchestrator/`는 기존 미추적 실행 데이터다. 제품 산출물에 포함하지 않는다.
+
+## 구현 범위
+
+### A. Windows 안정화
+
+사용자 시나리오: 다른 프로그램에서 일하는 동안 panel이 focus를 빼앗지 않고,
+작업표시줄·모니터 상태가 바뀌어도 입력하던 shell이 유지된다.
+
+| ID | 요구사항 | 완료 판단 |
+|---|---|---|
+| WIN-01 | 작업표시줄 자동 숨김을 따른다 | 비활성·축소 panel은 작업표시줄 숨김/표시를 따르고 입력 중 또는 확장 중에는 유지 |
+| WIN-02 | 사용자 숨김 의도를 기억한다 | 자동 숨김 해제, 전체화면 종료, Explorer 재시작이 사용자가 숨긴 panel을 다시 열지 않음 |
+| WIN-03 | 같은 모니터 전체화면 앱을 방해하지 않는다 | 전체화면 동안 자동 노출 억제, 종료 후 focus 없이 정상 정책 복귀 |
+| WIN-04 | 모니터 제거 후 화면 밖에 남지 않는다 | 연결된 모니터의 유효 work area로 복구하고 shell PID 유지 |
+| WIN-05 | DPI 변경에 맞게 배치·재렌더링한다 | 100/125/150/200% geometry 자동 테스트, 가능한 mixed-DPI 실제 검증 |
+| WIN-06 | 확장 후 축소 위치를 복원한다 | 모니터 구성이 같으면 직전 축소 rectangle 복원, 제거됐으면 안전한 위치 재계산 |
+| WIN-07 | Explorer 재시작에서 복구한다 | taskbar 재조회와 tray 복구 후 중복 icon·timer·hook 없이 호출/종료 가능 |
+| WIN-08 | 창 상태 변화가 세션을 끊지 않는다 | 숨김/표시·확장/축소·모니터 이동 뒤 탭별 PID, 경로와 입력 상태 유지 |
+
+표시 정책은 다음 우선순위로 하나의 상태 결정 경로에서 처리한다.
+
+1. 사용자 숨김 상태는 사용자 호출 전까지 유지한다.
+2. 같은 모니터의 다른 전체화면 앱이 foreground이면 자동 표시를 억제한다.
+3. terminal 입력 중 또는 panel 확장 중에는 taskbar auto-hide로 숨기지 않는다.
+4. 비활성·축소 상태에서는 taskbar visibility를 따른다.
+5. 일반 상태에서는 normal z-order를 유지하고 자동 갱신은 활성화하지 않는다.
+
+트레이나 호출 단축키는 사용자의 명시적인 활성화 요청이다. 이를 통해 사용자 숨김을
+해제하고 일반적인 창 활성화를 요청할 수 있으나, exclusive fullscreen 위로
+topmost를 강제하지 않는다. 다른 모니터의 전체화면과 일반 최대화 창은 WIN-03의
+억제 대상으로 보지 않는다. 설정 창에서 편집 중일 때도 입력 중 상태로 취급한다.
+
+### B. 설정 창과 자동 실행
+
+사용자 시나리오: 트레이의 `설정`을 열어 높이·글꼴·테마를 바꾸고, 실행 중인
+터미널 작업을 유지한 채 저장한다.
+
+- 한국어 별도 WPF 설정 창 하나를 사용한다. 다시 열면 기존 창을 활성화한다.
+- 섹션은 `화면`, `터미널`, `동작`으로 구성한다. 각 필드의 오류는 해당 필드 옆에
+  표시하고 저장 실패 시 창과 편집 값을 유지한다.
+- `저장`으로 검증·적용·영속화를 수행하고 성공 시 닫는다. `취소`나 창 닫기는
+  편집 값을 폐기한다. `기본값 복원`은 편집 값만 바꾸고 저장 전에는 적용하지 않는다.
+- live preview는 이번 범위에서 제외한다. 저장된 값과 현재 적용된 값이 달라지면
+  성공으로 숨기지 말고 실패 항목과 복구 상태를 표시한다.
+
+| 설정 | 기본값 / 범위 | 저장 후 동작 |
+|---|---|---|
+| 높이 | 200 DIP / 96~720 | 축소 높이를 갱신; 확장 상태라면 다음 축소에 적용 |
+| 글꼴 | Cascadia Mono / fallback 유지 | 모든 탭 갱신, 활성 탭 fit·ConPTY resize; 숨긴 탭은 활성화 시 fit |
+| 글자 크기 | 13 / 8~32 | shell 재시작 없이 적용 |
+| 테마 | Tokyo Night / Dark, Light, One Dark, Tokyo Night | WPF 주변 색상과 모든 xterm ANSI palette를 함께 적용 |
+| 투명도 | 0.97 / 0.72~1 | 현재 전체 창 투명도 방식 유지; 글자에도 적용됨을 UI에서 설명 |
+| 기본 셸 | 자동 탐색 / 설치된 pwsh, powershell, cmd | 이후 생성한 탭에 적용; 현재 탭 및 현재 탭 재시작은 해당 탭의 셸 유지 |
+| 확장 단축키 | Ctrl+Alt+E | 유효성·등록 충돌 검사 후 변경 |
+| 호출 단축키 | Ctrl+Alt+S | 설정 model에 필드를 추가하고 기존 JSON은 기본값으로 읽음 |
+| 로그인 시 자동 실행 | 꺼짐 | 사용자별 등록/해제; 현재 실행 파일의 절대 경로 사용 |
+| 표시 모니터 | 작업표시줄 모니터 | 이번 범위에서는 지원 정책 안내만 제공; 임의 모니터 picker는 제외 |
+
+상세 동작:
+
+- 높이를 행 수로 표기할 경우 글꼴과 DPI에 따른 근사치임을 표시한다.
+- 설정 UI 입력 오류는 조용히 clamp하지 않고 알려준다. 기존 JSON 복구용 정규화는
+  유지한다. 취소·부분 JSON·이전 schema·손상 파일·저장 권한 오류를 처리한다.
+- 두 단축키가 같으면 저장하지 않는다. 새 단축키 등록 실패 시 이전에 동작하던
+  등록을 보존하거나 복구하고 어떤 키가 적용됐는지 명시한다.
+- 설정 저장·단축키·자동 실행·renderer 적용은 서로 다른 실패 지점을 가진다.
+  공통 계약 단계에서 적용 순서와 rollback을 정의한다. rollback까지 실패하면
+  마지막 저장 값과 실제 적용 상태를 함께 보여 주고 다시 시도할 수 있게 한다.
+- 자동 실행은 앱 소유 HKCU 항목만 변경하고 공백·한글 경로를 올바르게 인용한다.
+  테스트는 adapter와 격리 경로를 우선 사용한다. 구현만으로 개발 PC의 로그인
+  자동 실행을 켜지 않는다.
+- 설정 창을 닫았다는 이유로 terminal에 focus를 강제하지 않는다.
+
+### C. Portable 배포 정리
+
+사용자 시나리오: 버전이 표시된 ZIP을 받아 압축을 풀고 실행한다. 업데이트 시
+기존 사용자 설정을 유지하면서 새 폴더로 전환할 수 있다.
+
+- 코드에서 일관된 버전을 사용하고 설정 창에 버전·빌드 커밋을 표시한다.
+- Windows에서 restore/build/test/publish/package를 재현할 스크립트를 제공한다.
+- 버전별 깨끗한 staging 폴더에 self-contained win-x64 Release를 publish하고,
+  `Starboard-<version>-win-x64.zip` 및 SHA-256 파일을 만든다.
+- local renderer asset, license, third-party notice와 실행 파일의 포함 여부를 검사한다.
+- 개발 PC 경로를 하드코딩하지 않는다. 출력 폴더 안전성 및 기존 출력 덮어쓰기
+  정책을 명시하고 다른 저장소·사용자 데이터를 정리 대상으로 삼지 않는다.
+- 설정·로그·WebView2 사용자 데이터는 ZIP에 포함하지 않는다.
+- 업데이트 문서는 앱 종료(실행 중 shell 작업 종료), 새 폴더 압축 해제, 실행,
+  문제가 있을 때 이전 폴더로 되돌리기를 설명한다. 자동 실행이 켜져 있었다면
+  실행 경로를 새 폴더로 갱신해야 한다는 절차도 포함한다.
+- WebView2 Runtime은 별도 요구사항이다. .NET self-contained를 완전 무의존 실행으로
+  설명하지 않는다. runtime 다운로드나 설치를 앱이 자동으로 실행하지 않는다.
+
+## 제외 범위
+
+이번 필수 범위는 A~C다. 탭 이름·순서 변경, 마지막 경로/탭 구성 복원은 후속 후보다.
+세션 복원은 실행 중 프로세스나 명령을 자동으로 복구하는 기능과 구분해 별도 기획한다.
+분할 화면, 탭 드래그, WSL/Git Bash/custom arguments, always-on-top 옵션, 가상
+데스크톱 전체 pin, 설치 관리자, 코드 서명, 온라인 자동 업데이트는 포함하지 않는다.
+CI workflow는 기존 환경을 확인한 후 별도로 제안할 수 있으나 이번 필수 배포는
+로컬 Windows 스크립트다. 앱 runtime network·telemetry는 계속 사용하지 않는다.
+
+## 영향 파일과 아키텍처 결정
+
+단일 애플리케이션 host와 기존 세 module을 유지한다. shell과 WebView2의 자식
+프로세스는 이 배포 구조와 별개다. 별도 서버나 module 간 직접 참조를 추가하지 않는다.
+
+| 소유 영역 | 주요 기존 파일 / 추가 위치 | 책임 |
+|---|---|---|
+| DesktopIntegration | `DesktopIntegrationModule.cs`, `Contracts/`, `Domain/PanelGeometryCalculator.cs`, `Infrastructure/TaskbarService.cs`, `WindowPlacementService.cs`, `TrayIconService.cs`, `Interop/` | native 관찰·창 정책·geometry·단축키·startup |
+| Preferences | `Contracts/AppSettings.cs`, `Application/SettingsValidator.cs`, `Infrastructure/JsonSettingsStore.cs`, `PreferencesModule.cs`, 필요 시 `Presentation/` | 편집 model·유효성·저장·설정 content |
+| Terminal | `TerminalModule.cs`, `Contracts/`, `Application/TerminalSessionCoordinator.cs`, `Presentation/TerminalView.xaml.cs`, `Presentation/Renderer/src/` 및 `dist/` | appearance 갱신·새 탭의 기본 셸 적용·세션 보존 |
+| Host | `Composition/AppCoordinator.cs`, `Shell/MainWindow.xaml.cs`, 신규 최상위 설정 window | module 조정·최상위 window 수명·설정 적용/복구 순서 |
+| 검증·배포 | `tests/Starboard.*`, `scripts/` 신규 package 스크립트, build metadata | 자동 검증·isolated smoke·ZIP 생성 |
+
+경로는 `src/Modules/Starboard.Modules.<이름>/` 기준이며 실제 존재 여부를 확인해 수정한다.
+최상위 설정 window는 host에 두고 편집 UI/검증은 Preferences가 소유한다. Preferences가
+DesktopIntegration이나 Terminal을 직접 호출하지 않게 한다.
+
+계약 확정 시 문서에 남길 내용:
+
+- 창 표시 정책 입력 snapshot과 출력 결정, 사용자 숨김과 일시 억제의 구분.
+- DPI 메시지에 필요한 매개변수 전달. 현재 `HandleWindowMessage(int, nint)`만으로
+  필요한 정보가 충분한지 확인하고 host/native adapter 경계를 명확히 한다.
+- 설정 변경 요청/결과, 설정 UI 열기 event, Desktop 옵션 적용/복구 계약.
+- Terminal appearance와 새 탭 기본 셸 변경 계약. 기존 `StartAsync` 호출로
+  live apply를 대신해 session을 재생성하지 않는다.
+- 모든 탭의 theme/font 일관성 및 renderer ready 이전 변경의 최신 snapshot 보존.
+- 동기화 방식과 Dispatcher 책임, native callback·timer·subscription 종료 순서.
+
+## 오케스트레이터 작업 분해
+
+각 작업은 자기 구현·직접 테스트를 함께 소유한다. 아래 ID를 task key로 사용한다.
+공용 계약을 먼저 통합한 기준에서 worker worktree를 만든다. 문서 통합과 host 수정은
+integration 담당자 한 명이 소유하며 worker는 변경 요청과 인수인계로 전달한다.
+
+| 작업 ID | 선행 조건 | 독점 쓰기 범위 | 산출물 / 통과 기준 |
+|---|---|---|---|
+| P0-baseline | 없음 | 이 문서 진행 기록, 테스트 기록 | 최신 코드·실제 UI 기준선, API 조사 목록, 미수행 장비 항목 |
+| P1-window-contracts | P0 | Desktop `Contracts/`, 정책 입력/출력 타입 | WIN 상태 우선순위, DPI/monitor 전달 계약, host 변경 명세 |
+| P2-window-policy | P1 | Desktop 정책 Application/Domain 신규 파일 및 해당 tests | auto-hide/전체화면/명시 숨김 조합의 순수 상태 결정과 단위 검증 |
+| P3-window-adapters | P1 | Desktop Infrastructure/Interop, geometry 및 해당 tests | monitor/DPI/taskbar/foreground 관찰, native adapter와 복구 검증 |
+| P4-window-integration | P2, P3 | Desktop module 진입점, host, integration tests, 공용 문서 | policy+adapter+tray 연결, WIN-01~08 회귀 및 A gate |
+| P5-settings-contracts | P4 A gate | module public contract, AppSettings schema, 이 문서 | live apply/default shell/startup/hotkey와 rollback 계약 확정 |
+| P6-settings-editor | P5 | Preferences 구현·Presentation·tests | 한국어 설정 content, validation, migration, 안전한 저장 |
+| P7-terminal-settings | P5 | Terminal 구현·renderer source/dist·tests | session을 유지하는 전체 탭 appearance 및 이후 새 탭 셸 적용 |
+| P8-desktop-settings | P5 | Desktop 구현·tests | 높이·단축키 교체/복구·자동 실행 adapter·트레이 설정 요청 |
+| P9-settings-integration | P6, P7, P8 | host, integration tests, 공용 문서 | 설정 창 수명, 저장/적용/복구 연결, B gate |
+| P10-package | P9 | scripts, 버전 build metadata, packaging docs | 재현 가능한 ZIP·해시·버전 표시 연결 및 package 검증 |
+| P11-final-verification | P10 | 공용 문서와 필요한 회귀 수정 | 통합 build/test/publish, release smoke, A~C 인수 보고 |
+
+실행 wave는 `P0 → P1 → (P2 ∥ P3) → P4 → P5 → (P6 ∥ P7 ∥ P8) → P9 → P10 → P11`이다.
+괄호 안 작업만 병렬 실행한다. P2/P3의 테스트 파일도 서로 구분하고 공용 파일은
+미리 담당자를 지정한다. 겹침이 생기면 동시에 편집하지 말고 직렬 통합한다.
+
+worker 인수인계에는 작업 ID, 실제 기준 커밋, 변경 파일, 계약 변경 여부, 실행한
+검증과 결과, 미수행 항목, 통합 담당자에게 필요한 변경을 포함한다. 다른 worker가
+아직 통합하지 않은 파일이나 공용 dirty tree를 자신의 전제 조건으로 삼지 않는다.
+
+integration 담당자는 worker 결과를 해당 wave가 시작한 기준 위에 순서대로 통합하고
+전체 검증을 수행한다. 공용 계약 수정이 필요하면 영향 worker와 계획부터 갱신한다.
+원래 작업 트리의 기존 변경을 stash/reset/삭제하지 않는다.
+
+## 위험 영역과 fallback
+
+| 위험 | 대응 |
+|---|---|
+| 자동 숨김 설정과 실제 taskbar visibility는 다름 | 문서화된 API와 실제 관찰을 대조; 모호하면 마지막 안전 위치 유지, 짧은 sampling은 상태 변화 동안만 |
+| 전체화면 오탐과 focus 변화 | 최대화/다른 monitor/자기 창 제외 검증; 탐지 실패 시 normal z-order를 유지하고 focus를 요청하지 않음 |
+| 모니터 사라짐과 cached rectangle | 연결된 monitor와 교차 확인 후 복원, 그렇지 않으면 최신 snapshot으로 배치 |
+| 저장과 OS 적용의 부분 실패 | 이전 snapshot 보관, rollback 가능한 operation으로 구분, 실패 UI와 재시도 경로 |
+| shell 설정으로 기존 작업 종료 | 기본 셸 변경은 새 탭만 대상으로 하고 기존 PID 보존을 검증 |
+| 실패 시 반복 로그·남은 timer | 같은 오류 로그 제한, cancellation과 dispose 이후 callback 차단 |
+| renderer 재빌드 누락 | source 변경 시 dist 재생성, 실제 publish 디렉터리의 CSS/JS로 검증 |
+| portable 자동 실행 경로 변경 | 업데이트 절차에서 새 실행 경로 등록 확인, 이전 경로로 자동 실행되는지 점검 |
+
+Windows API 동작은 이 기획만으로 검증 완료된 것으로 취급하지 않는다. P0/P1에서
+공식 문서와 로컬 코드를 조사하고 구현자가 실제 관찰·fallback을 architecture에 남긴다.
+
+## 구현 단계
+
+- [ ] P0 기준선·환경·실제 UI 확인
+- [ ] P1~P4 Windows 안정화와 A gate
+- [ ] P5~P9 설정 기능과 B gate
+- [ ] P10~P11 portable 배포와 C gate
+
+각 gate는 기능 구현과 자동 검증이 완료되고, 실제 실행으로 확인 가능한 핵심 동작이
+확인돼야 통과한다. 장비가 없어 수행하지 못한 항목은 예상 결과·실행 절차와 함께
+pending으로 남긴다. 해당 플랫폼의 release 검증 완료로 표시하지 않는다.
+핵심 입력·focus·session 유지 회귀가 있으면 다음 wave로 진행하지 않고 수정한다.
+
+## 검증 방법
+
+1. 기존 기준선: 탭 3개, 한글 입력, copy/paste, Ctrl+C, 호출/숨김, 확장/축소,
+   200 DIP 높이와 노란 테두리 제거를 확인한다. 기존 테스트 통과 숫자를 재사용하지 않는다.
+2. Windows: WIN-01~08을 자동 상태 전이/geometry 테스트와 실제 환경 검증으로 나눈다.
+   사용자 숨김 → 전체화면 진입/종료 → Explorer 복구 뒤에도 숨김 유지 사례를 포함한다.
+3. Settings: 취소, 기본값 복원, invalid 값, 이전 JSON, 저장 실패, hotkey 충돌,
+   적용 중 실패/rollback, startup adapter 실패와 공백 경로를 검증한다.
+4. Terminal: 3개 탭의 PID·경로를 보존한 채 theme/font/height를 변경한다. 비활성
+   탭 활성화 시 올바른 geometry와 색상, 새 탭에만 새 셸 적용을 확인한다.
+5. Packaging: 깨끗한 출력에서 ZIP 생성, 필수 asset/license 포함, 사용자 데이터
+   미포함, SHA-256 일치 및 추출된 실행 파일의 실제 renderer/shell 동작을 확인한다.
+
+표준 전체 검증 명령(저장소 루트):
+
+```powershell
+dotnet restore Starboard.Windows.sln --disable-parallel --disable-build-servers -maxcpucount:1
+dotnet build Starboard.Windows.sln -c Debug --no-restore --disable-build-servers -maxcpucount:1
+dotnet test Starboard.Windows.sln -c Debug --no-build --no-restore --disable-build-servers -maxcpucount:1
+dotnet restore src/Starboard.Windows/Starboard.Windows.csproj -r win-x64 --disable-parallel
+dotnet publish src/Starboard.Windows/Starboard.Windows.csproj -c Release -r win-x64 --self-contained true --no-restore -p:PublishSingleFile=false -o artifacts/Starboard-win-x64
+git diff --check
+```
+
+로컬 `dotnet`이 없으면 README의 user-local SDK 경로를 확인한다. renderer 변경 시
+해당 renderer 디렉터리에서 `npm ci`, `npm run build`를 실행한다. 의존성 다운로드나
+native tool 실행이 sandbox에서 차단되면 해당 권한 절차로 해결한다.
+
+실제 UI와 window rectangle을 관찰한다. `Get-Process`의 Responding만으로 renderer,
+ConPTY, visible window가 정상이라고 보고하지 않는다. Explorer 재시작·로그인 변경·
+앱 교체처럼 사용자 환경에 영향을 주는 검증은 실행 시 확보된 권한 범위에서 수행한다.
+진행 중인 사용자 shell을 임의 종료하지 말고 테스트 instance의 소유 경로와 PID를 확인한다.
+
+## 진행 기록
+
+- 2026-09-05: 기준 코드와 기존 계획을 확인하고 이 문서를 작성했다. 제품 코드는
+  수정하지 않았고 오케스트레이터 실행·build/test는 이번 문서 작업에서 수행하지 않았다.
+
+## 미결정 사항
+
+제품 범위와 기본값은 위와 같이 정했다. P0/P1에서 API 적합성과 실제 display 환경을
+확인하고, P5에서 적용/rollback 계약을 확정한다. 배포 버전 번호는 기존 version
+metadata를 확인한 뒤 P10에서 정한다. 외부 서비스나 새로운 대형 의존성이 필요하면
+기존 구조로 가능한 대안과 함께 별도 판단 사항으로 기록한다.
+
+## 완료 요약
+
+기획 및 작업 분해 작성 완료, 구현 대기다. 구현 완료 시 이 절을 실제 변경 동작,
+검증 결과, release 산출물 경로, 남은 manual 항목과 제한으로 교체한다.
+
+## 오케스트레이터 전달 프롬프트
+
+```text
+Starboard 저장소의 docs/plans/2026-09-05-orchestrator-product-roadmap.md를 실행 명세로
+사용해 Windows 안정화, 설정 창, portable 배포 정리를 구현해줘.
+
+먼저 AGENTS.md와 개발 규약을 읽고 현재 HEAD/dirty 상태를 확인해.
+P0~P11 의존성 순서와 gate를 지키고, 공용 계약을 통합한 기준에서 작업별 격리
+worktree를 사용해. 병렬 실행은 P2/P3 및 P6/P7/P8에 한정하고 host·공용 문서는
+integration 담당자 한 명이 소유하게 해. 작업별 산출물을 순서대로 통합하고
+관련 테스트와 최종 전체 build/test/publish를 수행해.
+
+기존 세 module의 모듈러 모놀리스 경계, 200 DIP 기본 높이, 노란 terminal 테두리
+제거, 탭별 persistent shell과 사용자 focus 보존을 유지해.
+API 가정은 공식 문서·로컬 실험으로 확인하고 실제 UI 미검증은 pending으로 기록해.
+테스트 process가 살아 있다는 사실만으로 UI 정상 동작을 단정하지 마.
+
+이번 실행은 문서의 A~C를 완료하고 검토 가능한 통합 결과와 ZIP을 준비하는 범위야.
+작업 branch/worktree와 작업 커밋은 사용할 수 있어. main 반영·원격 push·GitHub
+Release 게시·사용 중인 바탕화면 앱 교체는 이번 실행에 포함하지 마.
+최종 보고에 기능별 완료 상태, 검증 증거, 남은 수동 시나리오, 변경 파일과
+통합 branch/커밋, ZIP 경로를 남겨줘.
+```

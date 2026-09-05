@@ -853,6 +853,11 @@ contract 회귀 확인 대상이지만 기본 변경 대상은 아니다.
 
 ### Phase 2 — Windows windowing 완성
 
+2026-09-05 이후 Phase 2~4의 실사용 개선 작업은
+[오케스트레이터 실행 명세](2026-09-05-orchestrator-product-roadmap.md)의 작업 분해와
+인수 기준을 함께 따른다. 이번 실행의 필수 범위는 Windows 안정화, 설정 창과
+portable 배포이며 가상 데스크톱 pinning과 WSL/custom shell은 후속 범위다.
+
 예상: 5~8시간
 
 - [x] taskbar/display snapshot model과 pure geometry calculator를 만든다.
