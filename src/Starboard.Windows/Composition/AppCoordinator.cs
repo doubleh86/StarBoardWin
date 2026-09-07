@@ -30,6 +30,7 @@ internal sealed class AppCoordinator : IDisposable
         desktopIntegrationModule.PanelVisibilityToggleRequested += HandlePanelVisibilityToggleRequested;
         desktopIntegrationModule.PanelActivationToggleRequested += HandlePanelActivationToggleRequested;
         desktopIntegrationModule.PanelSummonRequested += HandlePanelSummonRequested;
+        desktopIntegrationModule.PanelPresentationRequested += HandlePanelPresentationRequested;
         desktopIntegrationModule.ExitRequested += HandleExitRequested;
     }
 
@@ -88,6 +89,7 @@ internal sealed class AppCoordinator : IDisposable
         desktopIntegrationModule.PanelVisibilityToggleRequested -= HandlePanelVisibilityToggleRequested;
         desktopIntegrationModule.PanelActivationToggleRequested -= HandlePanelActivationToggleRequested;
         desktopIntegrationModule.PanelSummonRequested -= HandlePanelSummonRequested;
+        desktopIntegrationModule.PanelPresentationRequested -= HandlePanelPresentationRequested;
         desktopIntegrationModule.ExitRequested -= HandleExitRequested;
         terminalModule.Dispose();
         desktopIntegrationModule.Dispose();
@@ -107,11 +109,11 @@ internal sealed class AppCoordinator : IDisposable
 
         if (application.Dispatcher.CheckAccess() == false)
         {
-            application.Dispatcher.Invoke(TogglePanelVisibility);
+            application.Dispatcher.Invoke(TogglePanelVisibilityFromTray);
             return;
         }
 
-        TogglePanelVisibility();
+        TogglePanelVisibilityFromTray();
     }
 
     private void HandlePanelActivationToggleRequested(object? sender, EventArgs eventArguments)
@@ -154,6 +156,23 @@ internal sealed class AppCoordinator : IDisposable
         ShowAndActivatePanel();
     }
 
+    private void HandlePanelPresentationRequested(bool isVisible)
+    {
+        var application = Application.Current;
+        if (application is null)
+        {
+            return;
+        }
+
+        if (application.Dispatcher.CheckAccess() == false)
+        {
+            application.Dispatcher.Invoke(() => ApplyPanelPresentation(isVisible));
+            return;
+        }
+
+        ApplyPanelPresentation(isVisible);
+    }
+
     private void HandleExitRequested(object? sender, EventArgs eventArguments)
     {
         _ = sender;
@@ -174,22 +193,6 @@ internal sealed class AppCoordinator : IDisposable
         application.Shutdown();
     }
 
-    private void TogglePanelVisibility()
-    {
-        if (mainWindow is null)
-        {
-            return;
-        }
-
-        if (mainWindow.IsVisible == true)
-        {
-            HidePanel();
-            return;
-        }
-
-        ShowAndActivatePanel();
-    }
-
     private void TogglePanelActivation()
     {
         if (mainWindow is null)
@@ -206,6 +209,15 @@ internal sealed class AppCoordinator : IDisposable
         ShowAndActivatePanel();
     }
 
+    private void TogglePanelVisibilityFromTray()
+    {
+        var isVisible = desktopIntegrationModule.TogglePanelVisibility();
+        if (isVisible == true)
+        {
+            desktopIntegrationModule.ActivatePanel();
+        }
+    }
+
     private void HidePanel()
     {
         if (mainWindow is null)
@@ -214,7 +226,6 @@ internal sealed class AppCoordinator : IDisposable
         }
 
         desktopIntegrationModule.SetPanelVisible(false);
-        mainWindow.Hide();
     }
 
     private void ShowAndActivatePanel()
@@ -224,9 +235,30 @@ internal sealed class AppCoordinator : IDisposable
             return;
         }
 
-        mainWindow.Show();
         desktopIntegrationModule.SetPanelVisible(true);
-        _ = mainWindow.Activate();
         desktopIntegrationModule.ActivatePanel();
+    }
+
+    private void ApplyPanelPresentation(bool isVisible)
+    {
+        if (mainWindow is null)
+        {
+            return;
+        }
+
+        if (isVisible == true)
+        {
+            if (mainWindow.IsVisible == false)
+            {
+                mainWindow.Show();
+            }
+
+            return;
+        }
+
+        if (mainWindow.IsVisible == true)
+        {
+            mainWindow.Hide();
+        }
     }
 }

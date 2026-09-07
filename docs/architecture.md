@@ -300,16 +300,21 @@ layout을 바꿀 수 있다. 제품 요구사항은 overlay surface이므로 tas
 
 ### Event와 reconciliation
 
-다음 signal에서 snapshot 전체를 다시 조회한다.
+`DesktopIntegrationModule`이 display/foreground observer, tray icon, hotkey와 timer의
+수명을 함께 소유한다. 다음 signal에서 이전 monitor handle이나 rectangle을 재사용하지
+않고 snapshot 전체를 다시 조회한다.
 
 - `TaskbarCreated` registered message
 - `WM_DISPLAYCHANGE`
 - `WM_SETTINGCHANGE`
 - `WM_DPICHANGED`
 - `SystemEvents.DisplaySettingsChanged` fallback
+- foreground `EVENT_SYSTEM_FOREGROUND`
 
-event 누락과 Explorer transition을 보완하기 위해 1초 reconciliation을 둔다.
-auto-hide transition 중에만 짧은 fast sampling을 쓰고 안정 상태에서 중단한다.
+event 누락, auto-hide transition과 Explorer transition을 보완하기 위해 1초
+reconciliation을 둔다. `TaskbarCreated`에서는 기존 tray icon을 해제한 뒤 하나만 다시
+만들고 같은 정책 reconcile을 실행한다. observer 등록이 실패해도 timer fallback과
+등록 가능한 shortcut은 유지하며, 종료 시 callback 구독과 native hook을 해제한다.
 
 ## Geometry와 DPI
 
@@ -333,8 +338,11 @@ expanded frame은 현재 panel monitor의 work area 전체다. 축소 시 마지
 collapsed frame이 현재 monitor들과 교차하면 복원하고, 아니면 최신 snapshot으로
 재계산한다.
 
-manifest에서 per-monitor v2를 선언한다. `WM_DPICHANGED`에서는 `wParam`의 새 DPI와
-`lParam` suggested rectangle을 사용하고 cached system DPI를 적용하지 않는다.
+manifest에서 per-monitor v2를 선언한다. host는 전체 `HWND`, `wParam`, `lParam`을
+module에 동기 전달한다. `WM_DPICHANGED`의 새 DPI와 suggested rectangle은 window
+procedure가 반환하기 전에 lifetime-safe 값으로 복사하고, WPF가 자체 DPI message를
+처리한 다음 dispatcher에서 최신 taskbar/monitor snapshot으로 한 번 더 배치한다.
+cached system DPI는 적용하지 않는다.
 
 ## Focus와 activation
 
@@ -356,17 +364,18 @@ panel은 normal/maximized desktop에서도 topmost group에 올리지 않는다.
 reconciliation은 `SWP_NOACTIVATE | SWP_NOZORDER`로 위치와 크기만 갱신한다. 따라서
 다른 일반 앱을 활성화하면 그 앱이 Starboard를 자연스럽게 덮는다.
 
-notification icon 왼쪽 클릭이나 호출 단축키처럼 사용자가 명시적으로 panel을
-요청한 경우에만 host가 panel을 `Show`하고 normal window band의 앞으로
-`Activate`한다. foreground 제한이 있는 경우 현재 foreground thread의 input
-queue를 활성화 호출 동안만 연결하고 즉시 해제한다. 이후의 1초 geometry
-reconciliation은 해당 z-order를 다시 끌어올리지 않는다. 숨김 상태는
-DesktopIntegration state에 포함해 timer가 `SWP_SHOWWINDOW`로 panel을 임의
-복원하지 못하게 한다.
+notification icon 왼쪽 클릭, tray의 표시 요청이나 호출 단축키처럼 사용자가
+명시적으로 panel을 요청한 경우에만 module이 engagement를 갱신하고 host 표시 뒤
+normal window band의 앞으로 활성화를 요청한다. foreground 제한이 있는 경우 현재
+foreground thread의 input queue를 활성화 호출 동안만 연결하고 즉시 해제한다.
+이후의 observer/timer reconciliation은 activation이나 z-order를 변경하지 않는다.
+영구 사용자 숨김과 환경에 의한 임시 억제를 분리하며, WPF host는 module의 최종
+presentation 요청만 `Show`/`Hide`로 반영한다.
 
-foreground window가 panel monitor를 사실상 덮는 fullscreen이면 향후 정책에서
-panel을 conceal할 수 있다. fullscreen 종료 뒤에는 geometry만 복구하며 topmost로
-승격하지 않는다.
+foreground window가 panel monitor를 사실상 덮는 fullscreen이면 panel을 임시
+conceal한다. 이 상태에서는 명시적 호출도 fullscreen 위로 강제 활성화하지 않는다.
+fullscreen 종료 뒤에는 사용자 숨김 의도를 다시 확인한 후 geometry만 복구하며
+topmost로 승격하거나 foreground를 되찾지 않는다.
 
 fullscreen 판단은 foreground top-level window rectangle과 monitor bounds,
 visibility, cloaking과 shell window 제외 조건을 조합한다. 단순 maximized window는
