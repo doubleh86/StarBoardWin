@@ -2,7 +2,7 @@ namespace Starboard.Modules.Preferences.Contracts;
 
 public sealed record AppSettings
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
@@ -23,4 +23,6 @@ public sealed record AppSettings
     public string PreferredMonitor { get; init; } = "Taskbar";
 
     public string ExpandShortcut { get; init; } = "Ctrl+Alt+E";
+
+    public string ActivationShortcut { get; init; } = "Ctrl+Alt+S";
 }

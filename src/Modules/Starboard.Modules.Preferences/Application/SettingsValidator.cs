@@ -46,6 +46,9 @@ internal static class SettingsValidator
             ExpandShortcut = string.IsNullOrWhiteSpace(candidate.ExpandShortcut) == true
                 ? "Ctrl+Alt+E"
                 : candidate.ExpandShortcut.Trim(),
+            ActivationShortcut = string.IsNullOrWhiteSpace(candidate.ActivationShortcut) == true
+                ? "Ctrl+Alt+S"
+                : candidate.ActivationShortcut.Trim(),
         };
     }
 }
