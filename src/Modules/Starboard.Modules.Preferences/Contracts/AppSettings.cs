@@ -6,8 +6,15 @@ public sealed record AppSettings
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
+    /// <summary>
+    /// Default shell for tabs created after the setting is applied. Null uses automatic discovery.
+    /// Existing tabs, including their restart path, retain the shell captured at creation.
+    /// </summary>
     public string? ShellExecutable { get; init; }
 
+    /// <summary>
+    /// Theme applied in place to the WPF shell and every terminal tab.
+    /// </summary>
     public string Theme { get; init; } = "Tokyo Night";
 
     public double CollapsedHeightDip { get; init; } = 200;
