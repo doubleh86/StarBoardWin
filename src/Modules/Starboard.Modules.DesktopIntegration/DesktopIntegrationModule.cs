@@ -20,10 +20,12 @@ public sealed class DesktopIntegrationModule : IDisposable
 
     private const int ExpandHotKeyIdentifier = 0x5342;
     internal const int ActivationHotKeyIdentifier = 0x5343;
+    private const double _DefaultOpacity = 0.97;
 
     private readonly IDiagnosticLog diagnosticLog;
     private readonly bool enablePeriodicReconciliation;
     private readonly IDesktopIntegrationRuntime runtime;
+    private readonly IStartupRegistration startupRegistration;
     private readonly Lock stateLock = new();
 
     private System.Threading.Timer? reconciliationTimer;
@@ -34,6 +36,7 @@ public sealed class DesktopIntegrationModule : IDisposable
         null);
     private PanelOptions options = new(200);
     private PanelWindowPolicyDecision? lastDecision;
+    private DesktopSettings effectiveSettings = CreateDefaultSettings();
     private bool? lastRequestedVisibility;
     private nint windowHandle;
     private bool expandHotKeyRegistered;
@@ -47,6 +50,7 @@ public sealed class DesktopIntegrationModule : IDisposable
         : this(
             diagnosticLog,
             new WindowsDesktopIntegrationRuntime(diagnosticLog),
+            new RegistryStartupRegistration(new ProcessExecutablePathProvider()),
             true)
     {
     }
@@ -55,12 +59,27 @@ public sealed class DesktopIntegrationModule : IDisposable
         IDiagnosticLog diagnosticLog,
         IDesktopIntegrationRuntime runtime,
         bool enablePeriodicReconciliation)
+        : this(
+            diagnosticLog,
+            runtime,
+            new RegistryStartupRegistration(new ProcessExecutablePathProvider()),
+            enablePeriodicReconciliation)
+    {
+    }
+
+    internal DesktopIntegrationModule(
+        IDiagnosticLog diagnosticLog,
+        IDesktopIntegrationRuntime runtime,
+        IStartupRegistration startupRegistration,
+        bool enablePeriodicReconciliation)
     {
         ArgumentNullException.ThrowIfNull(diagnosticLog);
         ArgumentNullException.ThrowIfNull(runtime);
+        ArgumentNullException.ThrowIfNull(startupRegistration);
 
         this.diagnosticLog = diagnosticLog;
         this.runtime = runtime;
+        this.startupRegistration = startupRegistration;
         this.enablePeriodicReconciliation = enablePeriodicReconciliation;
         TaskbarCreatedMessage = runtime.TaskbarCreatedMessage;
     }
@@ -72,6 +91,11 @@ public sealed class DesktopIntegrationModule : IDisposable
     public event EventHandler? PanelActivationToggleRequested;
 
     public event EventHandler? PanelSummonRequested;
+
+    /// <summary>
+    /// Raised when the Desktop-owned tray menu requests that the host open Preferences.
+    /// </summary>
+    public event EventHandler? SettingsRequested;
 
     public event Action<bool>? PanelPresentationRequested;
 
@@ -97,6 +121,10 @@ public sealed class DesktopIntegrationModule : IDisposable
 
         windowHandle = attachedWindowHandle;
         options = panelOptions;
+        effectiveSettings = effectiveSettings with
+        {
+            CollapsedHeightDip = panelOptions.CollapsedHeightDip,
+        };
         state = state with
         {
             Mode = panelOptions.StartExpanded == true
@@ -108,43 +136,20 @@ public sealed class DesktopIntegrationModule : IDisposable
         runtime.ForegroundChanged += HandleForegroundChanged;
         runtime.TrayToggleVisibilityRequested += HandleTrayToggleVisibilityRequested;
         runtime.TraySummonRequested += HandleTraySummonRequested;
+        runtime.TraySettingsRequested += HandleTraySettingsRequested;
         runtime.TrayExitRequested += HandleTrayExitRequested;
 
         try
         {
             runtime.Attach(windowHandle);
             isAttached = true;
-            expandHotKeyRegistered = runtime.RegisterHotKey(
-                windowHandle,
-                ExpandHotKeyIdentifier,
-                NativeMethods.VirtualKeyE);
-            activationHotKeyRegistered = runtime.RegisterHotKey(
-                windowHandle,
-                ActivationHotKeyIdentifier,
-                NativeMethods.VirtualKeyS);
+            runtime.SetPanelOpacity(windowHandle, effectiveSettings.Opacity);
+            RegisterInitialHotkeys();
         }
         catch
         {
             UnsubscribeRuntimeEvents();
             throw;
-        }
-
-        if (expandHotKeyRegistered == false)
-        {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "DesktopIntegration",
-                "RegisterHotKey",
-                "Ctrl+Alt+E is already in use; Starboard will continue without the global shortcut.");
-        }
-
-        if (activationHotKeyRegistered == false)
-        {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "DesktopIntegration",
-                "RegisterHotKey",
-                "Ctrl+Alt+S is already in use; Starboard will continue without the summon shortcut.");
         }
 
         Reconcile();
@@ -331,6 +336,195 @@ public sealed class DesktopIntegrationModule : IDisposable
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
         Reconcile();
+    }
+
+    public DesktopSettingsApplyResult ApplySettings(DesktopSettings requestedSettings)
+    {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        ArgumentNullException.ThrowIfNull(requestedSettings);
+
+        lock (stateLock)
+        {
+            if (isAttached == false)
+            {
+                throw new InvalidOperationException("Desktop settings are unavailable before the panel is attached.");
+            }
+
+            var previousSettings = effectiveSettings;
+            if (TryValidateSettings(requestedSettings, out var requestedHotkeys, out var validationFailure) == false)
+            {
+                return CreateValidationFailureResult(
+                    requestedSettings,
+                    previousSettings,
+                    validationFailure!);
+            }
+
+            var operations = new List<DesktopSettingsOperationResult>(4);
+            if (TryApplyPanelAppearance(requestedSettings, previousSettings, out var appearanceFailure) == false)
+            {
+                operations.Add(new DesktopSettingsOperationResult(
+                    DesktopSettingsOperation.PanelAppearance,
+                    DesktopSettingsOperationStatus.Failed,
+                    appearanceFailure));
+                AddUnchangedOperations(operations, DesktopSettingsOperation.MonitorBehavior);
+                AddUnchangedOperations(operations, DesktopSettingsOperation.Hotkeys);
+                AddUnchangedOperations(operations, DesktopSettingsOperation.Startup);
+                return new DesktopSettingsApplyResult(
+                    requestedSettings,
+                    previousSettings,
+                    previousSettings,
+                    DesktopSettingsApplyStatus.FailedWithoutChange,
+                    operations);
+            }
+
+            var appearanceChanged = IsAppearanceChanged(requestedSettings, previousSettings);
+            operations.Add(new DesktopSettingsOperationResult(
+                DesktopSettingsOperation.PanelAppearance,
+                appearanceChanged == true
+                    ? DesktopSettingsOperationStatus.Applied
+                    : DesktopSettingsOperationStatus.Unchanged,
+                null));
+            operations.Add(new DesktopSettingsOperationResult(
+                DesktopSettingsOperation.MonitorBehavior,
+                DesktopSettingsOperationStatus.Unchanged,
+                null));
+
+            var hotkeysChanged = requestedSettings.Hotkeys != previousSettings.Hotkeys;
+            var actualHotkeys = previousSettings.Hotkeys;
+            string? hotkeyFailure = null;
+            var hotkeysApplied = hotkeysChanged == false ||
+                TryReplaceHotkeys(requestedHotkeys, out actualHotkeys, out hotkeyFailure);
+            if (hotkeysApplied == false)
+            {
+                var appearanceRestored = RestorePanelAppearance(previousSettings);
+                operations[0] = operations[0] with
+                {
+                    Status = appearanceChanged == true
+                        ? appearanceRestored == true
+                            ? DesktopSettingsOperationStatus.Restored
+                            : DesktopSettingsOperationStatus.RestoreFailed
+                        : DesktopSettingsOperationStatus.Unchanged,
+                };
+                operations.Add(new DesktopSettingsOperationResult(
+                    DesktopSettingsOperation.Hotkeys,
+                    actualHotkeys == previousSettings.Hotkeys
+                        ? DesktopSettingsOperationStatus.Restored
+                        : DesktopSettingsOperationStatus.RestoreFailed,
+                    hotkeyFailure));
+                AddUnchangedOperations(operations, DesktopSettingsOperation.Startup);
+                var actualSettings = previousSettings with
+                {
+                    CollapsedHeightDip = appearanceRestored == true
+                        ? previousSettings.CollapsedHeightDip
+                        : requestedSettings.CollapsedHeightDip,
+                    Opacity = appearanceRestored == true
+                        ? previousSettings.Opacity
+                        : requestedSettings.Opacity,
+                    Hotkeys = actualHotkeys,
+                };
+                effectiveSettings = actualSettings;
+                return new DesktopSettingsApplyResult(
+                    requestedSettings,
+                    previousSettings,
+                    actualSettings,
+                    appearanceRestored == true && actualSettings == previousSettings
+                        ? DesktopSettingsApplyStatus.FailedAndRestored
+                        : DesktopSettingsApplyStatus.FailedAndRestoreIncomplete,
+                    operations);
+            }
+
+            operations.Add(new DesktopSettingsOperationResult(
+                DesktopSettingsOperation.Hotkeys,
+                hotkeysChanged == true
+                    ? DesktopSettingsOperationStatus.Applied
+                    : DesktopSettingsOperationStatus.Unchanged,
+                null));
+
+            try
+            {
+                if (requestedSettings.Startup != previousSettings.Startup)
+                {
+                    startupRegistration.SetEnabled(requestedSettings.Startup.StartWithWindows);
+                }
+            }
+            catch (Exception exception) when (IsRecoverablePlatformFailure(exception) == true)
+            {
+                var startupRestored = TryRestoreStartup(previousSettings.Startup);
+                var hotkeysRestored = true;
+                if (hotkeysChanged == true)
+                {
+                    UnregisterCurrentHotkeys();
+                    hotkeysRestored = TryRestoreHotkeys(
+                        previousSettings.Hotkeys,
+                        out actualHotkeys);
+                }
+
+                var appearanceRestored = RestorePanelAppearance(previousSettings);
+                operations[0] = operations[0] with
+                {
+                    Status = appearanceChanged == true
+                        ? appearanceRestored == true
+                            ? DesktopSettingsOperationStatus.Restored
+                            : DesktopSettingsOperationStatus.RestoreFailed
+                        : DesktopSettingsOperationStatus.Unchanged,
+                };
+                operations[2] = operations[2] with
+                {
+                    Status = hotkeysChanged == false
+                        ? DesktopSettingsOperationStatus.Unchanged
+                        : hotkeysRestored == true
+                            ? DesktopSettingsOperationStatus.Restored
+                            : DesktopSettingsOperationStatus.RestoreFailed,
+                    FailureMessage = hotkeysChanged == true && hotkeysRestored == false
+                        ? "One or more previous shortcuts could not be restored."
+                        : null,
+                };
+                operations.Add(new DesktopSettingsOperationResult(
+                    DesktopSettingsOperation.Startup,
+                    startupRestored == true
+                        ? DesktopSettingsOperationStatus.Restored
+                        : DesktopSettingsOperationStatus.RestoreFailed,
+                    exception.Message));
+                var actualSettings = previousSettings with
+                {
+                    CollapsedHeightDip = appearanceRestored == true
+                        ? previousSettings.CollapsedHeightDip
+                        : requestedSettings.CollapsedHeightDip,
+                    Opacity = appearanceRestored == true
+                        ? previousSettings.Opacity
+                        : requestedSettings.Opacity,
+                    Hotkeys = actualHotkeys,
+                    Startup = startupRestored == true
+                        ? previousSettings.Startup
+                        : requestedSettings.Startup,
+                };
+                effectiveSettings = actualSettings;
+                return new DesktopSettingsApplyResult(
+                    requestedSettings,
+                    previousSettings,
+                    actualSettings,
+                    actualSettings == previousSettings
+                        ? DesktopSettingsApplyStatus.FailedAndRestored
+                        : DesktopSettingsApplyStatus.FailedAndRestoreIncomplete,
+                    operations);
+            }
+
+            effectiveSettings = requestedSettings with
+            {
+                Hotkeys = actualHotkeys,
+            };
+            return new DesktopSettingsApplyResult(
+                requestedSettings,
+                previousSettings,
+                effectiveSettings,
+                DesktopSettingsApplyStatus.Applied,
+                operations.Append(new DesktopSettingsOperationResult(
+                    DesktopSettingsOperation.Startup,
+                    requestedSettings.Startup == previousSettings.Startup
+                        ? DesktopSettingsOperationStatus.Unchanged
+                        : DesktopSettingsOperationStatus.Applied,
+                    null)).ToArray());
+        }
     }
 
     public void ToggleExpanded()
@@ -560,6 +754,13 @@ public sealed class DesktopIntegrationModule : IDisposable
         PanelSummonRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    private void HandleTraySettingsRequested(object? sender, EventArgs eventArguments)
+    {
+        _ = sender;
+        _ = eventArguments;
+        SettingsRequested?.Invoke(this, EventArgs.Empty);
+    }
+
     private void HandleTrayExitRequested(object? sender, EventArgs eventArguments)
     {
         _ = sender;
@@ -573,7 +774,324 @@ public sealed class DesktopIntegrationModule : IDisposable
         runtime.ForegroundChanged -= HandleForegroundChanged;
         runtime.TrayToggleVisibilityRequested -= HandleTrayToggleVisibilityRequested;
         runtime.TraySummonRequested -= HandleTraySummonRequested;
+        runtime.TraySettingsRequested -= HandleTraySettingsRequested;
         runtime.TrayExitRequested -= HandleTrayExitRequested;
+    }
+
+    private void RegisterInitialHotkeys()
+    {
+        var requestedHotkeys = ToParsedHotkeys(effectiveSettings.Hotkeys);
+        expandHotKeyRegistered = runtime.RegisterHotKey(
+            windowHandle,
+            ExpandHotKeyIdentifier,
+            requestedHotkeys.Expand);
+        activationHotKeyRegistered = runtime.RegisterHotKey(
+            windowHandle,
+            ActivationHotKeyIdentifier,
+            requestedHotkeys.Activation);
+        effectiveSettings = effectiveSettings with
+        {
+            Hotkeys = new HotkeySettings(
+                expandHotKeyRegistered == true
+                    ? requestedHotkeys.Expand.DisplayText
+                    : string.Empty,
+                activationHotKeyRegistered == true
+                    ? requestedHotkeys.Activation.DisplayText
+                    : string.Empty),
+        };
+
+        if (expandHotKeyRegistered == false)
+        {
+            diagnosticLog.Write(
+                DiagnosticLevel.Warning,
+                "DesktopIntegration",
+                "RegisterHotKey",
+                "The expand shortcut is already in use; Starboard will continue without it.");
+        }
+
+        if (activationHotKeyRegistered == false)
+        {
+            diagnosticLog.Write(
+                DiagnosticLevel.Warning,
+                "DesktopIntegration",
+                "RegisterHotKey",
+                "The summon shortcut is already in use; Starboard will continue without it.");
+        }
+    }
+
+    private bool TryApplyPanelAppearance(
+        DesktopSettings requestedSettings,
+        DesktopSettings previousSettings,
+        out string? failureMessage)
+    {
+        failureMessage = null;
+        if (IsAppearanceChanged(requestedSettings, previousSettings) == false)
+        {
+            return true;
+        }
+
+        try
+        {
+            runtime.SetPanelOpacity(windowHandle, requestedSettings.Opacity);
+            options = options with { CollapsedHeightDip = requestedSettings.CollapsedHeightDip };
+            Reconcile();
+            return true;
+        }
+        catch (Exception exception) when (IsRecoverablePlatformFailure(exception) == true)
+        {
+            failureMessage = exception.Message;
+            _ = RestorePanelAppearance(previousSettings);
+            return false;
+        }
+    }
+
+    private bool RestorePanelAppearance(DesktopSettings settings)
+    {
+        try
+        {
+            runtime.SetPanelOpacity(windowHandle, settings.Opacity);
+            options = options with { CollapsedHeightDip = settings.CollapsedHeightDip };
+            Reconcile();
+            return true;
+        }
+        catch (Exception exception) when (IsRecoverablePlatformFailure(exception) == true)
+        {
+            diagnosticLog.Write(
+                DiagnosticLevel.Warning,
+                "DesktopIntegration",
+                "RestorePanelAppearance",
+                "The prior panel appearance could not be restored.",
+                exception);
+            return false;
+        }
+    }
+
+    private bool TryReplaceHotkeys(
+        ParsedHotkeys requestedHotkeys,
+        out HotkeySettings actualHotkeys,
+        out string? failureMessage)
+    {
+        var previousHotkeys = effectiveSettings.Hotkeys;
+        UnregisterCurrentHotkeys();
+
+        expandHotKeyRegistered = runtime.RegisterHotKey(
+            windowHandle,
+            ExpandHotKeyIdentifier,
+            requestedHotkeys.Expand);
+        if (expandHotKeyRegistered == true)
+        {
+            activationHotKeyRegistered = runtime.RegisterHotKey(
+                windowHandle,
+                ActivationHotKeyIdentifier,
+                requestedHotkeys.Activation);
+        }
+
+        if (expandHotKeyRegistered == true && activationHotKeyRegistered == true)
+        {
+            actualHotkeys = new HotkeySettings(
+                requestedHotkeys.Expand.DisplayText,
+                requestedHotkeys.Activation.DisplayText);
+            failureMessage = null;
+            return true;
+        }
+
+        var failedShortcut = expandHotKeyRegistered == false
+            ? requestedHotkeys.Expand.DisplayText
+            : requestedHotkeys.Activation.DisplayText;
+        UnregisterCurrentHotkeys();
+        var restoreSucceeded = TryRestoreHotkeys(previousHotkeys, out actualHotkeys);
+        failureMessage = restoreSucceeded == true
+            ? $"{failedShortcut} could not be registered. Previous shortcuts were restored."
+            : $"{failedShortcut} could not be registered, and one or more previous shortcuts could not be restored.";
+        return false;
+    }
+
+    private bool TryRestoreHotkeys(
+        HotkeySettings settings,
+        out HotkeySettings actualHotkeys)
+    {
+        var expandRegistered = false;
+        var activationRegistered = false;
+        expandRegistered = TryRestoreHotkey(
+            settings.ExpandShortcut,
+            ExpandHotKeyIdentifier);
+        activationRegistered = TryRestoreHotkey(
+            settings.ActivationShortcut,
+            ActivationHotKeyIdentifier);
+
+        expandHotKeyRegistered = expandRegistered;
+        activationHotKeyRegistered = activationRegistered;
+        actualHotkeys = new HotkeySettings(
+            expandRegistered == true ? settings.ExpandShortcut : string.Empty,
+            activationRegistered == true ? settings.ActivationShortcut : string.Empty);
+        return actualHotkeys == settings;
+    }
+
+    private bool TryRestoreHotkey(string shortcut, int identifier)
+    {
+        if (string.IsNullOrWhiteSpace(shortcut) == true)
+        {
+            return false;
+        }
+
+        if (GlobalHotkeyParser.TryParse(shortcut, out var hotkey, out _) == false)
+        {
+            return false;
+        }
+
+        return runtime.RegisterHotKey(windowHandle, identifier, hotkey);
+    }
+
+    private void UnregisterCurrentHotkeys()
+    {
+        if (expandHotKeyRegistered == true)
+        {
+            runtime.UnregisterHotKey(windowHandle, ExpandHotKeyIdentifier);
+            expandHotKeyRegistered = false;
+        }
+
+        if (activationHotKeyRegistered == true)
+        {
+            runtime.UnregisterHotKey(windowHandle, ActivationHotKeyIdentifier);
+            activationHotKeyRegistered = false;
+        }
+    }
+
+    private bool TryRestoreStartup(StartupSettings settings)
+    {
+        try
+        {
+            startupRegistration.SetEnabled(settings.StartWithWindows);
+            return true;
+        }
+        catch (Exception exception) when (IsRecoverablePlatformFailure(exception) == true)
+        {
+            diagnosticLog.Write(
+                DiagnosticLevel.Warning,
+                "DesktopIntegration",
+                "RestoreStartup",
+                "The prior per-user startup state could not be restored.",
+                exception);
+            return false;
+        }
+    }
+
+    private static bool TryValidateSettings(
+        DesktopSettings settings,
+        out ParsedHotkeys hotkeys,
+        out string? failureMessage)
+    {
+        hotkeys = default;
+        failureMessage = null;
+        if (settings.CollapsedHeightDip < 96 || settings.CollapsedHeightDip > 720)
+        {
+            failureMessage = "Collapsed height must be between 96 and 720 DIP.";
+            return false;
+        }
+
+        if (settings.Opacity < 0.72 || settings.Opacity > 1)
+        {
+            failureMessage = "Opacity must be between 0.72 and 1.";
+            return false;
+        }
+
+        if (settings.PreferredMonitorBehavior != PreferredMonitorBehavior.TaskbarMonitor)
+        {
+            failureMessage = "The requested monitor behavior is unsupported.";
+            return false;
+        }
+
+        if (GlobalHotkeyParser.TryParse(settings.Hotkeys.ExpandShortcut, out var expand, out failureMessage) == false)
+        {
+            return false;
+        }
+
+        if (GlobalHotkeyParser.TryParse(settings.Hotkeys.ActivationShortcut, out var activation, out failureMessage) == false)
+        {
+            return false;
+        }
+
+        if (expand == activation)
+        {
+            failureMessage = "Expand and summon shortcuts must differ.";
+            return false;
+        }
+
+        hotkeys = new ParsedHotkeys(expand, activation);
+        return true;
+    }
+
+    private static ParsedHotkeys ToParsedHotkeys(HotkeySettings settings)
+    {
+        if (GlobalHotkeyParser.TryParse(settings.ExpandShortcut, out var expand, out var expandFailure) == false)
+        {
+            throw new InvalidOperationException(expandFailure);
+        }
+
+        if (GlobalHotkeyParser.TryParse(settings.ActivationShortcut, out var activation, out var activationFailure) == false)
+        {
+            throw new InvalidOperationException(activationFailure);
+        }
+
+        return new ParsedHotkeys(expand, activation);
+    }
+
+    private static DesktopSettingsApplyResult CreateValidationFailureResult(
+        DesktopSettings requestedSettings,
+        DesktopSettings previousSettings,
+        string failureMessage)
+    {
+        return new DesktopSettingsApplyResult(
+            requestedSettings,
+            previousSettings,
+            previousSettings,
+            DesktopSettingsApplyStatus.FailedWithoutChange,
+            [
+                new DesktopSettingsOperationResult(
+                    DesktopSettingsOperation.PanelAppearance,
+                    DesktopSettingsOperationStatus.Unchanged,
+                    null),
+                new DesktopSettingsOperationResult(
+                    DesktopSettingsOperation.MonitorBehavior,
+                    DesktopSettingsOperationStatus.Unchanged,
+                    null),
+                new DesktopSettingsOperationResult(
+                    DesktopSettingsOperation.Hotkeys,
+                    DesktopSettingsOperationStatus.Failed,
+                    failureMessage),
+                new DesktopSettingsOperationResult(
+                    DesktopSettingsOperation.Startup,
+                    DesktopSettingsOperationStatus.Unchanged,
+                    null),
+            ]);
+    }
+
+    private static void AddUnchangedOperations(
+        List<DesktopSettingsOperationResult> operations,
+        DesktopSettingsOperation operation)
+    {
+        operations.Add(new DesktopSettingsOperationResult(
+            operation,
+            DesktopSettingsOperationStatus.Unchanged,
+            null));
+    }
+
+    private static bool IsAppearanceChanged(
+        DesktopSettings requestedSettings,
+        DesktopSettings previousSettings)
+    {
+        return requestedSettings.CollapsedHeightDip != previousSettings.CollapsedHeightDip ||
+            requestedSettings.Opacity != previousSettings.Opacity;
+    }
+
+    private static DesktopSettings CreateDefaultSettings()
+    {
+        return new DesktopSettings(
+            200,
+            _DefaultOpacity,
+            PreferredMonitorBehavior.TaskbarMonitor,
+            new HotkeySettings("Ctrl+Alt+E", "Ctrl+Alt+S"),
+            new StartupSettings(false));
     }
 
     private static bool IsWithinWorkArea(PixelRect bounds, PixelRect workArea)
@@ -591,10 +1109,14 @@ public sealed class DesktopIntegrationModule : IDisposable
             ExternalException or
             ArgumentException or
             ObjectDisposedException or
+            UnauthorizedAccessException or
+            IOException or
             DllNotFoundException or
             EntryPointNotFoundException;
     }
 }
+
+internal readonly record struct ParsedHotkeys(GlobalHotkey Expand, GlobalHotkey Activation);
 
 internal interface IDesktopIntegrationRuntime : IDisposable
 {
@@ -608,11 +1130,22 @@ internal interface IDesktopIntegrationRuntime : IDisposable
 
     event EventHandler? TraySummonRequested;
 
+    event EventHandler? TraySettingsRequested
+    {
+        add { }
+        remove { }
+    }
+
     event EventHandler? TrayExitRequested;
 
     void Attach(nint windowHandle);
 
     bool RegisterHotKey(nint windowHandle, int identifier, uint virtualKey);
+
+    bool RegisterHotKey(nint windowHandle, int identifier, GlobalHotkey hotkey)
+    {
+        return RegisterHotKey(windowHandle, identifier, hotkey.VirtualKey);
+    }
 
     void UnregisterHotKey(nint windowHandle, int identifier);
 
@@ -623,6 +1156,12 @@ internal interface IDesktopIntegrationRuntime : IDisposable
         MonitorSnapshot panelMonitor);
 
     void PlaceWithoutActivation(nint windowHandle, PixelRect bounds);
+
+    void SetPanelOpacity(nint windowHandle, double opacity)
+    {
+        _ = windowHandle;
+        _ = opacity;
+    }
 
     void ActivateOnExplicitRequest(nint windowHandle);
 
@@ -669,6 +1208,8 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
 
     public event EventHandler? TraySummonRequested;
 
+    public event EventHandler? TraySettingsRequested;
+
     public event EventHandler? TrayExitRequested;
 
     public void Attach(nint windowHandle)
@@ -706,13 +1247,22 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
 
     public bool RegisterHotKey(nint windowHandle, int identifier, uint virtualKey)
     {
+        return RegisterHotKey(
+            windowHandle,
+            identifier,
+            new GlobalHotkey(
+                NativeMethods.ModifierControl | NativeMethods.ModifierAlt,
+                virtualKey,
+                string.Empty));
+    }
+
+    public bool RegisterHotKey(nint windowHandle, int identifier, GlobalHotkey hotkey)
+    {
         return NativeMethods.RegisterHotKey(
             windowHandle,
             identifier,
-            NativeMethods.ModifierControl |
-            NativeMethods.ModifierAlt |
-            NativeMethods.ModifierNoRepeat,
-            virtualKey);
+            hotkey.Modifiers | NativeMethods.ModifierNoRepeat,
+            hotkey.VirtualKey);
     }
 
     public void UnregisterHotKey(nint windowHandle, int identifier)
@@ -735,6 +1285,11 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
     public void PlaceWithoutActivation(nint windowHandle, PixelRect bounds)
     {
         WindowPlacementService.PlaceWithoutActivation(windowHandle, bounds);
+    }
+
+    public void SetPanelOpacity(nint windowHandle, double opacity)
+    {
+        WindowPlacementService.SetOpacity(windowHandle, opacity);
     }
 
     public void ActivateOnExplicitRequest(nint windowHandle)
@@ -788,6 +1343,7 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
             _trayIconService = new TrayIconService();
             _trayIconService.ToggleVisibilityRequested += HandleTrayToggleVisibilityRequested;
             _trayIconService.SummonRequested += HandleTraySummonRequested;
+            _trayIconService.SettingsRequested += HandleTraySettingsRequested;
             _trayIconService.ExitRequested += HandleTrayExitRequested;
             _trayIconService.SetPanelVisible(isVisible);
         }
@@ -810,6 +1366,7 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
 
         _trayIconService.ToggleVisibilityRequested -= HandleTrayToggleVisibilityRequested;
         _trayIconService.SummonRequested -= HandleTraySummonRequested;
+        _trayIconService.SettingsRequested -= HandleTraySettingsRequested;
         _trayIconService.ExitRequested -= HandleTrayExitRequested;
         _trayIconService.Dispose();
         _trayIconService = null;
@@ -856,6 +1413,13 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
         _ = sender;
         _ = eventArguments;
         TraySummonRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void HandleTraySettingsRequested(object? sender, EventArgs eventArguments)
+    {
+        _ = sender;
+        _ = eventArguments;
+        TraySettingsRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void HandleTrayExitRequested(object? sender, EventArgs eventArguments)

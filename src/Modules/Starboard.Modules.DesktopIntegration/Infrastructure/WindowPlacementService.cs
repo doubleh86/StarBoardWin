@@ -57,6 +57,39 @@ internal static class WindowPlacementService
         }
     }
 
+    internal static void SetOpacity(nint windowHandle, double opacity)
+    {
+        if (opacity < 0 || opacity > 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(opacity));
+        }
+
+        var currentStyle = NativeMethods.GetWindowLongPtrW(
+            windowHandle,
+            NativeMethods.WindowLongExtendedStyle);
+        var updatedStyle = new nint(
+            currentStyle.ToInt64() | NativeMethods.ExtendedStyleLayered);
+        Marshal.SetLastPInvokeError(0);
+        var previousStyle = NativeMethods.SetWindowLongPtrW(
+            windowHandle,
+            NativeMethods.WindowLongExtendedStyle,
+            updatedStyle);
+        if (previousStyle == 0 && Marshal.GetLastPInvokeError() != 0)
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
+        }
+
+        var alpha = (byte)Math.Round(opacity * byte.MaxValue, MidpointRounding.AwayFromZero);
+        if (NativeMethods.SetLayeredWindowAttributes(
+            windowHandle,
+            0,
+            alpha,
+            NativeMethods.LayeredWindowAlpha) == false)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+    }
+
     internal static void ActivateOnExplicitRequest(nint windowHandle)
     {
         var currentThreadIdentifier = NativeMethods.GetCurrentThreadId();

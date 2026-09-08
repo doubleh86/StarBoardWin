@@ -7,6 +7,7 @@ internal sealed class TrayIconService : IDisposable
 {
     private readonly ContextMenuStrip _contextMenu;
     private readonly ToolStripMenuItem _toggleVisibilityItem;
+    private readonly ToolStripMenuItem _settingsItem;
     private readonly ToolStripMenuItem _exitItem;
     private readonly NotifyIcon _notifyIcon;
 
@@ -19,6 +20,12 @@ internal sealed class TrayIconService : IDisposable
             AccessibleName = "터미널 표시 또는 숨기기",
         };
         _toggleVisibilityItem.Click += HandleToggleVisibilityClick;
+
+        _settingsItem = new ToolStripMenuItem("설정")
+        {
+            AccessibleName = "Starboard 설정 열기",
+        };
+        _settingsItem.Click += HandleSettingsClick;
 
         _exitItem = new ToolStripMenuItem("종료")
         {
@@ -33,6 +40,7 @@ internal sealed class TrayIconService : IDisposable
             ShowImageMargin = false,
         };
         _contextMenu.Items.Add(_toggleVisibilityItem);
+        _contextMenu.Items.Add(_settingsItem);
         _contextMenu.Items.Add(new ToolStripSeparator());
         _contextMenu.Items.Add(_exitItem);
 
@@ -49,6 +57,8 @@ internal sealed class TrayIconService : IDisposable
     internal event EventHandler? ToggleVisibilityRequested;
 
     internal event EventHandler? SummonRequested;
+
+    internal event EventHandler? SettingsRequested;
 
     internal event EventHandler? ExitRequested;
 
@@ -70,6 +80,7 @@ internal sealed class TrayIconService : IDisposable
         _notifyIcon.Visible = false;
         _notifyIcon.MouseClick -= HandleNotifyIconMouseClick;
         _toggleVisibilityItem.Click -= HandleToggleVisibilityClick;
+        _settingsItem.Click -= HandleSettingsClick;
         _exitItem.Click -= HandleExitClick;
         _notifyIcon.Dispose();
         _contextMenu.Dispose();
@@ -97,5 +108,12 @@ internal sealed class TrayIconService : IDisposable
         _ = sender;
         _ = eventArguments;
         ExitRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void HandleSettingsClick(object? sender, EventArgs eventArguments)
+    {
+        _ = sender;
+        _ = eventArguments;
+        SettingsRequested?.Invoke(this, EventArgs.Empty);
     }
 }
