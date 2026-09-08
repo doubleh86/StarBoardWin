@@ -219,7 +219,7 @@ Windows API 동작은 이 기획만으로 검증 완료된 것으로 취급하�
 ## 구현 단계
 
 - [ ] P0 기준선·환경·실제 UI 확인
-- [ ] P1~P4 Windows 안정화와 A gate
+- [x] P1~P4 Windows 안정화 코드와 자동 A gate (hardware matrix는 pending)
 - [ ] P5~P9 설정 기능과 B gate
 - [ ] P10~P11 portable 배포와 C gate
 
@@ -265,6 +265,25 @@ ConPTY, visible window가 정상이라고 보고하지 않는다. Explorer 재�
 
 - 2026-09-05: 기준 코드와 기존 계획을 확인하고 이 문서를 작성했다. 제품 코드는
   수정하지 않았고 오케스트레이터 실행·build/test는 이번 문서 작업에서 수행하지 않았다.
+- 2026-09-07 (P4-window-integration 착수): P2 정책 reducer와 P3의 monitor/taskbar/DPI,
+  foreground/fullscreen 관찰 adapter가 존재하지만 기존 module 진입점은 단순 geometry
+  timer만 사용하고 host는 축약된 window message만 전달하는 상태임을 확인했다. P4는
+  `DesktopIntegrationModule`이 정책 상태와 observer 수명을 소유하고, host가 정책의
+  표시 요청만 WPF `Show`/`Hide`로 반영하도록 연결한다. background reconciliation은
+  activation과 z-order를 보존하며, tray/호출 단축키만 사용자 표시·활성화 요청으로
+  처리한다. 자동 검증은 가짜 native/placement/observer seam을 사용한 상태 전이와
+  전체 solution test로 수행하고, 실제 Explorer 재시작·auto-hide·exclusive fullscreen·
+  multi-monitor/mixed-DPI는 별도 hardware/manual 결과로 남긴다.
+- 2026-09-07 (P4-window-integration 완료): module 진입점이 user visibility, mode,
+  engagement와 last-safe frame을 reducer 입력으로 관리하고 display/foreground observer,
+  1초 fallback, tray 재생성과 전체 window message를 연결했다. host는 policy presentation을
+  dispatcher에서 반영하고 `Activated`/`Deactivated`만 engagement로 전달한다. simulated
+  integration 6개와 실제 WPF HWND smoke 1개가 통과했으며, smoke에서 실제 bottom
+  taskbar work area 안 배치, focus 보존과 expand/collapse 복원을 확인했다. 실행 중인
+  별도 설치본의 single-instance guard 때문에 이번 build의 전체 tray/terminal executable
+  smoke는 보류했고 Explorer 재시작, auto-hide, fullscreen, multi-monitor/mixed-DPI 실제
+  장비 항목도 `docs/test-plan.md`에 `Not run` 또는 `Blocked`로 유지했다. 지정된 restore,
+  Debug solution build와 전체 137개 automated test가 모두 통과했다.
 
 ## 미결정 사항
 
@@ -275,8 +294,10 @@ metadata를 확인한 뒤 P10에서 정한다. 외부 서비스나 새로운 대
 
 ## 완료 요약
 
-기획 및 작업 분해 작성 완료, 구현 대기다. 구현 완료 시 이 절을 실제 변경 동작,
-검증 결과, release 산출물 경로, 남은 manual 항목과 제한으로 교체한다.
+P4 Windows 창 통합은 완료했다. 환경 reconciliation은 사용자 숨김을 덮어쓰지 않고,
+같은 monitor fullscreen에서는 panel을 임시 억제하며, 복구와 background geometry 변경은
+activation/z-order를 보존한다. P5 이후 설정·배포 작업과 실제 display/fullscreen hardware
+matrix는 아직 남아 있다.
 
 ## 오케스트레이터 전달 프롬프트
 

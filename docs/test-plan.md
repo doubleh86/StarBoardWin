@@ -36,6 +36,23 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-07
+- 범위: P4 Windows 창 안정화 통합
+- 결과: 지정된 clean restore와 Debug solution build가 경고 0개·오류 0개로 통과했고,
+  전체 automated test 137개가 통과했다. 이 중 DesktopIntegration unit test 55개,
+  architecture test 5개, 창 정책·host integration test 7개다.
+- simulated integration에서 최신 display/DPI recapture, 사용자 숨김 → fullscreen →
+  `TaskbarCreated` → fullscreen 종료, 같은 monitor fullscreen 억제/복원, auto-hide 중
+  명시적 호출, 확장·축소와 monitor 제거 fallback을 검증했다.
+- 로컬 WPF smoke는 실제 bottom taskbar와 `1920x1032` work area에서 HWND를 생성해
+  panel이 work area 안에 있고, background 확장·축소가 foreground HWND를 바꾸지
+  않으며 원래 collapsed rectangle을 복원함을 확인했다.
+- 별도 바탕화면 배포본 Starboard가 실행 중이어서 single-instance guard가 이번
+  worktree executable의 동시 실행을 막았다. 기존 사용 process를 종료하지 않았고
+  이번 build의 tray/shortcut/terminal 전체 executable smoke는 수행하지 않았다.
+  Explorer 재시작, 실제 auto-hide 전환, fullscreen application, multi-monitor와
+  mixed-DPI hardware 검증도 `MAN-*`에서 `Not run`으로 유지한다.
+
 - 실행일: 2026-09-04
 - 범위: terminal focus border 제거와 schema 4 collapsed 높이 migration
 - 결과: renderer build, Debug solution build 경고 0개·오류 0개, 전체 test 86개 통과
@@ -124,16 +141,16 @@ npm run build
 | GEO-002 | top taskbar | panel이 work area 상단 안쪽에 붙음 | Passed |
 | GEO-003 | left/right taskbar | edge에 평행한 두께와 work area clamp 적용 | Passed |
 | GEO-004 | negative monitor coordinate | 음수 좌표를 보존하고 primary origin으로 clamp하지 않음 | Passed |
-| GEO-005 | 125/150/200% DPI | DIP height가 올바른 physical pixel로 변환됨 | Planned |
+| GEO-005 | 125/150/200% DPI | DIP height가 올바른 physical pixel로 변환됨 | Passed (automated) |
 | GEO-006 | 높이가 work area보다 큼 | 최소 여백을 보존하도록 clamp됨 | Passed |
 | GEO-007 | collapsed → expanded → collapsed | 원래 valid frame을 정확히 복원 | Passed |
-| GEO-008 | 기억한 monitor 제거 | 최신 taskbar monitor의 안전 frame으로 복구 | Planned |
-| POL-001 | idle + taskbar concealed | panel conceal | Planned |
-| POL-002 | active + taskbar concealed | 마지막 안전 frame 유지 | Planned |
-| POL-003 | expanded + taskbar concealed | expanded frame 유지 | Planned |
-| POL-004 | fullscreen on same monitor | panel demote/conceal | Planned |
-| POL-005 | fullscreen on other monitor | panel normal policy 유지 | Planned |
-| POL-006 | unknown taskbar presence | off-screen 이동 없이 last safe frame 유지 | Planned |
+| GEO-008 | 기억한 monitor 제거 | 최신 taskbar monitor의 안전 frame으로 복구 | Passed (simulated) |
+| POL-001 | idle + taskbar concealed | panel conceal | Passed (automated) |
+| POL-002 | active + taskbar concealed | 마지막 안전 frame 유지 | Passed (automated) |
+| POL-003 | expanded + taskbar concealed | expanded frame 유지 | Passed (automated) |
+| POL-004 | fullscreen on same monitor | panel demote/conceal | Passed (simulated) |
+| POL-005 | fullscreen on other monitor | panel normal policy 유지 | Passed (automated) |
+| POL-006 | unknown taskbar presence | off-screen 이동 없이 last safe frame 유지 | Passed (automated) |
 
 ### Terminal
 
@@ -201,6 +218,11 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-011 | 두 PowerShell session의 독립 상태 | environment, cwd, history와 background job이 서로 섞이지 않음 | Passed |
 | INT-012 | 한 session exit/restart/close | 다른 session의 interactive state가 그대로 유지됨 | Passed |
 | INT-013 | multi-session output drain + dispose | hidden GUI host가 8초 cleanup deadline 안에 정상 종료 | Passed |
+| INT-014 | display/DPI message와 observer recapture | 최신 monitor/DPI frame 적용, activation 없음 | Passed (simulated) |
+| INT-015 | 사용자 숨김 + fullscreen + Explorer 복구 | 사용자 호출 전까지 숨김 유지, tray 한 번 재생성 | Passed (simulated) |
+| INT-016 | same-monitor fullscreen 진입/종료 | 임시 conceal 뒤 foreground를 바꾸지 않고 복원 | Passed (simulated) |
+| INT-017 | auto-hide 중 명시적 호출 | fullscreen이 아닐 때만 표시·활성화 요청 | Passed (simulated) |
+| INT-018 | 실제 WPF HWND background 배치 | taskbar 비겹침, focus 보존, 확장·축소 복원 | Passed (local Windows) |
 
 ConPTY test는 각 case에 timeout을 두고 실패 시 orphan child process를 남기지 않는다.
 
@@ -217,6 +239,7 @@ ConPTY test는 각 case에 timeout을 두고 실패 시 orphan child process를 
 | SMK-007 | normal z-order | `WS_EX_TOPMOST` 없음, background expand/collapse focus 유지 | Passed |
 | SMK-008 | global panel 호출 | 비활성→표시·foreground, 활성→숨김 | Passed |
 | SMK-009 | 실제 tray icon 왼쪽 클릭 | 숨긴 panel 표시·foreground, normal z-order 유지 | Passed |
+| SMK-010 | P4 build 전체 executable/tray 재검증 | 이번 build로 tray·호출·terminal 수명 확인 | Blocked (existing instance) |
 
 ## Manual desktop matrix
 
