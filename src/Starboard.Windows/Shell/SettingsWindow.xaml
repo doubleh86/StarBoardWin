@@ -1,0 +1,27 @@
+<Window x:Class="Starboard.Windows.Shell.SettingsWindow"
+        x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Starboard 설정"
+        Width="640"
+        Height="780"
+        MinWidth="560"
+        MinHeight="680"
+        ShowInTaskbar="True"
+        WindowStartupLocation="CenterScreen">
+    <DockPanel Background="#1A1B26">
+        <Border x:Name="StatusBorder"
+                DockPanel.Dock="Bottom"
+                Margin="24,0,24,20"
+                Padding="12"
+                Background="#33202A"
+                BorderBrush="#F7768E"
+                BorderThickness="1"
+                Visibility="Collapsed">
+            <TextBlock x:Name="StatusText"
+                       Foreground="#FFD7DE"
+                       TextWrapping="Wrap" />
+        </Border>
+        <ContentPresenter x:Name="EditorContent" />
+    </DockPanel>
+</Window>

@@ -2,6 +2,7 @@ using System.Windows;
 using Starboard.Modules.DesktopIntegration;
 using Starboard.Modules.DesktopIntegration.Contracts;
 using Starboard.Modules.Preferences;
+using Starboard.Modules.Preferences.Contracts;
 using Starboard.Modules.Terminal;
 using Starboard.Modules.Terminal.Contracts;
 using Starboard.SharedKernel.Diagnostics;
@@ -19,6 +20,8 @@ internal sealed class AppCoordinator : IDisposable
     private readonly TerminalModule terminalModule;
 
     private MainWindow? mainWindow;
+    private SettingsApplicationService? settingsApplicationService;
+    private SettingsWindowController? settingsWindowController;
     private bool isDisposed;
 
     internal AppCoordinator()
@@ -31,6 +34,7 @@ internal sealed class AppCoordinator : IDisposable
         desktopIntegrationModule.PanelActivationToggleRequested += HandlePanelActivationToggleRequested;
         desktopIntegrationModule.PanelSummonRequested += HandlePanelSummonRequested;
         desktopIntegrationModule.PanelPresentationRequested += HandlePanelPresentationRequested;
+        desktopIntegrationModule.SettingsRequested += HandleSettingsRequested;
         desktopIntegrationModule.ExitRequested += HandleExitRequested;
     }
 
@@ -51,22 +55,40 @@ internal sealed class AppCoordinator : IDisposable
             windowHandle,
             new PanelOptions(settings.CollapsedHeightDip));
 
-        var theme = PreferencesModule.GetTheme(settings.Theme);
-        var terminalTheme = new TerminalTheme(
-            theme.Canvas,
-            theme.Foreground,
-            theme.Muted,
-            theme.Accent,
-            theme.Cursor,
-            theme.Selection,
-            theme.AnsiPalette);
+        var terminalSettings = SettingsApplicationService.ToTerminalSettings(settings);
         var terminalOptions = new TerminalOptions(
             settings.ShellExecutable,
             settings.FontFamily,
             settings.FontSize,
-            terminalTheme);
+            terminalSettings.Appearance.Theme);
         mainWindow.SetTerminalContent(terminalModule.Surface);
         await terminalModule.StartAsync(terminalOptions, cancellationToken);
+
+        var desktopResult = desktopIntegrationModule.ApplySettings(
+            SettingsApplicationService.ToDesktopSettings(settings));
+        var effectiveSettings = SettingsApplicationService.WithDesktopSettings(
+            settings,
+            desktopResult.EffectiveSettings);
+        ApplyHostAppearance(effectiveSettings);
+
+        settingsApplicationService = new SettingsApplicationService(
+            preferencesModule,
+            terminalModule,
+            desktopIntegrationModule,
+            settings,
+            effectiveSettings,
+            ApplyHostAppearance,
+            diagnosticLog);
+        settingsWindowController = new SettingsWindowController(CreateSettingsWindow);
+
+        if (desktopResult.Status != DesktopSettingsApplyStatus.Applied)
+        {
+            diagnosticLog.Write(
+                DiagnosticLevel.Warning,
+                "Host",
+                "ApplyStartupSettings",
+                "Saved desktop settings could not be fully applied during startup.");
+        }
 
         if (loadResult.RecoveryMessage is not null)
         {
@@ -90,7 +112,10 @@ internal sealed class AppCoordinator : IDisposable
         desktopIntegrationModule.PanelActivationToggleRequested -= HandlePanelActivationToggleRequested;
         desktopIntegrationModule.PanelSummonRequested -= HandlePanelSummonRequested;
         desktopIntegrationModule.PanelPresentationRequested -= HandlePanelPresentationRequested;
+        desktopIntegrationModule.SettingsRequested -= HandleSettingsRequested;
         desktopIntegrationModule.ExitRequested -= HandleExitRequested;
+        settingsWindowController?.Dispose();
+        settingsApplicationService?.Dispose();
         terminalModule.Dispose();
         desktopIntegrationModule.Dispose();
         mainWindow?.Close();
@@ -193,6 +218,26 @@ internal sealed class AppCoordinator : IDisposable
         application.Shutdown();
     }
 
+    private void HandleSettingsRequested(object? sender, EventArgs eventArguments)
+    {
+        _ = sender;
+        _ = eventArguments;
+
+        var application = Application.Current;
+        if (application is null)
+        {
+            return;
+        }
+
+        if (application.Dispatcher.CheckAccess() == false)
+        {
+            application.Dispatcher.Invoke(OpenSettingsOnExplicitRequest);
+            return;
+        }
+
+        OpenSettingsOnExplicitRequest();
+    }
+
     private void TogglePanelActivation()
     {
         if (mainWindow is null)
@@ -260,5 +305,27 @@ internal sealed class AppCoordinator : IDisposable
         {
             mainWindow.Hide();
         }
+    }
+
+    private SettingsWindow CreateSettingsWindow()
+    {
+        var applicationService = settingsApplicationService
+            ?? throw new InvalidOperationException("Settings application is unavailable before startup completes.");
+        var session = PreferencesModule.CreateSettingsEditor(
+            applicationService.PersistedSettings,
+            applicationService);
+        return new SettingsWindow(session, applicationService);
+    }
+
+    private void OpenSettingsOnExplicitRequest()
+    {
+        settingsWindowController?.OpenOnExplicitUserRequest();
+    }
+
+    private void ApplyHostAppearance(AppSettings settings)
+    {
+        var window = mainWindow
+            ?? throw new InvalidOperationException("The main window is unavailable.");
+        window.ApplyAppearance(settings, PreferencesModule.GetTheme(settings.Theme));
     }
 }

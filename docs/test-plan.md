@@ -177,11 +177,11 @@ npm run build
 
 | ID | Case | 기대 결과 | 상태 |
 |---|---|---|---|
-| SET-001 | settings 없음 | defaults 생성 | Planned |
-| SET-002 | partial document | 누락값만 defaults로 merge | Planned |
-| SET-003 | old schema | 지원 migration 후 current schema | Planned |
-| SET-004 | invalid JSON | backup 후 defaults, app 유지 | Planned |
-| SET-005 | atomic write failure | 마지막 정상 파일 유지 | Planned |
+| SET-001 | settings 없음 | defaults 생성 | Passed |
+| SET-002 | partial document | 누락값만 defaults로 merge | Passed |
+| SET-003 | old schema | 지원 migration 후 current schema | Passed |
+| SET-004 | invalid JSON | backup 후 defaults, app 유지 | Passed |
+| SET-005 | atomic write failure | 마지막 정상 파일 유지 | Passed |
 | SET-006 | out-of-range value | validator가 안전 범위로 교정하고 이유 반환 | Passed |
 | THM-001 | 네 built-in theme | 모든 필수 WPF/xterm/ANSI token 존재 | Passed |
 | THM-002 | ANSI palette | 각 theme가 정확히 16색 제공 | Passed |
@@ -192,9 +192,9 @@ npm run build
 | ID | Case | 기대 결과 | 상태 |
 |---|---|---|---|
 | HOT-001 | 호출 shortcut message | `Ctrl+Alt+S` message당 activation toggle event 한 번 | Passed |
-| HOT-002 | shortcut 충돌 | recoverable error, 앱 계속 실행 | Planned |
-| RUN-001 | startup command quoting | 공백이 있는 executable path가 정확히 quote됨 | Planned |
-| RUN-002 | enable/disable | 현재 user Run value만 생성/제거 | Planned |
+| HOT-002 | shortcut 충돌 | recoverable error, 앱 계속 실행 | Passed (simulated) |
+| RUN-001 | startup command quoting | 공백이 있는 executable path가 정확히 quote됨 | Passed |
+| RUN-002 | enable/disable | 현재 user Run value만 생성/제거 | Passed (simulated) |
 | VDT-001 | official API available | capability와 current-desktop query 반환 | Planned |
 | VDT-002 | COM unavailable | no-op fallback과 unsupported capability | Planned |
 
@@ -223,6 +223,13 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-016 | same-monitor fullscreen 진입/종료 | 임시 conceal 뒤 foreground를 바꾸지 않고 복원 | Passed (simulated) |
 | INT-017 | auto-hide 중 명시적 호출 | fullscreen이 아닐 때만 표시·활성화 요청 | Passed (simulated) |
 | INT-018 | 실제 WPF HWND background 배치 | taskbar 비겹침, focus 보존, 확장·축소 복원 | Passed (local Windows) |
+| INT-019 | 설정 apply 성공 순서 | Terminal → DesktopIntegration → host surface → persistence | Passed (simulated) |
+| INT-020 | 취소·validation 오류 | live module과 저장소를 변경하지 않고 편집 draft 유지 | Passed (automated contracts) |
+| INT-021 | renderer/shortcut/startup 적용 실패 | 저장하지 않고 이전 Terminal/Desktop snapshot으로 복구 | Passed (simulated) |
+| INT-022 | persistence 실패 | DesktopIntegration → Terminal 역순 rollback, 마지막 파일 유지 | Passed (simulated) |
+| INT-023 | rollback 실패 | persisted/effective 상태 분리 표시, 같은 draft로 재시도 성공 | Passed (simulated) |
+| INT-024 | tray 설정 창 단일 수명 | 중복 창 없이 기존 창 활성화, 닫을 때 panel 활성화 호출 없음 | Passed (simulated) |
+| INT-025 | live appearance와 새-tab shell | 기존 session PID/cwd 유지, 변경 shell은 이후 tab만 사용 | Passed (module automated) |
 
 ConPTY test는 각 case에 timeout을 두고 실패 시 orphan child process를 남기지 않는다.
 
@@ -284,6 +291,8 @@ build hash를 함께 기록한다.
 | MAN-034 | tab 접근성·overflow·shortcut | 상태/이름/focus-visible, 8개 overflow, 탭 단축키와 Ctrl+W 전달 | Not run |
 | MAN-035 | schema 4 collapsed height | 200 DIP에서 tab strip 아래 약 8행, 사용자 높이 보존 | Not run |
 | MAN-036 | terminal focus surface | terminal click 후 노란 외곽선 없이 caret과 입력 동작 유지 | Not run |
+| MAN-037 | tray 설정 창 수명·focus | 연속 요청 시 한 창, 닫은 뒤 이전 foreground를 강제 변경하지 않음 | Not run |
+| MAN-038 | 실제 설정 live apply/rollback | theme/font/높이 적용 중 PID·cwd 유지, hotkey 충돌과 저장 실패 UI 확인 | Not run |
 
 ## Focus 검증 절차
 

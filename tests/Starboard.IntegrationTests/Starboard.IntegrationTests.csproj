@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Starboard.Windows\Starboard.Windows.csproj" />
     <ProjectReference Include="..\Starboard.ConPtyTestHost\Starboard.ConPtyTestHost.csproj" />
     <ProjectReference Include="..\..\src\Modules\Starboard.Modules.Terminal\Starboard.Modules.Terminal.csproj" />
     <ProjectReference Include="..\..\src\Modules\Starboard.Modules.DesktopIntegration\Starboard.Modules.DesktopIntegration.csproj" />

@@ -105,7 +105,7 @@ public sealed class ModuleBoundaryTests
     }
 
     [TestMethod]
-    public void HostSourceDoesNotReachIntoModuleInfrastructureNamespaces()
+    public void HostSourceDoesNotReachIntoModuleImplementationNamespaces()
     {
         var root = FindSolutionRoot();
         var hostRoot = Path.Combine(root, "src", "Starboard.Windows");
@@ -118,14 +118,17 @@ public sealed class ModuleBoundaryTests
             {
                 return File.ReadLines(path).Any(line =>
                     line.Contains("Starboard.Modules.", StringComparison.Ordinal) &&
-                    line.Contains(".Infrastructure", StringComparison.Ordinal));
+                    (line.Contains(".Application", StringComparison.Ordinal) ||
+                     line.Contains(".Domain", StringComparison.Ordinal) ||
+                     line.Contains(".Infrastructure", StringComparison.Ordinal) ||
+                     line.Contains(".Presentation", StringComparison.Ordinal)));
             })
             .ToArray();
 
         Assert.AreEqual(
             0,
             violations.Length,
-            "The host must compose modules through contracts and entry points only.");
+            "The host must compose modules through public contracts and entry points only.");
     }
 
     private static string FindSolutionRoot()

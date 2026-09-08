@@ -200,6 +200,27 @@ integration 담당자는 worker 결과를 해당 wave가 시작한 기준 위에
 전체 검증을 수행한다. 공용 계약 수정이 필요하면 영향 worker와 계획부터 갱신한다.
 원래 작업 트리의 기존 변경을 stash/reset/삭제하지 않는다.
 
+### P9 설정 통합 실행 범위
+
+P6~P8의 편집기와 module별 적용·복구 구현을 기준선으로 유지하고, P9에서는
+`Starboard.Windows` composition root만 세 공개 계약을 연결한다. Preferences가
+검증한 snapshot을 Terminal, DesktopIntegration, 영속화 순서로 적용하며 뒤 단계가
+실패하면 DesktopIntegration, Terminal 역순으로 이전 snapshot을 요청한다. 각 module이
+보고한 effective snapshot과 마지막 persisted snapshot은 host가 별도로 보관해 복구
+불완전 상태를 설정 창에 표시한다.
+
+host의 설정 window는 하나만 소유한다. tray의 명시적 설정 요청은 기존 window가
+있으면 그 창만 활성화하며, 닫기 경로에서는 panel이나 다른 foreground window를
+명시적으로 활성화하지 않는다. Terminal 설정 변환은 live appearance와 이후 새 tab의
+기본 shell만 전달하므로 기존 session의 PID와 working directory 수명은 P7 계약을
+그대로 따른다.
+
+P9 영향 파일은 `src/Starboard.Windows/Composition/`, `src/Starboard.Windows/Shell/`,
+host project 설정, integration/architecture tests와 이 roadmap·architecture·test plan이다.
+module 내부, renderer asset, 설정 schema와 저장 위치는 변경하지 않는다. 저장 실패나
+module apply 실패를 재현하는 host seam은 production module public result type만 사용하며
+native/renderer 구현을 host로 끌어올리지 않는다.
+
 ## 위험 영역과 fallback
 
 | 위험 | 대응 |
@@ -220,7 +241,7 @@ Windows API 동작은 이 기획만으로 검증 완료된 것으로 취급하�
 
 - [ ] P0 기준선·환경·실제 UI 확인
 - [x] P1~P4 Windows 안정화 코드와 자동 A gate (hardware matrix는 pending)
-- [ ] P5~P9 설정 기능과 B gate
+- [x] P5~P9 설정 기능과 자동 B gate (실제 tray/focus·실패 UI 수동 matrix는 pending)
 - [ ] P10~P11 portable 배포와 C gate
 
 각 gate는 기능 구현과 자동 검증이 완료되고, 실제 실행으로 확인 가능한 핵심 동작이
@@ -284,6 +305,14 @@ ConPTY, visible window가 정상이라고 보고하지 않는다. Explorer 재�
   smoke는 보류했고 Explorer 재시작, auto-hide, fullscreen, multi-monitor/mixed-DPI 실제
   장비 항목도 `docs/test-plan.md`에 `Not run` 또는 `Blocked`로 유지했다. 지정된 restore,
   Debug solution build와 전체 137개 automated test가 모두 통과했다.
+- 2026-09-08 (P9-settings-integration 완료): Preferences editor의 validated save callback을
+  host가 Terminal, DesktopIntegration, WPF surface, persistence 순서로 조정하고 persistence
+  또는 뒤 단계 실패 시 DesktopIntegration, Terminal 역순으로 마지막 persisted snapshot을
+  적용하게 했다. persisted/effective 상태가 갈라지면 설정 창에 두 값을 구분해 표시하며
+  editor draft를 유지한다. tray 설정 요청은 단일 창을 재사용하고 닫기에서는 다른 창을
+  활성화하지 않는다. build server 종료 후 지정 SDK로 restore, integration build/test와
+  Debug solution build 및 전체 180개 automated test가 통과했다. 실제 tray focus, 실제
+  renderer failure UI와 로그인 startup은 manual matrix에 `Not run`으로 유지했다.
 
 ## 미결정 사항
 
@@ -294,10 +323,11 @@ metadata를 확인한 뒤 P10에서 정한다. 외부 서비스나 새로운 대
 
 ## 완료 요약
 
-P4 Windows 창 통합은 완료했다. 환경 reconciliation은 사용자 숨김을 덮어쓰지 않고,
+P4 Windows 창 통합과 P5~P9 설정 적용·복구 통합은 완료했다. 환경 reconciliation은 사용자 숨김을 덮어쓰지 않고,
 같은 monitor fullscreen에서는 panel을 임시 억제하며, 복구와 background geometry 변경은
-activation/z-order를 보존한다. P5 이후 설정·배포 작업과 실제 display/fullscreen hardware
-matrix는 아직 남아 있다.
+activation/z-order를 보존한다. 설정 저장은 live apply 성공 뒤에만 수행하고 부분 실패는
+마지막 persisted snapshot으로 보상한다. P10 이후 portable 배포와 실제 display/fullscreen,
+tray/focus/settings failure hardware matrix는 아직 남아 있다.
 
 ## 오케스트레이터 전달 프롬프트
 

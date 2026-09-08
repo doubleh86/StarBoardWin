@@ -95,6 +95,36 @@ ConPTY interop를 참조하지 않으며 terminal content를 알지 않는다.
 OS startup registry 적용은 DesktopIntegration 책임이다. Preferences는 사용자가
 선택한 boolean만 저장하고 host가 적용을 조정한다.
 
+### 설정 적용과 복구 조정
+
+tray의 `SettingsRequested`는 host가 소유한 단일 설정 window controller로 전달된다.
+Preferences는 content와 validation을 소유하고, host window는 그 content를 담는 수명
+경계만 제공한다. 이미 열린 창에 대한 tray 요청만 명시적으로 활성화하며 닫기에서는
+terminal panel이나 이전 foreground application을 활성화하는 API를 호출하지 않는다.
+
+Preferences가 유효성을 확인한 draft의 저장 callback은 host composition root에서 다음
+순서로 처리한다.
+
+1. Preferences snapshot을 Terminal과 DesktopIntegration의 public settings contract로
+   변환한다.
+2. Terminal appearance와 이후 생성할 tab의 기본 shell을 적용한다. 기존 tab/session을
+   재생성하지 않는다.
+3. DesktopIntegration 높이·opacity, global hotkey와 per-user startup 설정을 적용한다.
+4. WPF host surface의 theme와 geometry 속성을 같은 snapshot으로 맞춘다.
+5. 모든 live apply가 성공한 뒤 Preferences atomic store에 영속화한다.
+
+Terminal이나 DesktopIntegration은 자체 operation의 실패와 local rollback 결과를
+`EffectiveSettings`로 보고한다. 뒤 단계 또는 persistence가 실패하면 host는 마지막
+persisted snapshot을 DesktopIntegration, Terminal 역순으로 다시 적용한다. host는
+마지막 persisted snapshot과 두 module result에서 합성한 실제 effective snapshot을
+별도로 유지한다. 둘이 다르면 성공으로 보고하지 않고 설정 창에 두 상태와 재시도
+가능성을 표시한다. 편집기는 save callback 예외 시 draft와 창을 유지한다.
+
+기본 shell 변경은 Terminal의 새-tab default만 바꾸므로 기존 tab의 PID, working
+directory, environment와 restart shell capture는 유지된다. hotkey 교체와 startup
+등록/복구는 DesktopIntegration 내부 adapter가 소유하며, startup은 앱 소유 HKCU Run
+value 이외의 항목을 수정하지 않는다.
+
 ### SharedKernel
 
 둘 이상의 module이 같은 의미로 쓰는 diagnostics contract처럼 작고 안정적인
