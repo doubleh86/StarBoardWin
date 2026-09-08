@@ -25,6 +25,7 @@
 | settings | `%LOCALAPPDATA%/Starboard/settings.json`, versioned atomic write |
 | startup | per-user `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run` |
 | privacy | telemetry와 runtime network 없음, command/output logging 없음 |
+| portable release | central product version + Git build commit, self-contained win-x64 ZIP + SHA-256 |
 
 ## 모듈러 모놀리스
 
@@ -490,6 +491,28 @@ WebView2 transparent composition 위험 때문에 glassmorphism과 blur를 쓰�
 - command, terminal output, clipboard, environment value와 full custom arguments는
   기록하지 않는다.
 - analytics, crash upload, remote config와 runtime asset fetch를 사용하지 않는다.
+
+## Portable release와 build metadata
+
+`Directory.Build.props`의 `VersionPrefix`가 제품 버전의 단일 정본이다. 일반 local
+build는 commit을 `unknown`으로 표시할 수 있고, package 흐름은 확인한 전체 Git HEAD를
+`StarboardBuildCommit`으로 전달한다. host assembly의 `ProductVersion`/`BuildCommit`,
+설정 화면과 `release-metadata.json`은 이 두 값을 함께 사용한다.
+
+`scripts/package-portable.ps1`은 Git이 보고한 root와 script의 root가 일치하는지 먼저
+검사한다. 출력은 ignored `out/portable/<version>` 아래에 두고 재실행 때는 그 버전의
+`staging`만 정리한다. staging이 reparse point이거나 계산한 경로가 root를 벗어나면
+중단한다. publish는 self-contained `win-x64`, multi-file이고 WebView2 Runtime 자체는
+포함하지 않는다. committed `Renderer` asset, 제품 MIT `LICENSE`, README, third-party
+notice/license와 release metadata를 포함한 뒤 settings/log/WebView2 user data, dump,
+PDB와 개발 PC 절대 경로가 없는지 검사한다.
+
+ZIP entry는 ordinal 경로 순서와 source commit 시각을 사용한다. SHA-256 파일을 만든 뒤
+다시 계산해 일치 여부를 확인하고 별도 staging에 압축 해제한다. 추출본은 전용 smoke
+인자로 시작하여 assembly와 package metadata, executable/local renderer 및 기본 shell
+경로를 검사하고 즉시 종료한다. 이 mode에서는 Preferences load와 Desktop startup
+적용을 시작하지 않으므로 기존 사용자 설정과 HKCU 자동 실행 경로를 변경하지 않는다.
+WebView2 Runtime 실제 초기화와 terminal UI interaction은 별도 manual release matrix다.
 - renderer content security policy는 local asset과 필요한 inline bootstrapping만
   허용하도록 최소화한다.
 

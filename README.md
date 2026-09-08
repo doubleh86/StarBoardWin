@@ -5,7 +5,7 @@ Starboard는 Windows 작업표시줄 바로 위에 계속 머무는 작은 termi
 수명 동안 유지하면서 현재 사용 중인 창의 focus를 불필요하게 빼앗지 않는 것을
 목표로 한다.
 
-현재 구현은 v0.1의 Phase 1 vertical slice다. Windows 11 x64를 우선 지원하며
+현재 구현은 v0.1 portable release 기준이다. Windows 11 x64를 우선 지원하며
 Windows 10 1809 이상은 best-effort 대상이다.
 
 ## 현재 동작
@@ -26,12 +26,12 @@ Windows 10 1809 이상은 best-effort 대상이다.
 - 평소에는 다른 앱을 덮어두지 않는 normal z-order, tray 표시 요청 때만 활성화
 - selection-aware `Ctrl+C`, `Ctrl+Shift+C` 복사와 `Ctrl+V`, `Ctrl+Shift+V` 붙여넣기
 - single instance와 1초 taskbar geometry reconciliation
-- 사용자별 JSON 설정 model과 Dark, Light, One Dark, Tokyo Night theme catalog
+- tray에서 여는 설정 창, 사용자별 JSON 설정과 Dark, Light, One Dark, Tokyo Night theme
+- 설정 화면의 제품 버전과 package build commit 표시
 
-아직 Phase 2 이후인 auto-hide 동기화, fullscreen 억제, multi-monitor hot-plug,
-settings UI, 자동 시작과 virtual desktop 보강은 구현되지 않았다. 자세한 범위는
-[`docs/plans/2026-09-01-windows-starboard-v01.md`](docs/plans/2026-09-01-windows-starboard-v01.md)를
-참고한다.
+실제 multi-monitor/mixed-DPI, taskbar auto-hide, fullscreen, IME와 로그인 자동 시작
+장비 검증은 아직 남아 있다. 구현 범위와 미수행 matrix는
+[`docs/test-plan.md`](docs/test-plan.md)를 참고한다.
 
 탭은 앱을 다시 시작하면 복원되지 않는다. 비활성 탭은 DOM에서 제거하지 않아
 10,000줄 xterm scrollback과 shell 상태를 유지하지만, renderer process 자체가
@@ -57,23 +57,52 @@ dotnet test Starboard.Windows.sln --configuration Debug --no-build --no-restore
 dotnet run --project src/Starboard.Windows/Starboard.Windows.csproj
 ```
 
-이 개발 PC에서는 system `dotnet` 대신 다음 SDK가 확인돼 있다.
+## Portable 배포 만들기
+
+다음 한 명령은 build server를 정상 종료한 뒤 restore, Release build/test,
+self-contained `win-x64` publish, ZIP과 SHA-256 생성, 추출 smoke를 순서대로 수행한다.
 
 ```powershell
-& 'C:/Users/round1studio_14/.dotnet/dotnet.exe' build Starboard.Windows.sln --configuration Debug
+pwsh -NoProfile -File scripts/package-portable.ps1
 ```
 
-관리자 권한이나 별도 .NET Runtime 없이 실행할 수 있는 x64 폴더는 다음 명령으로
-생성한다.
+`dotnet`이 PATH에 없으면 절대 경로를 저장소에 기록하지 않고 실행 시에만 넘긴다.
 
 ```powershell
-dotnet publish src/Starboard.Windows/Starboard.Windows.csproj `
-  --configuration Release --runtime win-x64 --self-contained true `
-  --output artifacts/Starboard-win-x64 -p:PublishSingleFile=false
-& ./artifacts/Starboard-win-x64/Starboard.exe
+pwsh -NoProfile -File scripts/package-portable.ps1 -DotNetPath '<dotnet.exe 경로>'
 ```
 
-WebView2 Evergreen Runtime은 self-contained .NET publish와 별도로 필요하다.
+결과는 `out/portable/<version>/Starboard-<version>-win-x64.zip`과 같은 이름의
+`.sha256` 파일이다. 스크립트는 Git이 확인한 저장소 루트 아래의 해당 버전
+`staging`만 정리하며, reparse point나 범위를 벗어난 경로는 거부한다. ZIP은 실행
+파일, local renderer, 제품 `LICENSE`, third-party notice와 release metadata를 포함하고
+사용자 설정, 로그, WebView2 user data와 PDB는 거부한다. 같은 source commit과 SDK/
+dependency 입력에서 파일 순서와 ZIP entry 시각을 고정해 다시 만들 수 있다.
+
+portable package는 .NET Runtime을 포함하므로 별도 .NET 설치가 필요 없지만,
+**Microsoft Edge WebView2 Evergreen Runtime은 별도 필수 요구사항**이다. WebView2가
+없으면 Microsoft의 Evergreen Runtime을 설치한 뒤 다시 실행한다.
+
+## Portable 설치·업데이트·복귀
+
+Starboard는 설치 프로그램 없이 버전별 새 폴더에 압축을 풀어 사용한다. 업데이트
+전에 terminal의 foreground/background 작업을 모두 끝내고 shell을 종료한 다음 tray의
+`종료`를 선택한다. 앱 process가 남아 있는 상태에서 파일을 덮어쓰지 않는다.
+
+1. 새 ZIP을 이전 버전과 다른 새 폴더에 압축 해제한다.
+2. `.sha256`의 값과 ZIP의 `Get-FileHash -Algorithm SHA256` 결과가 같은지 확인한다.
+3. 새 폴더의 `Starboard.exe`를 실행하고 terminal과 설정 화면의 버전·build commit을
+   `release-metadata.json`과 대조한다.
+4. `%LOCALAPPDATA%/Starboard/settings.json`은 배포 폴더 밖에 있으므로 기존 사용자
+   설정이 유지된다.
+5. `로그인 시 자동 실행`이 켜져 있었다면 설정에서 한 번 끈 뒤 다시 켜 새 폴더의
+   실행 경로로 갱신한다. 재로그인 전에 새 경로가 적용됐는지 확인한다.
+
+문제가 생기면 새 앱을 tray에서 종료하고 이전 버전 폴더의 `Starboard.exe`를 다시
+실행한다. 자동 실행을 사용하면 이전 버전 설정에서 껐다 켜 경로를 되돌린다. 사용자
+설정 schema가 이전 버전에서 지원되지 않는 경우에는 `%LOCALAPPDATA%/Starboard`를
+먼저 백업하고, 필요할 때 `settings.json.bak`을 복원한다. 두 버전 폴더는 복귀 확인이
+끝날 때까지 유지한다.
 
 ## Renderer 갱신
 

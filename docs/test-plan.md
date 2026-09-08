@@ -36,6 +36,22 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-08
+- 범위: P10~P11 portable 배포와 C gate 자동 검증
+- 결과: build server 정상 종료 후 지정 SDK로 restore, Debug solution build 경고
+  0개·오류 0개와 전체 automated test 186개가 통과했다. package 단일 흐름의 Release
+  build와 동일한 186개 test도 통과했다.
+- self-contained `win-x64` publish에서 499-entry ZIP과 SHA-256을 생성했다. 실제 hash
+  재계산, 같은 staging의 결정적 ZIP 재생성 및 clean staging 전체 재실행 hash, executable version/build commit,
+  local renderer, 제품/third-party license와 notice 포함 검사가 통과했다. settings, log,
+  WebView2 user data, dump, PDB와 개발 PC 절대 경로는 없었다.
+- ZIP을 버전 staging에 다시 풀고 전용 executable smoke를 실행해 metadata, renderer와
+  기본 shell 경로를 확인했다. smoke는 Preferences/startup 적용 전에 종료해 기존 사용자
+  설정이나 자동 실행 경로를 바꾸지 않았다.
+- 실제 WebView2 Runtime 초기화, interactive terminal UI, multi-monitor/mixed-DPI,
+  fullscreen, auto-hide, IME와 실제 portable update/startup/rollback은 수행하지 않아
+  `MAN-*`에 `Not run`으로 유지한다.
+
 - 실행일: 2026-09-07
 - 범위: P4 Windows 창 안정화 통합
 - 결과: 지정된 clean restore와 Debug solution build가 경고 0개·오류 0개로 통과했고,
@@ -230,6 +246,8 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-023 | rollback 실패 | persisted/effective 상태 분리 표시, 같은 draft로 재시도 성공 | Passed (simulated) |
 | INT-024 | tray 설정 창 단일 수명 | 중복 창 없이 기존 창 활성화, 닫을 때 panel 활성화 호출 없음 | Passed (simulated) |
 | INT-025 | live appearance와 새-tab shell | 기존 session PID/cwd 유지, 변경 shell은 이후 tab만 사용 | Passed (module automated) |
+| INT-026 | build metadata 표시 | 설정 표시용 version/short commit이 assembly metadata에서 일관되게 생성됨 | Passed (automated) |
+| INT-027 | portable smoke guard | metadata mismatch, renderer 누락과 shell 누락을 non-zero로 거부하고 normal startup은 변경하지 않음 | Passed (automated) |
 
 ConPTY test는 각 case에 timeout을 두고 실패 시 orphan child process를 남기지 않는다.
 
@@ -247,6 +265,8 @@ ConPTY test는 각 case에 timeout을 두고 실패 시 orphan child process를 
 | SMK-008 | global panel 호출 | 비활성→표시·foreground, 활성→숨김 | Passed |
 | SMK-009 | 실제 tray icon 왼쪽 클릭 | 숨긴 panel 표시·foreground, normal z-order 유지 | Passed |
 | SMK-010 | P4 build 전체 executable/tray 재검증 | 이번 build로 tray·호출·terminal 수명 확인 | Blocked (existing instance) |
+| SMK-011 | versioned portable package | ZIP/SHA-256 일치, 필수 renderer/license/metadata 포함, runtime/user/developer data 제외 | Passed (automated package) |
+| SMK-012 | extracted portable smoke mode | 추출 executable 시작, version/commit·renderer·기본 shell 확인 후 user settings 적용 없이 종료 | Passed (automated package) |
 
 ## Manual desktop matrix
 
@@ -293,6 +313,8 @@ build hash를 함께 기록한다.
 | MAN-036 | terminal focus surface | terminal click 후 노란 외곽선 없이 caret과 입력 동작 유지 | Not run |
 | MAN-037 | tray 설정 창 수명·focus | 연속 요청 시 한 창, 닫은 뒤 이전 foreground를 강제 변경하지 않음 | Not run |
 | MAN-038 | 실제 설정 live apply/rollback | theme/font/높이 적용 중 PID·cwd 유지, hotkey 충돌과 저장 실패 UI 확인 | Not run |
+| MAN-039 | portable WebView2/terminal UI | 새 폴더에서 실제 WebView2 Runtime 초기화, local renderer와 interactive shell 확인 | Not run |
+| MAN-040 | portable update/rollback | 기존 설정 유지, startup 경로 변경과 이전 폴더 복귀 확인 | Not run |
 
 ## Focus 검증 절차
 
@@ -330,6 +352,9 @@ launch focus 보존과 terminal click activation은 서로 다른 요구사항�
 - clean restore/build/test 성공
 - self-contained `win-x64` publish 성공
 - committed renderer `dist`와 license notice 존재
+- 제품 version/build commit과 `release-metadata.json` 일치
+- versioned staging 밖의 출력이나 사용자 data를 정리하지 않음
+- ZIP SHA-256 일치와 추출 smoke 성공
 - runtime network request 없음
 - automated/integration 결과가 이 문서에 갱신됨
 - 실제로 실행한 manual case만 `Passed`로 표시

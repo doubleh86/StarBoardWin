@@ -13,3 +13,7 @@ assets are local; the application does not fetch these packages from a CDN.
 
 Starboard analyzes the MIT-licensed `palamim/starboard` project as a product
 reference. Its Swift source and assets are not copied into this implementation.
+
+Portable packages include the Starboard for Windows MIT `LICENSE` at the archive
+root. That product license does not replace the component-specific license files
+listed above.

@@ -10,6 +10,12 @@
         ShowInTaskbar="True"
         WindowStartupLocation="CenterScreen">
     <DockPanel Background="#1A1B26">
+        <TextBlock x:Name="BuildInfoText"
+                   DockPanel.Dock="Bottom"
+                   Margin="24,0,24,16"
+                   Foreground="#7F8BB3"
+                   FontSize="12"
+                   TextAlignment="Right" />
         <Border x:Name="StatusBorder"
                 DockPanel.Dock="Bottom"
                 Margin="24,0,24,20"

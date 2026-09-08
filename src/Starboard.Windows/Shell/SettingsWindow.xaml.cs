@@ -13,14 +13,17 @@ internal partial class SettingsWindow : Window, ISettingsWindow
 
     internal SettingsWindow(
         SettingsEditorSession session,
-        SettingsApplicationService applicationService)
+        SettingsApplicationService applicationService,
+        ProductBuildInfo buildInfo)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(applicationService);
+        ArgumentNullException.ThrowIfNull(buildInfo);
 
         this.session = session;
         this.applicationService = applicationService;
         InitializeComponent();
+        BuildInfoText.Text = buildInfo.DisplayText;
         EditorContent.Content = session.Content;
         applicationService.StatusChanged += HandleStatusChanged;
         Closing += HandleClosing;

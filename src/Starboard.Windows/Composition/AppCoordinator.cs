@@ -40,6 +40,18 @@ internal sealed class AppCoordinator : IDisposable
 
     internal async Task StartAsync(CancellationToken cancellationToken)
     {
+        var smokeResult = PortableReleaseSmokeCheck.TryRun(
+            Environment.GetCommandLineArgs(),
+            ProductBuildInfo.Current,
+            AppContext.BaseDirectory);
+        if (smokeResult is not null)
+        {
+            var application = Application.Current
+                ?? throw new InvalidOperationException("The WPF application is unavailable.");
+            application.Shutdown(smokeResult.ExitCode);
+            return;
+        }
+
         var loadResult = await preferencesModule.LoadAsync(cancellationToken);
         var settings = loadResult.Settings;
 
@@ -314,7 +326,10 @@ internal sealed class AppCoordinator : IDisposable
         var session = PreferencesModule.CreateSettingsEditor(
             applicationService.PersistedSettings,
             applicationService);
-        return new SettingsWindow(session, applicationService);
+        return new SettingsWindow(
+            session,
+            applicationService,
+            ProductBuildInfo.Current);
     }
 
     private void OpenSettingsOnExplicitRequest()

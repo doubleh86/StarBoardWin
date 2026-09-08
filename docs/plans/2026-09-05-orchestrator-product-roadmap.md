@@ -242,7 +242,7 @@ Windows API 동작은 이 기획만으로 검증 완료된 것으로 취급하�
 - [ ] P0 기준선·환경·실제 UI 확인
 - [x] P1~P4 Windows 안정화 코드와 자동 A gate (hardware matrix는 pending)
 - [x] P5~P9 설정 기능과 자동 B gate (실제 tray/focus·실패 UI 수동 matrix는 pending)
-- [ ] P10~P11 portable 배포와 C gate
+- [x] P10~P11 portable 배포와 자동 C gate (실제 UI·update hardware matrix는 pending)
 
 각 gate는 기능 구현과 자동 검증이 완료되고, 실제 실행으로 확인 가능한 핵심 동작이
 확인돼야 통과한다. 장비가 없어 수행하지 못한 항목은 예상 결과·실행 절차와 함께
@@ -313,21 +313,37 @@ ConPTY, visible window가 정상이라고 보고하지 않는다. Explorer 재�
   활성화하지 않는다. build server 종료 후 지정 SDK로 restore, integration build/test와
   Debug solution build 및 전체 180개 automated test가 통과했다. 실제 tray focus, 실제
   renderer failure UI와 로그인 startup은 manual matrix에 `Not run`으로 유지했다.
+- 2026-09-08 (P10-package 착수): 제품 버전은 `Directory.Build.props`의 단일 값으로
+  관리하고 package 시 확인한 Git HEAD를 host assembly metadata와 배포 metadata에 함께
+  주입한다. `scripts/package-portable.ps1`은 저장소 루트를 Git으로 재확인한 뒤
+  `out/portable/<version>/staging`만 정리하고 Release restore/build/test,
+  self-contained win-x64 publish, 결정적 파일 순서·시각의 ZIP, SHA-256 및 추출 smoke를
+  한 흐름으로 수행한다. smoke mode는 실제 Preferences·startup adapter를 시작하지 않아
+  기존 사용자 설정과 자동 실행 경로를 변경하지 않으며 renderer 파일, 기본 shell,
+  제품 버전과 build commit 일치를 검사한다. 기능 module 구현과 renderer asset은 변경하지
+  않는다.
+- 2026-09-08 (P10~P11 완료): build server를 정상 종료한 뒤 지정 SDK의 Debug
+  restore/build와 전체 186개 test가 통과했다. package 흐름에서도 Release build/test,
+  self-contained win-x64 publish, 499-entry ZIP과 SHA-256 일치, 동일 staging의 ZIP 재생성 및
+  clean staging 전체 재실행 hash, 필수 renderer/license/notice, executable과 release metadata의 version/full commit
+  일치 및 추출 smoke가 통과했다. 설정·로그·WebView2 user data·PDB·개발 PC 절대 경로는
+  package에서 거부된다. 실제 WebView2 UI/interactive shell, multi-monitor/mixed-DPI,
+  fullscreen/auto-hide/IME와 portable update/startup/rollback은 수행하지 않았고 test plan에
+  `Not run`으로 유지했다.
 
 ## 미결정 사항
 
-제품 범위와 기본값은 위와 같이 정했다. P0/P1에서 API 적합성과 실제 display 환경을
-확인하고, P5에서 적용/rollback 계약을 확정한다. 배포 버전 번호는 기존 version
-metadata를 확인한 뒤 P10에서 정한다. 외부 서비스나 새로운 대형 의존성이 필요하면
-기존 구조로 가능한 대안과 함께 별도 판단 사항으로 기록한다.
+제품 범위와 기본값은 위와 같이 정했다. 제품 버전 `0.1.0`은 중앙 build property로
+확정했고 향후 release에서 이 값만 변경한다. 외부 서비스나 새로운 대형 의존성이
+필요하면 기존 구조로 가능한 대안과 함께 별도 판단 사항으로 기록한다.
 
 ## 완료 요약
 
-P4 Windows 창 통합과 P5~P9 설정 적용·복구 통합은 완료했다. 환경 reconciliation은 사용자 숨김을 덮어쓰지 않고,
-같은 monitor fullscreen에서는 panel을 임시 억제하며, 복구와 background geometry 변경은
-activation/z-order를 보존한다. 설정 저장은 live apply 성공 뒤에만 수행하고 부분 실패는
-마지막 persisted snapshot으로 보상한다. P10 이후 portable 배포와 실제 display/fullscreen,
-tray/focus/settings failure hardware matrix는 아직 남아 있다.
+P4 Windows 창 통합, P5~P9 설정 적용·복구와 P10~P11 portable package 자동 C gate를
+완료했다. 중앙 version과 build commit이 executable, 설정 화면과 release metadata에서
+일치하며 version staging 밖을 정리하지 않는 self-contained ZIP/SHA-256 흐름과 추출 smoke를
+제공한다. 실제 display/fullscreen, tray/focus/settings failure, WebView2/terminal UI와
+portable update/rollback hardware matrix는 아직 남아 있다.
 
 ## 오케스트레이터 전달 프롬프트
 
