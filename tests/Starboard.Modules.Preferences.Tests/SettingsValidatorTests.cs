@@ -153,6 +153,7 @@ public sealed class SettingsValidatorTests
         Assert.AreEqual(0.72, result.Opacity);
         Assert.AreEqual("Taskbar", result.PreferredMonitor);
         Assert.AreEqual("Ctrl+Alt+E", result.ExpandShortcut);
+        Assert.AreEqual("Ctrl+Alt+S", result.ActivationShortcut);
     }
 
     private static double ContrastRatio(string foreground, string background)
