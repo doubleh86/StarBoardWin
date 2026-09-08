@@ -6,8 +6,19 @@ internal static partial class NativeMethods
 {
     internal const uint AppBarGetState = 0x00000004;
     internal const uint AppBarGetTaskbarPosition = 0x00000005;
+    internal const uint AppBarGetAutoHideBar = 0x00000007;
     internal const uint AppBarStateAutoHide = 0x00000001;
     internal const uint MonitorDefaultToNearest = 0x00000002;
+    internal const uint MonitorDefaultToNull = 0x00000000;
+    internal const uint MonitorInfoPrimary = 0x00000001;
+
+    internal const uint DpiTypeEffective = 0;
+
+    internal const uint EventSystemForeground = 0x0003;
+    internal const uint WinEventOutOfContext = 0x0000;
+
+    internal const uint DwmWindowAttributeExtendedFrameBounds = 9;
+    internal const uint DwmWindowAttributeCloaked = 14;
 
     internal const int WindowLongExtendedStyle = -20;
     internal const long ExtendedStyleToolWindow = 0x00000080L;
@@ -39,8 +50,73 @@ internal static partial class NativeMethods
         in NativeRect rectangle,
         uint flags);
 
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool EnumDisplayMonitors(
+        nint deviceContext,
+        nint clipRectangle,
+        MonitorEnumerationCallback callback,
+        nint applicationData);
+
+    [LibraryImport("user32.dll")]
+    internal static partial nint MonitorFromWindow(
+        nint windowHandle,
+        uint flags);
+
     [LibraryImport("user32.dll")]
     internal static partial uint GetDpiForWindow(nint windowHandle);
+
+    [LibraryImport("shcore.dll")]
+    internal static partial int GetDpiForMonitor(
+        nint monitor,
+        uint dpiType,
+        out uint dpiX,
+        out uint dpiY);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetWindowRect(
+        nint windowHandle,
+        out NativeRect rectangle);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool IsWindowVisible(nint windowHandle);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool IsIconic(nint windowHandle);
+
+    [LibraryImport("user32.dll")]
+    internal static partial nint GetShellWindow();
+
+    [LibraryImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+    internal static partial int DwmGetWindowAttributeUInt32(
+        nint windowHandle,
+        uint attribute,
+        out uint attributeValue,
+        uint attributeSize);
+
+    [LibraryImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+    internal static partial int DwmGetWindowAttributeRectangle(
+        nint windowHandle,
+        uint attribute,
+        out NativeRect attributeValue,
+        uint attributeSize);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    internal static partial nint SetWinEventHook(
+        uint eventMinimum,
+        uint eventMaximum,
+        nint hookModule,
+        WinEventCallback callback,
+        uint processIdentifier,
+        uint threadIdentifier,
+        uint flags);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool UnhookWinEvent(nint hook);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     internal static partial nint GetWindowLongPtrW(nint windowHandle, int index);
