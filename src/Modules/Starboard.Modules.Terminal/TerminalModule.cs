@@ -31,6 +31,19 @@ public sealed class TerminalModule : IDisposable
         return terminalView.StartAsync(options, cancellationToken);
     }
 
+    public TerminalSettingsApplyResult ApplySettings(TerminalSettings settings)
+    {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        ArgumentNullException.ThrowIfNull(settings);
+        if (terminalView.Dispatcher.CheckAccess() == true)
+        {
+            return terminalView.ApplySettings(settings);
+        }
+
+        return terminalView.Dispatcher.Invoke(
+            () => terminalView.ApplySettings(settings));
+    }
+
     public void Dispose()
     {
         if (isDisposed == true)

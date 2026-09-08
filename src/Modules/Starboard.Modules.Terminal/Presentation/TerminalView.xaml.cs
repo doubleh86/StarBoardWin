@@ -29,7 +29,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly CancellationTokenSource lifetimeCancellation = new();
 
     private TaskCompletionSource rendererReady = CreateCompletionSource();
-    private TerminalOptions? options;
+    private TerminalSettings? settings;
+    private TerminalAppearanceState? appearanceState;
+    private ShellLaunchSpec? defaultShell;
     private bool rendererFailed;
     private bool isDisposed;
     private int columns = 80;
@@ -54,8 +56,18 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
-        options = terminalOptions;
-        ApplyTheme(terminalOptions.Theme);
+        ArgumentNullException.ThrowIfNull(terminalOptions);
+        var initialAppearance = CreateAppearanceSnapshot(
+            new TerminalAppearanceSettings(
+                terminalOptions.FontFamily,
+                terminalOptions.FontSize,
+                terminalOptions.Theme));
+        defaultShell = ShellResolver.Resolve(terminalOptions.ShellExecutable);
+        settings = new TerminalSettings(
+            initialAppearance,
+            terminalOptions.ShellExecutable);
+        appearanceState = new TerminalAppearanceState(initialAppearance);
+        ApplyTheme(initialAppearance.Theme);
         ShowLoading("로컬 renderer와 shell session을 준비하고 있습니다.");
 
         try
@@ -83,6 +95,146 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 ShowError(ToUserMessage(exception));
             }
         }
+    }
+
+    internal TerminalSettingsApplyResult ApplySettings(
+        TerminalSettings requestedSettings)
+    {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        ArgumentNullException.ThrowIfNull(requestedSettings);
+        var previousSettings = settings
+            ?? throw new InvalidOperationException("Terminal settings are unavailable before startup.");
+
+        TerminalAppearanceSettings requestedAppearance;
+        ShellLaunchSpec requestedShell;
+        try
+        {
+            requestedAppearance = CreateAppearanceSnapshot(requestedSettings.Appearance);
+            requestedShell = string.Equals(
+                requestedSettings.DefaultShellExecutable,
+                previousSettings.DefaultShellExecutable,
+                StringComparison.OrdinalIgnoreCase)
+                ? defaultShell ?? ShellResolver.Resolve(
+                    requestedSettings.DefaultShellExecutable)
+                : ShellResolver.Resolve(requestedSettings.DefaultShellExecutable);
+        }
+        catch (Exception exception) when (IsRecoverableSettingsException(exception) == true)
+        {
+            return new TerminalSettingsApplyResult(
+                requestedSettings,
+                previousSettings,
+                previousSettings,
+                TerminalSettingsApplyStatus.FailedWithoutChange,
+                exception.Message);
+        }
+
+        var effectiveSettings = new TerminalSettings(
+            requestedAppearance,
+            requestedSettings.DefaultShellExecutable);
+        var previousShell = defaultShell
+            ?? throw new InvalidOperationException("The terminal shell has not been configured.");
+        var hasWorkspace = sessionCoordinator.Snapshot.Tabs.Count > 0;
+        var defaultShellChanged = hasWorkspace == true &&
+                                  requestedShell != previousShell;
+        var defaultShellApplied = false;
+        var appearanceAttempted = false;
+
+        try
+        {
+            if (defaultShellChanged == true)
+            {
+                sessionCoordinator.UpdateDefaultShell(requestedShell);
+                defaultShellApplied = true;
+            }
+
+            appearanceAttempted = true;
+            ApplyTheme(requestedAppearance.Theme);
+        }
+        catch (Exception exception) when (IsRecoverableSettingsException(exception) == true)
+        {
+            var restoreIncomplete = RestorePreviousSettings(
+                previousSettings,
+                previousShell,
+                defaultShellApplied,
+                appearanceAttempted);
+            diagnosticLog.Write(
+                DiagnosticLevel.Warning,
+                "Terminal",
+                "ApplySettings",
+                "Terminal settings could not be applied and recovery was attempted.",
+                exception);
+
+            return new TerminalSettingsApplyResult(
+                requestedSettings,
+                previousSettings,
+                previousSettings,
+                GetFailureStatus(
+                    defaultShellApplied,
+                    appearanceAttempted,
+                    restoreIncomplete),
+                exception.Message);
+        }
+
+        defaultShell = requestedShell;
+        settings = effectiveSettings;
+        var rendererAppearance = appearanceState?.Update(requestedAppearance);
+        if (rendererAppearance is not null)
+        {
+            SendAppearanceMessage("apply-appearance", rendererAppearance);
+        }
+
+        return new TerminalSettingsApplyResult(
+            requestedSettings,
+            previousSettings,
+            effectiveSettings,
+            TerminalSettingsApplyStatus.Applied,
+            null);
+    }
+
+    private bool RestorePreviousSettings(
+        TerminalSettings previousSettings,
+        ShellLaunchSpec previousShell,
+        bool restoreDefaultShell,
+        bool restoreAppearance)
+    {
+        var restoreIncomplete = false;
+        if (restoreDefaultShell == true)
+        {
+            try
+            {
+                sessionCoordinator.UpdateDefaultShell(previousShell);
+            }
+            catch (Exception exception) when (IsRecoverableSettingsException(exception) == true)
+            {
+                restoreIncomplete = true;
+                diagnosticLog.Write(
+                    DiagnosticLevel.Error,
+                    "Terminal",
+                    "RestoreDefaultShell",
+                    "The previous default shell could not be restored.",
+                    exception);
+            }
+        }
+
+        if (restoreAppearance == true)
+        {
+            try
+            {
+                ApplyTheme(previousSettings.Appearance.Theme);
+            }
+            catch (Exception exception) when (IsRecoverableSettingsException(exception) == true)
+            {
+                restoreIncomplete = true;
+                diagnosticLog.Write(
+                    DiagnosticLevel.Error,
+                    "Terminal",
+                    "RestoreAppearance",
+                    "The previous terminal appearance could not be restored.",
+                    exception);
+            }
+        }
+
+        return restoreIncomplete;
     }
 
     public ValueTask DisposeAsync()
@@ -132,6 +284,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         var core = Renderer.CoreWebView2
             ?? throw new InvalidOperationException("WebView2 initialization returned no core instance.");
         ConfigureRenderer(core);
+        appearanceState?.MarkRendererUnavailable();
         core.Navigate($"https://{RendererHostName}/index.html");
 
         await rendererReady.Task.WaitAsync(cancellationToken);
@@ -171,12 +324,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private async Task StartWorkspaceAsync(CancellationToken cancellationToken)
     {
-        if (options is null)
-        {
-            throw new InvalidOperationException("Terminal options are unavailable.");
-        }
-
-        var shell = ShellResolver.Resolve(options.ShellExecutable);
+        var shell = defaultShell
+            ?? throw new InvalidOperationException("The terminal shell has not been configured.");
         await sessionCoordinator.StartAsync(
             shell,
             columns,
@@ -314,6 +463,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             "RendererProcess",
             $"The renderer process failed ({eventArgs.ProcessFailedKind}).");
         rendererFailed = true;
+        appearanceState?.MarkRendererUnavailable();
         ShowError("Terminal renderer가 중단됐습니다. shell session은 유지되며 renderer를 다시 연결할 수 있습니다.");
     }
 
@@ -322,7 +472,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         _ = sender;
         _ = eventArgs;
 
-        if (options is null || isDisposed == true)
+        if (settings is null || isDisposed == true)
         {
             return;
         }
@@ -346,6 +496,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             {
                 rendererReady = CreateCompletionSource();
                 rendererSessionIds.Clear();
+                appearanceState?.MarkRendererUnavailable();
                 Renderer.CoreWebView2.Navigate($"https://{RendererHostName}/index.html");
                 await rendererReady.Task.WaitAsync(lifetimeCancellation.Token);
                 rendererFailed = false;
@@ -796,26 +947,35 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void SendInitializeMessage()
     {
-        if (options is null)
+        if (appearanceState is null)
         {
             return;
         }
 
-        SendGlobalMessage(
+        SendAppearanceMessage(
             "initialize",
+            appearanceState.MarkRendererReady());
+    }
+
+    private void SendAppearanceMessage(
+        string type,
+        TerminalAppearanceSettings appearance)
+    {
+        SendGlobalMessage(
+            type,
             new
             {
-                options.FontFamily,
-                options.FontSize,
+                appearance.FontFamily,
+                appearance.FontSize,
                 theme = new
                 {
-                    options.Theme.Canvas,
-                    options.Theme.Foreground,
-                    options.Theme.Muted,
-                    options.Theme.Accent,
-                    options.Theme.Cursor,
-                    options.Theme.Selection,
-                    options.Theme.AnsiPalette,
+                    appearance.Theme.Canvas,
+                    appearance.Theme.Foreground,
+                    appearance.Theme.Muted,
+                    appearance.Theme.Accent,
+                    appearance.Theme.Cursor,
+                    appearance.Theme.Selection,
+                    appearance.Theme.AnsiPalette,
                 },
             });
     }
@@ -852,6 +1012,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         catch (Exception exception) when (exception is InvalidOperationException or COMException)
         {
             rendererFailed = true;
+            appearanceState?.MarkRendererUnavailable();
             diagnosticLog.Write(
                 DiagnosticLevel.Warning,
                 "Terminal",
@@ -965,6 +1126,72 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         SetRendererBackground(canvas);
     }
 
+    private static TerminalAppearanceSettings CreateAppearanceSnapshot(
+        TerminalAppearanceSettings appearance)
+    {
+        ArgumentNullException.ThrowIfNull(appearance);
+        ArgumentNullException.ThrowIfNull(appearance.Theme);
+        if (string.IsNullOrWhiteSpace(appearance.FontFamily) == true)
+        {
+            throw new ArgumentException(
+                "Terminal font family cannot be empty.",
+                nameof(appearance));
+        }
+
+        if (double.IsFinite(appearance.FontSize) == false ||
+            appearance.FontSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(appearance),
+                appearance.FontSize,
+                "Terminal font size must be a positive finite number.");
+        }
+
+        if (appearance.Theme.AnsiPalette is null ||
+            appearance.Theme.AnsiPalette.Count != 16)
+        {
+            throw new ArgumentException(
+                "Terminal themes require exactly 16 ANSI colors.",
+                nameof(appearance));
+        }
+
+        var palette = appearance.Theme.AnsiPalette
+            .Select(ValidateAppearanceColor)
+            .ToArray();
+        var canvas = ValidateAppearanceColor(appearance.Theme.Canvas);
+        var foreground = ValidateAppearanceColor(appearance.Theme.Foreground);
+        var muted = ValidateAppearanceColor(appearance.Theme.Muted);
+        var accent = ValidateAppearanceColor(appearance.Theme.Accent);
+        var cursor = ValidateAppearanceColor(appearance.Theme.Cursor);
+        var selection = ValidateAppearanceColor(appearance.Theme.Selection);
+
+        var theme = new TerminalTheme(
+            canvas,
+            foreground,
+            muted,
+            accent,
+            cursor,
+            selection,
+            palette);
+
+        return new TerminalAppearanceSettings(
+            appearance.FontFamily,
+            appearance.FontSize,
+            theme);
+    }
+
+    private static string ValidateAppearanceColor(string color)
+    {
+        if (string.IsNullOrWhiteSpace(color) == true)
+        {
+            throw new ArgumentException("Terminal appearance colors cannot be empty.");
+        }
+
+        _ = ParseColor(color);
+
+        return color;
+    }
+
     private void SetRendererBackground(Color canvas)
     {
         Renderer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(
@@ -1016,6 +1243,31 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         return channel <= 0.04045
             ? channel / 12.92
             : Math.Pow((channel + 0.055) / 1.055, 2.4);
+    }
+
+    private static TerminalSettingsApplyStatus GetFailureStatus(
+        bool defaultShellApplied,
+        bool appearanceAttempted,
+        bool restoreIncomplete)
+    {
+        if (defaultShellApplied == false && appearanceAttempted == false)
+        {
+            return TerminalSettingsApplyStatus.FailedWithoutChange;
+        }
+
+        return restoreIncomplete == true
+            ? TerminalSettingsApplyStatus.FailedAndRestoreIncomplete
+            : TerminalSettingsApplyStatus.FailedAndRestored;
+    }
+
+    private static bool IsRecoverableSettingsException(Exception exception)
+    {
+        return exception is ArgumentException or
+               COMException or
+               FileNotFoundException or
+               FormatException or
+               InvalidOperationException or
+               NotSupportedException;
     }
 
     private static string ToUserMessage(Exception exception)

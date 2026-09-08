@@ -19,8 +19,9 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     private readonly Lock stateLock = new();
     private readonly SemaphoreSlim operationLock = new(1, 1);
     private readonly Dictionary<TerminalSessionId, SessionEntry> sessions = [];
+    private readonly Dictionary<TerminalSessionId, ShellLaunchSpec> tabShells = [];
 
-    private ShellLaunchSpec? shell;
+    private ShellLaunchSpec? defaultShell;
     private bool isStarted;
     private bool isDisposed;
     private int columns = 80;
@@ -79,7 +80,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             }
 
             ValidateSize(columns, rows);
-            this.shell = shell;
+            defaultShell = shell;
             this.columns = columns;
             this.rows = rows;
             isStarted = true;
@@ -89,6 +90,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             lock (stateLock)
             {
                 tab = tabRegistry.Add();
+                tabShells.Add(tab.SessionId, shell);
                 snapshot = tabRegistry.CreateSnapshot();
             }
 
@@ -119,6 +121,10 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             lock (stateLock)
             {
                 tab = tabRegistry.Add();
+                tabShells.Add(
+                    tab.SessionId,
+                    defaultShell ?? throw new InvalidOperationException(
+                        "The terminal shell has not been configured."));
                 snapshot = tabRegistry.CreateSnapshot();
             }
 
@@ -151,6 +157,16 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         return SelectCore(tabRegistry.SelectPrevious);
     }
 
+    internal void UpdateDefaultShell(ShellLaunchSpec shell)
+    {
+        ArgumentNullException.ThrowIfNull(shell);
+        lock (stateLock)
+        {
+            ThrowIfUnavailable();
+            defaultShell = shell;
+        }
+    }
+
     internal async Task<bool> CloseAsync(
         TerminalSessionId sessionId,
         CancellationToken cancellationToken)
@@ -172,6 +188,14 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 }
 
                 sessions.Remove(sessionId, out closedSession);
+                tabShells.Remove(sessionId);
+                if (closeResult.ReplacementTab is not null)
+                {
+                    tabShells.Add(
+                        closeResult.ReplacementTab.SessionId,
+                        defaultShell ?? throw new InvalidOperationException(
+                            "The terminal shell has not been configured."));
+                }
                 snapshot = tabRegistry.CreateSnapshot();
             }
 
@@ -359,6 +383,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 isDisposed = true;
                 ownedSessions = sessions.Values.ToArray();
                 sessions.Clear();
+                tabShells.Clear();
             }
 
             foreach (var entry in ownedSessions)
@@ -416,8 +441,16 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
     private async Task StartSessionAsync(TerminalSessionId sessionId)
     {
-        var launchSpec = shell
-            ?? throw new InvalidOperationException("The terminal shell has not been configured.");
+        ShellLaunchSpec launchSpec;
+        lock (stateLock)
+        {
+            if (tabShells.TryGetValue(sessionId, out launchSpec!) == false)
+            {
+                throw new InvalidOperationException(
+                    "The terminal tab has no captured shell configuration.");
+            }
+        }
+
         ITerminalSession? session = null;
         SessionEntry? entry = null;
         var wasRegistered = false;

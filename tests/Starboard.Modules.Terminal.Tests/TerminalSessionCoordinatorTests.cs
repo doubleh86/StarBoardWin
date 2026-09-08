@@ -14,6 +14,11 @@ public sealed class TerminalSessionCoordinatorTests
         "-NoLogo",
         "C:\\Test");
 
+    private static readonly ShellLaunchSpec UpdatedShell = new(
+        "powershell.exe",
+        "-NoLogo",
+        "C:\\Updated");
+
     [TestMethod]
     public async Task StartAsyncFirstTabStartsAndActivatesDedicatedSession()
     {
@@ -124,6 +129,53 @@ public sealed class TerminalSessionCoordinatorTests
         Assert.AreEqual("PowerShell 1", FindTab(snapshot, first.SessionId).Name);
         Assert.AreEqual(TerminalSessionState.Running, FindTab(snapshot, first.SessionId).State);
         Assert.AreEqual(TerminalSessionState.Running, FindTab(snapshot, second.SessionId).State);
+    }
+
+    [TestMethod]
+    public async Task UpdateDefaultShellPreservesExistingSessionsAndTheirRestartShell()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        _ = await coordinator.AddAsync(CancellationToken.None);
+
+        coordinator.UpdateDefaultShell(UpdatedShell);
+
+        Assert.AreEqual(2, factory.Sessions.Count);
+        Assert.IsTrue(factory.Sessions.All(session => session.DisposeCount == 0));
+
+        _ = await coordinator.AddAsync(CancellationToken.None);
+        await coordinator.RestartAsync(first.SessionId, CancellationToken.None);
+
+        CollectionAssert.AreEqual(
+            new List<ShellLaunchSpec>
+            {
+                TestShell,
+                TestShell,
+                UpdatedShell,
+                TestShell,
+            },
+            factory.StartRequests.Select(request => request.Shell).ToList());
+        Assert.AreEqual(1, factory.Sessions[0].DisposeCount);
+        Assert.AreEqual(0, factory.Sessions[1].DisposeCount);
+        Assert.AreEqual(0, factory.Sessions[2].DisposeCount);
+    }
+
+    [TestMethod]
+    public async Task CloseAsyncLastTabUsesLatestDefaultShellForReplacement()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        coordinator.UpdateDefaultShell(UpdatedShell);
+
+        Assert.IsTrue(await coordinator.CloseAsync(
+            first.SessionId,
+            CancellationToken.None));
+
+        Assert.AreEqual(2, factory.StartRequests.Count);
+        Assert.AreEqual(TestShell, factory.StartRequests[0].Shell);
+        Assert.AreEqual(UpdatedShell, factory.StartRequests[1].Shell);
     }
 
     [TestMethod]

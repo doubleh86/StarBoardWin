@@ -8,6 +8,7 @@ internal static class RendererProtocol
     private static readonly HashSet<string> _globalHostMessageTypes =
     [
         "initialize",
+        "apply-appearance",
     ];
 
     private static readonly HashSet<string> _sessionHostMessageTypes =

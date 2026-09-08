@@ -39,7 +39,7 @@ type RendererMessage =
       payload: Record<string, unknown>;
     };
 
-type GlobalHostMessageType = "initialize";
+type GlobalHostMessageType = "initialize" | "apply-appearance";
 
 type SessionHostMessageType =
   | "session-upsert"
@@ -55,7 +55,7 @@ type HostMessage =
       version: number;
       type: GlobalHostMessageType;
       sessionId?: never;
-      payload: InitializePayload;
+      payload: AppearancePayload;
     }
   | {
       version: number;
@@ -64,7 +64,7 @@ type HostMessage =
       payload: Record<string, unknown>;
     };
 
-type InitializePayload = {
+type AppearancePayload = {
   fontFamily: string;
   fontSize: number;
   theme: {
@@ -142,7 +142,7 @@ const workspace = getRequiredElement<HTMLElement>("#terminal-workspace");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const sessions = new Map<string, SessionEntry>();
 let activeSessionId: string | undefined;
-let initializePayload: InitializePayload | undefined;
+let currentAppearance: AppearancePayload | undefined;
 let canAddSession = true;
 let requestedTerminalFocusSessionId: string | undefined;
 let requestedTabFocusSessionId: string | undefined;
@@ -170,7 +170,7 @@ function getPayload(message: Record<string, unknown>): Record<string, unknown> |
 }
 
 function isGlobalHostMessageType(value: string): value is GlobalHostMessageType {
-  return value === "initialize";
+  return value === "initialize" || value === "apply-appearance";
 }
 
 function isSessionHostMessageType(value: string): value is SessionHostMessageType {
@@ -200,7 +200,7 @@ function parseHostMessage(value: unknown): HostMessage | undefined {
   }
 
   if (isGlobalHostMessageType(value.type) === true) {
-    if (value.sessionId !== undefined || isInitializePayload(payload) === false) {
+    if (value.sessionId !== undefined || isAppearancePayload(payload) === false) {
       return undefined;
     }
 
@@ -259,7 +259,7 @@ function postSession(
   });
 }
 
-function toTerminalTheme(payload: InitializePayload): ITheme {
+function toTerminalTheme(payload: AppearancePayload): ITheme {
   const palette = payload.theme.ansiPalette;
   return {
     background: payload.theme.canvas,
@@ -442,17 +442,17 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
 }
 
 function applyTerminalOptions(entry: SessionEntry): void {
-  if (initializePayload === undefined) {
+  if (currentAppearance === undefined) {
     return;
   }
 
-  entry.terminal.options.fontFamily = initializePayload.fontFamily;
-  entry.terminal.options.fontSize = initializePayload.fontSize;
-  entry.terminal.options.theme = toTerminalTheme(initializePayload);
+  entry.terminal.options.fontFamily = currentAppearance.fontFamily;
+  entry.terminal.options.fontSize = currentAppearance.fontSize;
+  entry.terminal.options.theme = toTerminalTheme(currentAppearance);
 }
 
-function applyInitialize(payload: InitializePayload): void {
-  initializePayload = payload;
+function applyAppearance(payload: AppearancePayload): void {
+  currentAppearance = payload;
   document.documentElement.style.setProperty("--color-canvas", payload.theme.canvas);
   document.documentElement.style.setProperty("--color-ink", payload.theme.foreground);
   document.documentElement.style.setProperty("--color-neutral", payload.theme.muted);
@@ -690,12 +690,15 @@ function fitActiveSession(forceReport = false): void {
   }
 }
 
-function isInitializePayload(
+function isAppearancePayload(
   payload: Record<string, unknown>,
-): payload is Record<string, unknown> & InitializePayload {
+): payload is Record<string, unknown> & AppearancePayload {
   if (
     typeof payload.fontFamily !== "string" ||
+    payload.fontFamily.trim().length === 0 ||
     typeof payload.fontSize !== "number" ||
+    Number.isFinite(payload.fontSize) === false ||
+    payload.fontSize <= 0 ||
     isRecord(payload.theme) === false
   ) {
     return false;
@@ -741,8 +744,8 @@ function handleHostMessage(value: unknown): void {
     return;
   }
 
-  if (message.type === "initialize") {
-    applyInitialize(message.payload);
+  if (message.type === "initialize" || message.type === "apply-appearance") {
+    applyAppearance(message.payload);
     return;
   }
 

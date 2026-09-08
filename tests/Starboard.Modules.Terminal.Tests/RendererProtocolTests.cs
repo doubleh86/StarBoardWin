@@ -221,6 +221,22 @@ public sealed class RendererProtocolTests
     }
 
     [TestMethod]
+    public void SerializeAppearanceMessageUsesGlobalScope()
+    {
+        var json = RendererProtocol.SerializeGlobalMessage(
+            "apply-appearance",
+            new { fontFamily = "Cascadia Mono", fontSize = 15 });
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.AreEqual("apply-appearance", root.GetProperty("type").GetString());
+        Assert.IsFalse(root.TryGetProperty("sessionId", out _));
+        Assert.AreEqual(
+            "Cascadia Mono",
+            root.GetProperty("payload").GetProperty("fontFamily").GetString());
+    }
+
+    [TestMethod]
     public void SerializeSessionMessageWithEmptyIdentifierThrows()
     {
         Assert.ThrowsExactly<ArgumentException>(
@@ -245,6 +261,11 @@ public sealed class RendererProtocolTests
         Assert.ThrowsExactly<ArgumentException>(
             () => RendererProtocol.SerializeSessionMessage(
                 "initialize",
+                SessionId,
+                new { }));
+        Assert.ThrowsExactly<ArgumentException>(
+            () => RendererProtocol.SerializeSessionMessage(
+                "apply-appearance",
                 SessionId,
                 new { }));
     }
