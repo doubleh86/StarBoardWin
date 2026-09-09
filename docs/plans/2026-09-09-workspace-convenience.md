@@ -129,24 +129,83 @@
 SharedKernel이나 Preferences로 이동하지 않는다. DesktopIntegration geometry·focus 정책은
 수정하지 않으며 기본 높이 200 DIP와 하단 간격 6 DIP를 보존한다.
 
-## 구현 단계와 인수 기준
+## 병렬 구현 계획과 인수 기준
 
-아래 단계는 후속 구현 또는 오케스트레이터 전달용 분해다. 이번 문서 작성은 실행 승인이 아니다.
+아래 단계는 후속 구현 또는 오케스트레이터 전달용 분해다. 이번 요청에서는 병렬 실행이
+가능하도록 기획만 수정한다. 실제 구현·worker 실행·branch 생성·배포는 시작하지 않는다.
+기존 직렬 W2~W6는 착수 전이므로 아래 작업 ID와 의존성으로 대체한다.
 
-| ID | 선행 | 산출물·완료 판단 |
-|---|---|---|
-| W0 기준선 | 없음 | 실제 작업 트리 확인, 기존 탭/입력/focus smoke, 미수행 수동 항목 기록 |
-| W1 계약 | W0 | 구성 schema, session/config ID 구분, protocol, 옵션 전환·오류 결과·종료 순서 확정 |
-| W2 탭 정리 | W1 | 이름·이동 UI와 상태 변경, 기존 PID·입력·scrollback 보존 |
-| W3 시작 폴더 | W2 | 명시적 폴더 설정, 안전한 process 전달, 삭제·접근 실패 복구 |
-| W4 저장·복원 | W3 | 원자적 저장, 새 session 복원, 손상/미래 schema/부분 실행 실패 검증 |
-| W5 설정 통합 | W4 | 기본 꺼짐, 켜기·취소·끄기·삭제 실패 처리, 기존 apply 회귀 없음 |
-| W6 최종 검증 | W5 | 전체 build/test, renderer dist, package 개인정보 검사와 수동 결과 인수인계 |
+```text
+W0 기준선 → W1 공통 계약 확정
+                ├─ W2-A 탭·시작 폴더 로직 ─┐
+                ├─ W2-B 구성 저장소 ──────┤
+                ├─ W2-C 탭 편집 화면 ─────┼→ W3 통합·복원 연결 → W4 최종 검증
+                └─ W2-D 설정 편집 ────────┘
+```
 
-기본 실행 순서는 직렬이다. 후속으로 병렬 작업을 요청받으면 W1 통합 후 Preferences
-옵션 편집과 Terminal 내부 작업처럼 쓰기 범위가 분리되는 부분만 나눈다. host·공용 문서·
-renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/push와 바탕화면
-재배포는 해당 실행 요청의 승인 범위를 별도로 따른다.
+W2-A~D 사이에는 선행 의존성을 두지 않는다. W1에서 합의한 계약과 테스트 대역으로
+각자 구현하며, 실제 module 연결과 end-to-end 검증은 네 결과가 모두 준비된 뒤 W3에서 한다.
+실행 환경의 worker 한도를 넘기지 않는다. 예를 들어 통합 담당 1명과 worker 3명까지
+가능하면 A/B/C를 먼저 시작하고 빈 자리가 생기는 즉시 D를 시작한다.
+
+### 작업별 소유권과 완료 조건
+
+아래 경로는 앞 절의 module 경로를 기준으로 한다. W1에서 신규 파일의 실제 이름과
+공유 테스트 fixture 담당까지 확정해 기록한다. 폴더가 같아도 같은 파일의 동시 편집은 금지한다.
+
+| ID | 선행 | 독점 쓰기 범위 | 산출물·통과 기준 |
+|---|---|---|---|
+| W0 기준선 | 없음 | 통합 담당: 이 기획서·검증 기록 | 최신 HEAD/dirty 상태, 기존 탭·입력·focus 기준선과 미수행 환경 기록 |
+| W1 공통 계약 | W0 | 통합 담당: Terminal 계약·구성 schema·저장소 경계, C#/TS protocol, Preferences 옵션 선언, 공통 fixture·architecture 허용 목록 | 아래 계약 gate 통과, build 가능한 공통 기준 확정 |
+| W2-A 탭·시작 폴더 로직 | W1 | Terminal의 기존 `TerminalTab*`, `TerminalSessionCoordinator.cs`, `ShellResolver.cs`와 해당 로직 tests; W1의 확정 타입 제외 | 이름·순서·시작 폴더 변경과 새 세션 복원 로직; 저장소 대역으로 부분 실패·PID 보존 검증 |
+| W2-B 구성 저장소 | W1 | Terminal 신규 구성 저장소 구현·저장 큐 파일과 전용 tests; coordinator·기존 ConPTY 파일 제외 | 원자적 저장, debounce·flush·삭제, 손상/미래 schema/쓰기 실패 검증; 실제 사용자 파일은 사용하지 않음 |
+| W2-C 탭 편집 화면 | W1 | Terminal `Presentation/Renderer/src/` 및 `dist/`, renderer 전용 검증 파일 | 이름·순서·폴더 편집과 상태 UI, protocol fixture 기반 입력·오류 검증, source/dist 일치; 실제 셸 연결 검증은 W3에 인계 |
+| W2-D 설정 편집 | W1 | Preferences validation·migration·editor 구현과 해당 tests; 확정 계약 선언 제외 | 기본 꺼짐, 이전 설정 migration, 편집·취소 및 저장/삭제 결과 표시를 callback 대역으로 검증 |
+| W3 통합·복원 연결 | W2-A, W2-B, W2-C, W2-D | 통합 담당: `TerminalModule.cs`, `TerminalView.xaml.cs`, host composition, integration/architecture tests, 공용 문서 | 저장소·coordinator·renderer 연결, 시작·옵션 전환·종료 순서, 실제 세션 복원과 실패 경로 통합 |
+| W4 최종 검증 | W3 | 통합 담당: package 검증, 공용 문서와 필요한 회귀 수정 | 전체 build/test, renderer/package 검사, 실제 UI 결과와 미수행 항목 인수인계 |
+
+### W1 계약 gate
+
+worker가 서로의 미완성 구현을 기다리지 않도록 다음을 먼저 확정한다.
+
+- 저장 schema와 불변 snapshot: 구성 ID/session ID 구분, 순서·이름·폴더·셸·선택 필드,
+  validation 규칙과 오류 코드. 파일 DTO는 Terminal 내부에 유지한다.
+- 탭 이름·이동·폴더 변경·복원 요청과 결과: 새 API의 signature, 취소·실패·중복 요청 정책,
+  기존 session 유지 조건. runtime 상태 변경과 저장 대상 구성 변경 event를 구분한다.
+- 저장소 경계: 읽기·저장·삭제·flush 결과, 미래 schema·백업 복구·부분 삭제 실패 의미,
+  debounce 및 종료 cancellation 소유자. W2-A가 사용할 대역을 준비한다.
+- C#/TS protocol: message type, target ID, payload, success/error 응답과 버전 처리.
+  W2-C가 backend 없이 실행할 요청/응답 fixture와 host 연결 인수 항목을 제공한다.
+- Preferences 복원 옵션의 schema/default, host의 옵션 적용 결과 계약,
+  일반 설정 성공과 구성 저장·삭제 실패의 구분, 재시도 순서.
+- 공통 타입·fixture는 모든 worker가 build할 수 있는 상태로 통합한다. 아직 없는 구현을
+  호출해 build를 깨뜨리거나, 가짜 성공을 반환하는 runtime placeholder를 만들지 않는다.
+
+gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 worker는 직접 고치지 않고
+통합 담당에게 이유·영향을 전달한다. 통합 담당이 계획과 계약을 갱신·검증한 뒤 영향을
+받는 worker를 같은 새 기준으로 맞춘다. 계약 변경에 의존하지 않는 작업은 계속할 수 있다.
+
+### 실행·통합 규칙
+
+- 구현 실행 범위에서 허용된 branch/worktree만 사용한다. 모든 W2 작업은 W1이 통합된
+  동일 기준 커밋에서 출발하고, 각자 격리된 checkout과 build 출력 경로를 사용한다.
+  기존 dirty 변경을 stash/reset하거나 worker 전제로 암묵적으로 가져오지 않는다.
+- worker는 자기 코드와 직접 tests를 함께 완결한다. host, 공용 문서, project 설정,
+  공통 fixture 변경은 통합 담당에게 요청한다. 병렬화를 위해 새 production module이나
+  불필요한 public API를 만들지 않는다.
+- renderer source와 dist는 W2-C 한 명이 함께 소유한다. 같은 checkout에서 npm build와
+  asset 편집을 동시에 실행하지 않는다. 공유 package staging의 동시 실행도 금지한다.
+- 각 worker는 작업 ID, 기준 커밋, 변경 파일, 계약 변경 여부, 검증 명령·결과,
+  미수행 항목과 W3 연결 지점을 인계한다. mock 통과를 실제 UI 통과로 보고하지 않는다.
+- W3에서는 결과를 A → B → C → D 순으로 적용하고 단계별 관련 build/test를 확인한다.
+  이 순서는 통합 순서이며 W2 실행 의존성은 아니다. 충돌은 통합 담당이 의미를 확인해
+  해결한다. worker 종료만으로 gate를 통과시키지 않는다.
+- W3 중 재작업을 위임하면 수정 대상 파일 소유권을 일시적으로 돌려주고 해당 파일의
+  통합 편집을 멈춘다. 다시 인수한 후 전체 연결 검증을 계속한다.
+- 핵심 입력·focus·기존 세션 유지 회귀가 있으면 W4 배포 검증으로 넘기지 않는다.
+  실제 장비가 없어 남은 시나리오는 근거와 절차를 기록하고 release 완료와 구분한다.
+- 원격 push, main 반영, 바탕화면 앱 교체·종료는 병렬화 계획만으로 승인되지 않는다.
+  해당 실행 요청의 권한 범위를 따른다.
 
 ## 검증 방법
 
@@ -170,7 +229,8 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
 
 ## 제외 범위와 위험
 
-- Git worktree 생성·삭제·branch checkout은 하지 않는다. 여기서 작업공간은 탭 구성이다.
+- 제품 기능으로 Git worktree 생성·삭제·branch checkout을 제공하지 않는다.
+  여기서 작업공간은 탭 구성이다. 개발용 격리 worktree는 위 실행 규칙과 별개다.
 - 여러 개의 저장 workspace preset, 분할 화면, 탭 드래그, 명령 launcher는 제외한다.
 - 현재 경로 자동 추적, shell integration script/OSC 경로 수집, 프로세스 재연결은 제외한다.
 - always-on-top, 전역 단축키 추가, 온라인 동기화·자동 업데이트, 새 renderer는 제외한다.
@@ -182,7 +242,11 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
 ## 진행 기록과 인수인계
 
 - [x] 2026-09-09: 기존 후속 후보와 실제 코드 경계를 확인하고 기획 초안 작성.
-- [ ] W0~W6 구현·검증.
+- [x] 2026-09-09: 병렬 가능한 기획 요청에 따라 W1 계약 선행, W2-A~D 독립 작업,
+  W3 직렬 통합·W4 최종 검증으로 재구성. 파일 소유권과 계약 변경·인수인계 규칙 추가.
+- [ ] W0~W1 기준선·계약 확정.
+- [ ] W2-A~D 독립 구현·검증.
+- [ ] W3 통합·W4 최종 검증.
 
 이번 산출물은 기획서와 이전 기획의 후속 링크뿐이다. 기존 제품 코드·미커밋 변경·
 바탕화면 실행본은 수정하지 않는다. 문서 내용·경로·diff를 검증하고 .NET 빌드는 생략한다.
