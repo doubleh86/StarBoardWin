@@ -56,6 +56,11 @@ internal static class TerminalStartingDirectory
         }
 
         var candidate = path.Trim();
+        if (candidate.Any(char.IsControl) == true)
+        {
+            return false;
+        }
+
         if (_localAbsolutePathPattern.IsMatch(candidate) == false ||
             candidate.StartsWith("\\\\", StringComparison.Ordinal) == true ||
             candidate.StartsWith("//", StringComparison.Ordinal) == true)

@@ -197,7 +197,18 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
   수 없으면 해당 탭만 failed 상태로 두고 폴더 변경과 홈 폴더 재시도 동작을 표시한다.
   renderer build, Terminal tests 93개, Integration tests 29개와 Debug solution tests 228개를
   통과했다. 실제 picker 조작과 접근 권한이 제한된 폴더 시나리오는 수동 검증 pending이다.
-- [ ] W4~W6 구현·검증.
+- [x] W4 저장·복원 구현·검증. W5~W6 host 설정 통합과 최종 수동 검증은 후속 범위다.
+- [x] W4 저장·복원: Terminal 내부 `workspace.json` 저장소는 64 KiB 제한과
+  strict JSON DTO 검증을 먼저 수행하고, primary가 손상됐을 때만 마지막 정상
+  `.bak`을 사용한다. primary에서 미래 schema를 발견하면 두 파일을 모두 보존하고
+  해당 실행의 복원·자동 저장을 중단한다. 저장은 한 background writer가 최신
+  snapshot을 짧게 debounce한 뒤 같은 디렉터리의 임시 파일을 flush하고
+  `File.Replace`(최초 저장은 atomic move)로 교체한다. 종료 flush는 별도 제한 시간을
+  적용하며 writer 종료 뒤에는 workspace event를 받아도 새 저장·복원 작업을 만들지 않는다.
+  복원은 coordinator가 구성 ID와 제한된 shell kind를 새 runtime session ID 및 새
+  process로 매핑해 순차 시작하고, 폴더·shell 시작 실패는 해당 탭만 failed로 남긴 채
+  다음 탭을 계속 시작한다. W5 host 통합을 위해 시작 옵션과 저장 활성화/비활성화
+  결과 API만 Terminal 공개 계약에 추가한다.
 
 W1은 저장소 구현이나 실제 복원 실행을 시작하지 않는다. renderer protocol은 이후 UI가 이름 변경,
 순서 이동, 시작 폴더 변경과 workspace 저장 상태를 명시적으로 교환할 수 있도록만 확장한다.
@@ -213,3 +224,19 @@ W1은 저장소 구현이나 실제 복원 실행을 시작하지 않는다. ren
   30개와 `dotnet test tests/Starboard.Modules.Terminal.Tests/Starboard.Modules.Terminal.Tests.csproj --configuration Debug`
   70개를 통과했다. renderer bundle 재생성은 W1의 source-only protocol 변경과 배정된 경로 제한 때문에
   후속 UI 통합 작업에서 수행한다.
+
+### W4 완료 요약
+
+- 저장 파일은 schema, 구성 ID, 이름, 순서, 시작 폴더, 제한된 shell kind와 활성 구성 ID만 포함한다.
+  strict JSON, 64 KiB, 1~8개 탭, 필드 범위·고유 ID·연속 순서·활성 ID 검증을 통과하지 못하면 정상
+  백업 또는 기본 탭으로 복구한다. command, output, clipboard, environment와 runtime session ID는
+  구성 DTO와 진단 메시지에 포함하지 않는다.
+- 저장은 단일 semaphore writer와 250 ms debounce를 사용한다. 유효한 primary만 마지막 정상 `.bak`으로
+  승격하고, 같은 디렉터리의 flush된 임시 파일을 원자적으로 교체한다. 미래 schema는 시작·옵션 활성화·
+  저장 경쟁 어느 시점에서 발견해도 보존하며 해당 실행의 자동 저장을 중단한다.
+- 초기 복원 중에는 부분 snapshot 저장을 억제하고, 구성 필드가 실제로 바뀐 event만 저장한다. 최대 8개
+  탭을 순서대로 새 session/process로 시작하며 폴더·shell 실패를 탭별 failed 상태로 격리한다. 종료 flush는
+  2초 제한을 적용하고 persistence event를 먼저 해제해 종료 뒤 새 작업을 예약하지 않는다.
+- 자동화 검증은 공유 MSBuild server 경합을 피하는 `--disable-build-servers -m:1`을 추가해 수행했다.
+  Terminal module tests 119개와 Integration tests 29개, C# alignment 검사와 `git diff --check`가 통과했다.
+  실제 앱 재실행·폴더 권한 실패 UI와 W5 설정 토글 연결은 후속 수동/통합 범위다.

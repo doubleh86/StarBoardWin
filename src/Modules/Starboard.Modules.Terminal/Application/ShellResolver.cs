@@ -1,4 +1,5 @@
 using System.IO;
+using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
 
 namespace Starboard.Modules.Terminal.Application;
@@ -37,6 +38,45 @@ internal static class ShellResolver
         }
 
         throw new FileNotFoundException("pwsh.exe, powershell.exe 또는 cmd.exe를 찾을 수 없습니다.");
+    }
+
+    internal static ShellLaunchSpec Resolve(TerminalShellKind shellKind)
+    {
+        return shellKind switch
+        {
+            TerminalShellKind.Automatic => Resolve(null),
+            TerminalShellKind.Pwsh => Resolve("pwsh.exe"),
+            TerminalShellKind.PowerShell => Resolve("powershell.exe"),
+            TerminalShellKind.Cmd => Resolve("cmd.exe"),
+            _ => throw new ArgumentOutOfRangeException(nameof(shellKind), shellKind,
+                                                       "The terminal shell kind is not supported."),
+        };
+    }
+
+    internal static TerminalShellKind? GetConfiguredKind(string? configuredExecutable)
+    {
+        if (string.IsNullOrWhiteSpace(configuredExecutable) == true)
+        {
+            return TerminalShellKind.Automatic;
+        }
+
+        var fileName = Path.GetFileName(configuredExecutable.Trim());
+        if (fileName.Equals("pwsh.exe", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return TerminalShellKind.Pwsh;
+        }
+
+        if (fileName.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return TerminalShellKind.PowerShell;
+        }
+
+        if (fileName.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return TerminalShellKind.Cmd;
+        }
+
+        return null;
     }
 
     internal static string? FindExecutable(string executable, IEnumerable<string>? pathDirectories = null)

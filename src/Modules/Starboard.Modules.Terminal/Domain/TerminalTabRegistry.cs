@@ -32,7 +32,7 @@ internal sealed class TerminalTabRegistry
 
     internal TerminalSessionId? ActiveSessionId { get; private set; }
 
-    internal TerminalTab Add(string startingDirectory)
+    internal TerminalTab Add(string startingDirectory, TerminalShellKind? shellKind = TerminalShellKind.Automatic)
     {
         if (tabs.Count >= maximumTabs)
         {
@@ -62,12 +62,46 @@ internal sealed class TerminalTabRegistry
         }
 
         var tab = new TerminalTab(sessionId, configurationId, $"PowerShell {nextTabNumber}", startingDirectory,
-                                  TerminalSessionState.Starting, null);
+                                  shellKind, TerminalSessionState.Starting, null);
         nextTabNumber++;
         tabs.Add(tab);
         ActiveSessionId = sessionId;
 
         return tab;
+    }
+
+    internal TerminalTab AddRestored(TerminalWorkspaceTabConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        if (tabs.Count >= maximumTabs)
+        {
+            throw new InvalidOperationException($"Terminal tab limit ({maximumTabs}) has been reached.");
+        }
+
+        var sessionId = sessionIdFactory();
+        if (sessionId.Value == Guid.Empty || tabs.Any(tab => tab.SessionId == sessionId) == true)
+        {
+            throw new InvalidOperationException("The restored runtime session identifier must be non-empty and unique.");
+        }
+
+        if (tabs.Any(tab => tab.ConfigurationId == configuration.ConfigurationId) == true)
+        {
+            throw new InvalidOperationException("The restored terminal configuration identifier must be unique.");
+        }
+
+        var tab = new TerminalTab(sessionId, configuration.ConfigurationId, configuration.Name,
+                                  configuration.StartingDirectory, configuration.ShellKind,
+                                  TerminalSessionState.Starting, null);
+        tabs.Add(tab);
+        ActiveSessionId = sessionId;
+
+        return tab;
+    }
+
+    internal bool SelectConfiguration(TerminalTabConfigurationId configurationId)
+    {
+        var tab = tabs.FirstOrDefault(candidate => candidate.ConfigurationId == configurationId);
+        return tab is not null && Select(tab.SessionId);
     }
 
     internal bool Select(TerminalSessionId sessionId)
@@ -129,6 +163,17 @@ internal sealed class TerminalTabRegistry
         }
 
         tabs[index] = tabs[index] with { StartingDirectory = startingDirectory };
+    }
+
+    internal void SetShellKind(TerminalSessionId sessionId, TerminalShellKind? shellKind)
+    {
+        var index = tabs.FindIndex(tab => tab.SessionId == sessionId);
+        if (index < 0)
+        {
+            throw new InvalidOperationException("The terminal tab does not exist.");
+        }
+
+        tabs[index] = tabs[index] with { ShellKind = shellKind };
     }
 
     internal TerminalTabCloseResult? Close(TerminalSessionId sessionId)

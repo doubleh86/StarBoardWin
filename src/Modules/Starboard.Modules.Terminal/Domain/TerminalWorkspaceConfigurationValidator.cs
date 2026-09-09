@@ -8,6 +8,7 @@ internal static class TerminalWorkspaceConfigurationValidator
     internal const int CurrentSchemaVersion = 1;
     internal const int MaximumTabs = TerminalTabRegistry.DefaultMaximumTabs;
     internal const int MaximumTabNameTextElements = 32;
+    internal const int MaximumStartingDirectoryCharacters = 32_767;
 
     internal static void Validate(TerminalWorkspaceConfiguration configuration)
     {
@@ -79,7 +80,8 @@ internal static class TerminalWorkspaceConfigurationValidator
                                         nameof(tab));
         }
 
-        if (TerminalStartingDirectory.IsSupportedLocalAbsolutePath(tab.StartingDirectory) == false)
+        if (tab.StartingDirectory is null || tab.StartingDirectory.Length > MaximumStartingDirectoryCharacters ||
+            TerminalStartingDirectory.IsSupportedLocalAbsolutePath(tab.StartingDirectory) == false)
         {
             throw new ArgumentException("The terminal starting directory must be a local absolute Windows path.", nameof(tab));
         }

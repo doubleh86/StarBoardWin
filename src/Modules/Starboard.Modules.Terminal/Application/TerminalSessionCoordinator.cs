@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.ExceptionServices;
+using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
 using Starboard.SharedKernel.Diagnostics;
 
@@ -22,6 +23,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     private readonly Dictionary<TerminalSessionId, ShellLaunchSpec> tabShells = [];
 
     private ShellLaunchSpec? defaultShell;
+    private TerminalShellKind? defaultShellKind = TerminalShellKind.Automatic;
     private bool isStarted;
     private bool isDisposed;
     private int columns = 80;
@@ -60,7 +62,22 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     internal async Task<TerminalTab> StartAsync(ShellLaunchSpec shell, int columns, int rows,
                                                 CancellationToken cancellationToken)
     {
+        return await StartAsync(shell, TerminalShellKind.Automatic, null, ShellResolver.Resolve,
+                                columns, rows, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<TerminalTab> StartAsync(ShellLaunchSpec shell, TerminalShellKind? shellKind,
+                                                TerminalWorkspaceConfiguration? workspaceConfiguration,
+                                                Func<TerminalShellKind, ShellLaunchSpec> shellResolver,
+                                                int columns, int rows, CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(shell);
+        ArgumentNullException.ThrowIfNull(shellResolver);
+        if (workspaceConfiguration is not null)
+        {
+            TerminalWorkspaceConfigurationValidator.Validate(workspaceConfiguration);
+        }
+
         await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -72,26 +89,71 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
             ValidateSize(columns, rows);
             defaultShell = shell;
+            defaultShellKind = shellKind;
             this.columns = columns;
             this.rows = rows;
             isStarted = true;
 
-            TerminalTab tab;
-            TerminalWorkspaceSnapshot snapshot;
-            lock (stateLock)
+            if (workspaceConfiguration is null)
             {
-                tab = tabRegistry.Add(shell.WorkingDirectory);
-                tabShells.Add(tab.SessionId, shell);
-                snapshot = tabRegistry.CreateSnapshot();
+                TerminalTab defaultTab;
+                TerminalWorkspaceSnapshot defaultSnapshot;
+                lock (stateLock)
+                {
+                    defaultTab = tabRegistry.Add(shell.WorkingDirectory, shellKind);
+                    tabShells.Add(defaultTab.SessionId, shell);
+                    defaultSnapshot = tabRegistry.CreateSnapshot();
+                }
+
+                WorkspaceChanged?.Invoke(defaultSnapshot);
+                await StartSessionAsync(defaultTab.SessionId).ConfigureAwait(false);
+
+                lock (stateLock)
+                {
+                    return tabRegistry.GetRequired(defaultTab.SessionId);
+                }
             }
 
-            WorkspaceChanged?.Invoke(snapshot);
-            await StartSessionAsync(tab.SessionId).ConfigureAwait(false);
+            foreach (var configuration in workspaceConfiguration.Tabs.OrderBy(tab => tab.Order))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ThrowIfDisposed();
+                var tab = AddRestoredTab(configuration, shell, shellResolver, out var resolutionFailure);
+                if (resolutionFailure is not null)
+                {
+                    MarkRestoredTabFailed(tab.SessionId, resolutionFailure);
+                    continue;
+                }
 
+                try
+                {
+                    await StartSessionAsync(tab.SessionId).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested == true)
+                {
+                    throw;
+                }
+                catch (Exception exception) when (IsRecoverableRestoreException(exception) == true)
+                {
+                    // StartSessionAsync already isolates the failure to this tab and records a safe diagnostic.
+                }
+            }
+
+            TerminalWorkspaceSnapshot restoredSnapshot;
             lock (stateLock)
             {
-                return tabRegistry.GetRequired(tab.SessionId);
+                if (workspaceConfiguration.ActiveTabConfigurationId is { } activeConfigurationId)
+                {
+                    _ = tabRegistry.SelectConfiguration(activeConfigurationId);
+                }
+
+                restoredSnapshot = tabRegistry.CreateSnapshot();
             }
+
+            WorkspaceChanged?.Invoke(restoredSnapshot);
+            var restoredSessionId = restoredSnapshot.ActiveSessionId
+                ?? throw new InvalidOperationException("The restored terminal workspace has no active tab.");
+            return restoredSnapshot.Tabs.Single(tab => tab.SessionId == restoredSessionId);
         }
         finally
         {
@@ -113,7 +175,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             {
                 var shell = defaultShell
                     ?? throw new InvalidOperationException("The terminal shell has not been configured.");
-                tab = tabRegistry.Add(shell.WorkingDirectory);
+                tab = tabRegistry.Add(shell.WorkingDirectory, defaultShellKind);
                 tabShells.Add(tab.SessionId, shell);
                 snapshot = tabRegistry.CreateSnapshot();
             }
@@ -191,11 +253,17 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
     internal void UpdateDefaultShell(ShellLaunchSpec shell)
     {
+        UpdateDefaultShell(shell, TerminalShellKind.Automatic);
+    }
+
+    internal void UpdateDefaultShell(ShellLaunchSpec shell, TerminalShellKind? shellKind)
+    {
         ArgumentNullException.ThrowIfNull(shell);
         lock (stateLock)
         {
             ThrowIfUnavailable();
             defaultShell = shell;
+            defaultShellKind = shellKind;
         }
     }
 
@@ -226,6 +294,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                     tabShells.Add(closeResult.ReplacementTab.SessionId, replacementShell);
                     tabRegistry.SetStartingDirectory(closeResult.ReplacementTab.SessionId,
                                                      replacementShell.WorkingDirectory);
+                    tabRegistry.SetShellKind(closeResult.ReplacementTab.SessionId, defaultShellKind);
                 }
                 snapshot = tabRegistry.CreateSnapshot();
             }
@@ -586,6 +655,56 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         return true;
     }
 
+    private TerminalTab AddRestoredTab(TerminalWorkspaceTabConfiguration configuration, ShellLaunchSpec automaticShell,
+                                       Func<TerminalShellKind, ShellLaunchSpec> shellResolver,
+                                       out Exception? resolutionFailure)
+    {
+        ShellLaunchSpec? restoredShell = null;
+        resolutionFailure = null;
+        try
+        {
+            var resolved = configuration.ShellKind == TerminalShellKind.Automatic
+                ? automaticShell
+                : shellResolver(configuration.ShellKind);
+            restoredShell = resolved with { WorkingDirectory = configuration.StartingDirectory };
+        }
+        catch (Exception exception) when (IsRecoverableRestoreException(exception) == true)
+        {
+            resolutionFailure = exception;
+        }
+
+        TerminalTab tab;
+        TerminalWorkspaceSnapshot snapshot;
+        lock (stateLock)
+        {
+            ThrowIfDisposed();
+            tab = tabRegistry.AddRestored(configuration);
+            if (restoredShell is not null)
+            {
+                tabShells.Add(tab.SessionId, restoredShell);
+            }
+
+            snapshot = tabRegistry.CreateSnapshot();
+        }
+
+        WorkspaceChanged?.Invoke(snapshot);
+        return tab;
+    }
+
+    private void MarkRestoredTabFailed(TerminalSessionId sessionId, Exception exception)
+    {
+        TerminalWorkspaceSnapshot snapshot;
+        lock (stateLock)
+        {
+            tabRegistry.SetState(sessionId, TerminalSessionState.Failed);
+            snapshot = tabRegistry.CreateSnapshot();
+        }
+
+        WorkspaceChanged?.Invoke(snapshot);
+        diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "RestoreSession",
+                            "A restored terminal shell kind could not be resolved.", exception);
+    }
+
     private bool UpdateWorkspace(Func<bool> update)
     {
         TerminalWorkspaceSnapshot snapshot;
@@ -766,6 +885,16 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
 
         return timeout;
+    }
+
+    private static bool IsRecoverableRestoreException(Exception exception)
+    {
+        return exception is ArgumentException or
+               IOException or
+               InvalidOperationException or
+               NotSupportedException or
+               UnauthorizedAccessException or
+               System.ComponentModel.Win32Exception;
     }
 
     private sealed class SessionEntry

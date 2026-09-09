@@ -10,13 +10,16 @@ namespace Starboard.Modules.Terminal;
 public sealed class TerminalModule : IDisposable
 {
     private readonly TerminalSessionCoordinator sessionCoordinator;
+    private readonly TerminalWorkspacePersistence workspacePersistence;
     private readonly TerminalView terminalView;
     private bool isDisposed;
 
     public TerminalModule(IDiagnosticLog diagnosticLog)
     {
         sessionCoordinator = new TerminalSessionCoordinator(new ConPtySessionFactory(diagnosticLog), diagnosticLog);
-        terminalView = new TerminalView(diagnosticLog, sessionCoordinator);
+        var workspaceStore = new FileTerminalWorkspaceStore(FileTerminalWorkspaceStore.GetDefaultPath());
+        workspacePersistence = new TerminalWorkspacePersistence(workspaceStore, sessionCoordinator, diagnosticLog);
+        terminalView = new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence);
     }
 
     public FrameworkElement Surface => terminalView;
@@ -39,6 +42,13 @@ public sealed class TerminalModule : IDisposable
         return terminalView.Dispatcher.Invoke(() => terminalView.ApplySettings(settings));
     }
 
+    public Task<TerminalWorkspacePersistenceResult> SetWorkspacePersistenceEnabledAsync(
+        bool enabled, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        return terminalView.SetWorkspacePersistenceEnabledAsync(enabled, cancellationToken);
+    }
+
     public void Dispose()
     {
         if (isDisposed == true)
@@ -48,6 +58,7 @@ public sealed class TerminalModule : IDisposable
 
         isDisposed = true;
         terminalView.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        workspacePersistence.DisposeAsync().AsTask().GetAwaiter().GetResult();
         sessionCoordinator.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 }

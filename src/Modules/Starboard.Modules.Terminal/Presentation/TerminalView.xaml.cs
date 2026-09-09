@@ -22,6 +22,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private readonly IDiagnosticLog diagnosticLog;
     private readonly TerminalSessionCoordinator sessionCoordinator;
+    private readonly TerminalWorkspacePersistence workspacePersistence;
     private readonly Lock outputLock = new();
     private readonly Dictionary<TerminalSessionId, StringBuilder> pendingOutput = [];
     private readonly HashSet<TerminalSessionId> outputFlushScheduled = [];
@@ -33,18 +34,22 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private TerminalSettings? settings;
     private TerminalAppearanceState? appearanceState;
     private ShellLaunchSpec? defaultShell;
+    private TerminalShellKind? defaultShellKind;
     private bool rendererFailed;
     private bool isDisposed;
     private int columns = 80;
     private int rows = 24;
 
-    internal TerminalView(IDiagnosticLog diagnosticLog, TerminalSessionCoordinator sessionCoordinator)
+    internal TerminalView(IDiagnosticLog diagnosticLog, TerminalSessionCoordinator sessionCoordinator,
+                          TerminalWorkspacePersistence workspacePersistence)
     {
         this.diagnosticLog = diagnosticLog;
         this.sessionCoordinator = sessionCoordinator;
+        this.workspacePersistence = workspacePersistence;
         sessionCoordinator.WorkspaceChanged += Session_WorkspaceChanged;
         sessionCoordinator.OutputReceived += Session_OutputReceived;
         sessionCoordinator.SessionExited += Session_Exited;
+        workspacePersistence.StatusChanged += WorkspacePersistence_StatusChanged;
         InitializeComponent();
         var canvas = ((SolidColorBrush)FindResource("CanvasBrush")).Color;
         SetRendererBackground(canvas);
@@ -56,6 +61,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(terminalOptions);
         var initialAppearance = CreateAppearanceSnapshot(new TerminalAppearanceSettings(terminalOptions.FontFamily, terminalOptions.FontSize, terminalOptions.Theme));
         defaultShell = ShellResolver.Resolve(terminalOptions.ShellExecutable);
+        defaultShellKind = ShellResolver.GetConfiguredKind(terminalOptions.ShellExecutable);
         settings = new TerminalSettings(initialAppearance, terminalOptions.ShellExecutable);
         appearanceState = new TerminalAppearanceState(initialAppearance);
         ApplyTheme(initialAppearance.Theme);
@@ -64,7 +70,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         try
         {
             await InitializeRendererAsync(cancellationToken);
-            await StartWorkspaceAsync(cancellationToken);
+            await StartWorkspaceAsync(terminalOptions.RestoreWorkspaceOnLaunch, cancellationToken);
             ShowTerminal();
         }
         catch (Exception exception) when (
@@ -119,7 +125,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         {
             if (defaultShellChanged == true)
             {
-                sessionCoordinator.UpdateDefaultShell(requestedShell);
+                sessionCoordinator.UpdateDefaultShell(requestedShell,
+                                                      ShellResolver.GetConfiguredKind(requestedSettings.DefaultShellExecutable));
                 defaultShellApplied = true;
             }
 
@@ -139,6 +146,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
 
         defaultShell = requestedShell;
+        defaultShellKind = ShellResolver.GetConfiguredKind(requestedSettings.DefaultShellExecutable);
         settings = effectiveSettings;
         var rendererAppearance = appearanceState?.Update(requestedAppearance);
         if (rendererAppearance is not null)
@@ -158,7 +166,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         {
             try
             {
-                sessionCoordinator.UpdateDefaultShell(previousShell);
+                sessionCoordinator.UpdateDefaultShell(previousShell,
+                                                      ShellResolver.GetConfiguredKind(previousSettings.DefaultShellExecutable));
             }
             catch (Exception exception) when (IsRecoverableSettingsException(exception) == true)
             {
@@ -197,6 +206,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         sessionCoordinator.WorkspaceChanged -= Session_WorkspaceChanged;
         sessionCoordinator.OutputReceived -= Session_OutputReceived;
         sessionCoordinator.SessionExited -= Session_Exited;
+        workspacePersistence.StatusChanged -= WorkspacePersistence_StatusChanged;
         Renderer.Dispose();
         lifetimeCancellation.Dispose();
 
@@ -261,11 +271,42 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         core.ProcessFailed += Core_ProcessFailed;
     }
 
-    private async Task StartWorkspaceAsync(CancellationToken cancellationToken)
+    internal Task<TerminalWorkspacePersistenceResult> SetWorkspacePersistenceEnabledAsync(
+        bool enabled, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        return workspacePersistence.SetEnabledAsync(enabled, cancellationToken);
+    }
+
+    private async Task StartWorkspaceAsync(bool restoreEnabled, CancellationToken cancellationToken)
     {
         var shell = defaultShell
             ?? throw new InvalidOperationException("The terminal shell has not been configured.");
-        await sessionCoordinator.StartAsync(shell, columns, rows, cancellationToken);
+        var loadResult = await workspacePersistence.InitializeAsync(restoreEnabled, cancellationToken);
+        var configuration = loadResult.Status is TerminalWorkspaceLoadStatus.Loaded or
+                                                 TerminalWorkspaceLoadStatus.RecoveredFromBackup
+            ? loadResult.Configuration
+            : null;
+        await sessionCoordinator.StartAsync(shell, defaultShellKind, configuration, ShellResolver.Resolve,
+                                            columns, rows, cancellationToken);
+        workspacePersistence.CompleteRestore();
+    }
+
+    private void WorkspacePersistence_StatusChanged(TerminalWorkspaceSaveStatus status)
+    {
+        if (isDisposed == true)
+        {
+            return;
+        }
+
+        if (Dispatcher.CheckAccess() == false)
+        {
+            _ = Dispatcher.BeginInvoke(() => WorkspacePersistence_StatusChanged(status));
+            return;
+        }
+
+        SendGlobalMessage("workspace-save-status",
+                          new { state = status.State.ToString().ToLowerInvariant(), message = status.Message });
     }
 
     private void Core_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
@@ -523,7 +564,10 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             var activeSessionId = sessionCoordinator.Snapshot.ActiveSessionId;
             if (activeSessionId is null)
             {
-                await StartWorkspaceAsync(lifetimeCancellation.Token);
+                var shell = defaultShell
+                    ?? throw new InvalidOperationException("The terminal shell has not been configured.");
+                await sessionCoordinator.StartAsync(shell, defaultShellKind, null, ShellResolver.Resolve,
+                                                    columns, rows, lifetimeCancellation.Token);
             }
             else
             {

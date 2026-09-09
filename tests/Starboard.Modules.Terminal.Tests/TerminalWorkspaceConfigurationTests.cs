@@ -45,6 +45,40 @@ public sealed class TerminalWorkspaceConfigurationTests
     }
 
     [TestMethod]
+    public void ValidateMoreThanEightTabsRejectsWorkspace()
+    {
+        var tabs = Enumerable.Range(1, 9)
+            .Select(index => new TerminalWorkspaceTabConfiguration(
+                new TerminalTabConfigurationId(CreateGuid(index)), $"탭 {index}", index - 1,
+                $"C:\\Work\\{index}", TerminalShellKind.Automatic))
+            .ToArray();
+        var configuration = new TerminalWorkspaceConfiguration(1, tabs, tabs[0].ConfigurationId);
+
+        Assert.ThrowsExactly<ArgumentException>(() => TerminalWorkspaceConfigurationValidator.Validate(configuration));
+    }
+
+    [TestMethod]
+    public void ValidateUnknownActiveIdentifierRejectsWorkspace()
+    {
+        var tab = new TerminalWorkspaceTabConfiguration(new TerminalTabConfigurationId(CreateGuid(1)), "작업", 0,
+                                                        "C:\\Work", TerminalShellKind.Automatic);
+        var configuration = new TerminalWorkspaceConfiguration(1, [tab],
+                                                               new TerminalTabConfigurationId(CreateGuid(2)));
+
+        Assert.ThrowsExactly<ArgumentException>(() => TerminalWorkspaceConfigurationValidator.Validate(configuration));
+    }
+
+    [TestMethod]
+    public void ValidateNonContiguousOrderRejectsWorkspace()
+    {
+        var tab = new TerminalWorkspaceTabConfiguration(new TerminalTabConfigurationId(CreateGuid(1)), "작업", 1,
+                                                        "C:\\Work", TerminalShellKind.Automatic);
+        var configuration = new TerminalWorkspaceConfiguration(1, [tab], tab.ConfigurationId);
+
+        Assert.ThrowsExactly<ArgumentException>(() => TerminalWorkspaceConfigurationValidator.Validate(configuration));
+    }
+
+    [TestMethod]
     [DataRow("..\\Work")]
     [DataRow("\\\\server\\share")]
     [DataRow("\\\\?\\C:\\Work")]
@@ -72,5 +106,10 @@ public sealed class TerminalWorkspaceConfigurationTests
 
         Assert.IsFalse(result.Succeeded);
         Assert.AreEqual(TerminalWorkspacePersistenceOperation.ShutdownFlush, result.Operation);
+    }
+
+    private static Guid CreateGuid(int value)
+    {
+        return Guid.Parse($"20000000-0000-0000-0000-{value:D12}");
     }
 }
