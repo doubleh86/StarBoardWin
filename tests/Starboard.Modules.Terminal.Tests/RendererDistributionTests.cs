@@ -29,6 +29,8 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(script, "restart-session");
         StringAssert.Contains(script, "rename-session");
         StringAssert.Contains(script, "move-session");
+        StringAssert.Contains(script, "set-starting-directory");
+        StringAssert.Contains(script, "homeDirectory");
         StringAssert.Contains(script, "compositionstart");
         StringAssert.Contains(script, "\"F10\"");
         StringAssert.Contains(script, "apply-appearance");
@@ -41,6 +43,8 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(styles, ".tab-list");
         StringAssert.Contains(styles, ".session-pane");
         StringAssert.Contains(styles, ".tab-context-menu");
+        StringAssert.Contains(styles, ".starting-directory-dialog");
+        StringAssert.Contains(styles, ".session-recovery");
     }
 
     [TestMethod]

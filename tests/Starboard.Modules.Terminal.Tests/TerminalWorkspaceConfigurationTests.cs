@@ -45,13 +45,18 @@ public sealed class TerminalWorkspaceConfigurationTests
     }
 
     [TestMethod]
-    public void ValidateRemoteOrRelativeStartingDirectoryRejectsWorkspace()
+    [DataRow("..\\Work")]
+    [DataRow("\\\\server\\share")]
+    [DataRow("\\\\?\\C:\\Work")]
+    [DataRow("C:\\%USERPROFILE%")]
+    [DataRow("C:\\$(Get-Location)")]
+    public void ValidateUnsupportedStartingDirectoryRejectsWorkspace(string startingDirectory)
     {
         var identifier = new TerminalTabConfigurationId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
         var configuration = new TerminalWorkspaceConfiguration(1,
                                                                [
                                                                     new TerminalWorkspaceTabConfiguration(identifier, "작업", 0,
-                                                                                                          "..\\Work", TerminalShellKind.PowerShell),
+                                                                                                          startingDirectory, TerminalShellKind.PowerShell),
                                                                ],
                                                                identifier);
 

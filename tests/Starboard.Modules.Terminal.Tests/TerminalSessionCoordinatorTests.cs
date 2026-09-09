@@ -9,9 +9,9 @@ namespace Starboard.Modules.Terminal.Tests;
 [TestClass]
 public sealed class TerminalSessionCoordinatorTests
 {
-    private static readonly ShellLaunchSpec TestShell = new("pwsh.exe", "-NoLogo", "C:\\Test");
+    private static readonly ShellLaunchSpec TestShell = new("pwsh.exe", "-NoLogo", Path.GetTempPath());
 
-    private static readonly ShellLaunchSpec UpdatedShell = new("powershell.exe", "-NoLogo", "C:\\Updated");
+    private static readonly ShellLaunchSpec UpdatedShell = new("powershell.exe", "-NoLogo", Path.GetTempPath());
 
     [TestMethod]
     public async Task StartAsyncFirstTabStartsAndActivatesDedicatedSession()
@@ -87,6 +87,70 @@ public sealed class TerminalSessionCoordinatorTests
         Assert.AreEqual(first.SessionId, snapshot.Tabs[1].SessionId);
         Assert.AreEqual("서버", snapshot.Tabs[1].Name);
         Assert.AreEqual(second.SessionId, snapshot.ActiveSessionId);
+    }
+
+    [TestMethod]
+    public async Task UpdateStartingDirectoryKeepsLiveSessionAndAppliesPathOnExplicitRestart()
+    {
+        var startingDirectory = Path.Combine(Path.GetTempPath(), $"Starboard 시작 폴더 {Guid.NewGuid():N}");
+        Directory.CreateDirectory(startingDirectory);
+        try
+        {
+            var factory = new FakeTerminalSessionFactory();
+            await using var coordinator = CreateCoordinator(factory);
+            var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+            _ = await coordinator.AddAsync(CancellationToken.None);
+
+            var result = coordinator.UpdateStartingDirectory(first.SessionId, startingDirectory);
+
+            Assert.IsTrue(result.Succeeded);
+            Assert.AreEqual(2, factory.Sessions.Count);
+            Assert.AreEqual(0, factory.Sessions[0].DisposeCount);
+            Assert.AreEqual(0, factory.Sessions[0].Writes.Count);
+            Assert.AreEqual(Path.GetFullPath(startingDirectory), FindTab(coordinator.Snapshot, first.SessionId).StartingDirectory);
+
+            await coordinator.RestartAsync(first.SessionId, CancellationToken.None);
+
+            Assert.AreEqual(3, factory.StartRequests.Count);
+            Assert.AreEqual(Path.GetFullPath(startingDirectory), factory.StartRequests[2].Shell.WorkingDirectory);
+            Assert.AreEqual(TestShell.ExecutablePath, factory.StartRequests[2].Shell.ExecutablePath);
+            Assert.AreEqual(TestShell.Arguments, factory.StartRequests[2].Shell.Arguments);
+        }
+        finally
+        {
+            Directory.Delete(startingDirectory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task RestartAsyncWhenStartingDirectoryWasDeletedFailsOnlyRequestedTab()
+    {
+        var startingDirectory = Path.Combine(Path.GetTempPath(), $"Starboard deleted {Guid.NewGuid():N}");
+        Directory.CreateDirectory(startingDirectory);
+        try
+        {
+            var factory = new FakeTerminalSessionFactory();
+            await using var coordinator = CreateCoordinator(factory);
+            var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+            var second = await coordinator.AddAsync(CancellationToken.None);
+            Assert.IsTrue(coordinator.UpdateStartingDirectory(first.SessionId, startingDirectory).Succeeded);
+            Directory.Delete(startingDirectory, recursive: true);
+
+            await Assert.ThrowsExactlyAsync<DirectoryNotFoundException>(() =>
+                coordinator.RestartAsync(first.SessionId, CancellationToken.None));
+
+            Assert.AreEqual(TerminalSessionState.Failed, FindTab(coordinator.Snapshot, first.SessionId).State);
+            Assert.AreEqual(TerminalSessionState.Running, FindTab(coordinator.Snapshot, second.SessionId).State);
+            Assert.AreEqual(2, factory.StartRequests.Count);
+            Assert.AreEqual(0, factory.Sessions[1].DisposeCount);
+        }
+        finally
+        {
+            if (Directory.Exists(startingDirectory) == true)
+            {
+                Directory.Delete(startingDirectory, recursive: true);
+            }
+        }
     }
 
     [TestMethod]

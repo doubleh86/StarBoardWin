@@ -103,6 +103,8 @@ type SessionPayload = {
   exitCode: number | null;
   order: number;
   canAddSession: boolean;
+  startingDirectory: string;
+  homeDirectory: string;
 };
 
 type SessionEntry = {
@@ -111,6 +113,8 @@ type SessionEntry = {
   state: SessionState;
   exitCode: number | null;
   order: number;
+  startingDirectory: string;
+  homeDirectory: string;
   terminal: Terminal;
   fitAddon: FitAddon;
   pane: HTMLElement;
@@ -118,6 +122,8 @@ type SessionEntry = {
   status: HTMLElement;
   statusMessage: HTMLElement;
   restartButton: HTMLButtonElement;
+  changeDirectoryButton: HTMLButtonElement;
+  homeDirectoryButton: HTMLButtonElement;
   tabItem: HTMLElement;
   tabButton: HTMLButtonElement;
   tabRenameInput: HTMLInputElement;
@@ -382,7 +388,25 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
     requestedTerminalFocusSessionId = sessionId;
     postSession("restart-session", sessionId);
   });
-  status.append(statusMessage, restartButton);
+
+  const changeDirectoryButton = document.createElement("button");
+  changeDirectoryButton.className = "session-recovery";
+  changeDirectoryButton.type = "button";
+  changeDirectoryButton.textContent = "폴더 변경";
+  changeDirectoryButton.addEventListener("click", () => showStartingDirectoryEditor(sessionId));
+
+  const homeDirectoryButton = document.createElement("button");
+  homeDirectoryButton.className = "session-recovery";
+  homeDirectoryButton.type = "button";
+  homeDirectoryButton.textContent = "홈에서 다시 시도";
+  homeDirectoryButton.addEventListener("click", () => {
+    postSession("set-starting-directory", sessionId, {
+      startingDirectory: sessions.get(sessionId)?.homeDirectory ?? payload.homeDirectory,
+    });
+    requestedTerminalFocusSessionId = sessionId;
+    postSession("restart-session", sessionId);
+  });
+  status.append(statusMessage, changeDirectoryButton, homeDirectoryButton, restartButton);
   pane.append(mount, status);
   workspace.append(pane);
 
@@ -488,6 +512,8 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
     state: payload.state,
     exitCode: payload.exitCode,
     order: payload.order,
+    startingDirectory: payload.startingDirectory,
+    homeDirectory: payload.homeDirectory,
     terminal,
     fitAddon,
     pane,
@@ -495,6 +521,8 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
     status,
     statusMessage,
     restartButton,
+    changeDirectoryButton,
+    homeDirectoryButton,
     tabItem,
     tabButton,
     tabRenameInput,
@@ -612,6 +640,91 @@ function finishRename(sessionId: string, commit: boolean): void {
   entry.tabButton.focus();
 }
 
+function showStartingDirectoryEditor(sessionId: string): void {
+  const entry = sessions.get(sessionId);
+  if (entry === undefined) {
+    return;
+  }
+
+  dismissTabMenu();
+  const dialog = document.createElement("dialog");
+  dialog.className = "starting-directory-dialog";
+  dialog.setAttribute("aria-labelledby", `starting-directory-title-${sessionId}`);
+
+  const title = document.createElement("h2");
+  title.id = `starting-directory-title-${sessionId}`;
+  title.textContent = `${entry.name} 시작 폴더`;
+
+  const label = document.createElement("label");
+  label.textContent = "로컬 절대 경로";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = entry.startingDirectory;
+  input.maxLength = 32_767;
+  input.spellcheck = false;
+  input.autocomplete = "off";
+  label.append(input);
+
+  const guidance = document.createElement("p");
+  guidance.textContent = "다음 셸 시작부터 적용됩니다. 실행 중인 셸은 유지됩니다.";
+  const validation = document.createElement("p");
+  validation.className = "starting-directory-validation";
+  validation.setAttribute("role", "alert");
+
+  const actions = document.createElement("div");
+  actions.className = "starting-directory-actions";
+  const browseButton = document.createElement("button");
+  browseButton.type = "button";
+  browseButton.textContent = "폴더 선택…";
+  browseButton.addEventListener("click", () => {
+    postSession("set-starting-directory", sessionId, { startingDirectory: "" });
+    dialog.close();
+  });
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", () => dialog.close());
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.textContent = "저장";
+  const save = (): void => {
+    const startingDirectory = input.value.trim();
+    if (startingDirectory.length === 0) {
+      validation.textContent = "시작 폴더 경로를 입력해 주세요.";
+      input.focus();
+      return;
+    }
+
+    postSession("set-starting-directory", sessionId, { startingDirectory });
+    dialog.close();
+  };
+  saveButton.addEventListener("click", save);
+
+  let isComposing = false;
+  input.addEventListener("compositionstart", () => {
+    isComposing = true;
+  });
+  input.addEventListener("compositionend", () => {
+    isComposing = false;
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.isComposing === false && isComposing === false) {
+      event.preventDefault();
+      save();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      dialog.close();
+    }
+  });
+  actions.append(browseButton, cancelButton, saveButton);
+  dialog.append(title, label, guidance, validation, actions);
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+  input.focus();
+  input.select();
+}
+
 function showTabMenu(event: MouseEvent, sessionId: string): void {
   event.preventDefault();
   showTabMenuAt({ left: event.clientX, bottom: event.clientY }, sessionId);
@@ -647,6 +760,7 @@ function showTabMenuAt(anchor: Pick<DOMRect, "left" | "bottom">, sessionId: stri
   addItem("이름 변경", () => startRename(sessionId));
   addItem("왼쪽으로 이동", () => postSession("move-session", sessionId, { direction: "left" }), index === 0);
   addItem("오른쪽으로 이동", () => postSession("move-session", sessionId, { direction: "right" }), index === orderedSessions().length - 1);
+  addItem("시작 폴더 설정", () => showStartingDirectoryEditor(sessionId));
   document.body.append(menu);
   contextMenu = menu;
   menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
@@ -676,6 +790,8 @@ function renderTab(entry: SessionEntry): void {
   entry.tabLabel.textContent = entry.name;
   entry.closeButton.setAttribute("aria-label", `${entry.name} 탭 닫기`);
   entry.restartButton.setAttribute("aria-label", `${entry.name} shell 다시 시작`);
+  entry.changeDirectoryButton.setAttribute("aria-label", `${entry.name} 시작 폴더 변경`);
+  entry.homeDirectoryButton.setAttribute("aria-label", `${entry.name} 홈 폴더에서 다시 시도`);
 }
 
 function renderTabs(): void {
@@ -695,6 +811,8 @@ function updateSessionStatus(entry: SessionEntry): void {
   entry.status.classList.toggle("is-loading", isLoading);
   entry.status.classList.toggle("is-error", isError);
   entry.restartButton.hidden = isError === false;
+  entry.changeDirectoryButton.hidden = isError === false;
+  entry.homeDirectoryButton.hidden = isError === false;
   entry.pane.setAttribute("aria-busy", isLoading.toString());
 
   if (isLoading === true) {
@@ -726,6 +844,8 @@ function upsertSession(sessionId: string, payload: SessionPayload): void {
   entry.state = payload.state;
   entry.exitCode = payload.exitCode;
   entry.order = payload.order;
+  entry.startingDirectory = payload.startingDirectory;
+  entry.homeDirectory = payload.homeDirectory;
   if (
     payload.state === "running" ||
     payload.state === "starting" ||
@@ -906,7 +1026,9 @@ function isSessionPayload(
     validStates.includes(payload.state as SessionState) &&
     (payload.exitCode === null || typeof payload.exitCode === "number") &&
     Number.isInteger(payload.order) === true &&
-    typeof payload.canAddSession === "boolean"
+    typeof payload.canAddSession === "boolean" &&
+    typeof payload.startingDirectory === "string" &&
+    typeof payload.homeDirectory === "string"
   );
 }
 

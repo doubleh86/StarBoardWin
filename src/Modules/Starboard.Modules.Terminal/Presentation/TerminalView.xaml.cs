@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Win32;
 using Starboard.Modules.Terminal.Application;
 using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
@@ -346,8 +347,17 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 }
                 break;
             case RendererMessageType.SetStartingDirectory:
-                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "StartingDirectory",
-                                    "Starting-directory changes are not available in this terminal view.");
+                if (message.SessionId is { } directorySessionId)
+                {
+                    if (string.IsNullOrEmpty(message.Data) == true)
+                    {
+                        SelectStartingDirectory(directorySessionId);
+                    }
+                    else
+                    {
+                        UpdateStartingDirectory(directorySessionId, message.Data);
+                    }
+                }
                 break;
             case RendererMessageType.SessionError:
                 if (message.SessionId is { } failedSessionId && ContainsSession(failedSessionId) == true)
@@ -392,6 +402,59 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         {
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "MoveSession",
                                 "A terminal tab move request was rejected.");
+        }
+    }
+
+    private void SelectStartingDirectory(TerminalSessionId sessionId)
+    {
+        var tab = sessionCoordinator.Snapshot.Tabs.FirstOrDefault(candidate => candidate.SessionId == sessionId);
+        if (tab is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var initialDirectory = Directory.Exists(tab.StartingDirectory) == true
+                ? tab.StartingDirectory
+                : defaultShell?.WorkingDirectory;
+            var dialog = new OpenFolderDialog
+            {
+                InitialDirectory = initialDirectory ?? string.Empty,
+                Multiselect = false,
+                Title = $"{tab.Name} 탭 시작 폴더 선택",
+            };
+
+            if (dialog.ShowDialog(Window.GetWindow(this)) == true)
+            {
+                UpdateStartingDirectory(sessionId, dialog.FolderName);
+            }
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or UnauthorizedAccessException)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "SelectStartingDirectory",
+                                "The local starting-directory picker could not be opened.", exception);
+            SendSessionMessage("session-error", sessionId,
+                               new { message = "로컬 폴더 선택기를 열지 못했습니다. 경로를 직접 입력해 주세요." });
+        }
+    }
+
+    private void UpdateStartingDirectory(TerminalSessionId sessionId, string? startingDirectory)
+    {
+        try
+        {
+            var result = sessionCoordinator.UpdateStartingDirectory(sessionId, startingDirectory);
+            if (result.Succeeded == false)
+            {
+                SendSessionMessage("session-error", sessionId,
+                                   new { message = result.ErrorMessage ?? "시작 폴더를 변경하지 못했습니다." });
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "UpdateStartingDirectory",
+                                "A terminal starting-directory request could not be applied.", exception);
         }
     }
 
@@ -589,7 +652,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             {
                 diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RestartSession",
                                     $"Terminal session {sessionId} could not be restarted.", exception);
-                SendSessionMessage("session-error", sessionId, new { message = "shell session을 다시 시작하지 못했습니다." });
+                SendSessionMessage("session-error", sessionId, new { message = ToUserMessage(exception) });
             }
         }
     }
@@ -679,6 +742,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                                    tab.ExitCode,
                                    order = index,
                                    canAddSession,
+                                   tab.StartingDirectory,
+                                   homeDirectory = defaultShell?.WorkingDirectory ?? tab.StartingDirectory,
                                });
 
             if (tab.State == TerminalSessionState.Exited)
@@ -1097,6 +1162,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         return exception switch
         {
             FileNotFoundException => exception.Message,
+            DirectoryNotFoundException => "시작 폴더가 없거나 접근할 수 없습니다. 폴더를 변경하거나 홈 폴더에서 다시 시도해 주세요.",
             COMException => "Microsoft Edge WebView2 Runtime을 시작하지 못했습니다.",
             UnauthorizedAccessException => "Starboard 로컬 데이터 폴더에 접근할 수 없습니다.",
             _ => "Terminal session을 시작하지 못했습니다. 로컬 로그를 확인한 뒤 다시 시도해 주세요.",

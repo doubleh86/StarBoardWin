@@ -189,7 +189,15 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
   상태로 migration한다. 설정 apply 결과는 옵션 전환을 계산할 수 있게 하고, Terminal의
   저장·삭제·종료 flush 실패는 별도 결과 계약으로 host가 표시·재시도할 수 있게 한다.
 - [x] W2 탭 정리: 이름 변경과 좌우 이동은 renderer의 우클릭/Shift+F10 메뉴와 IME 안전 인라인 편집으로 연결했다. 변경은 runtime session ID를 유지한 채 registry 순서와 이름만 바꾼다. `npm ci`, `npm run build`, Terminal module tests 77개를 통과했다.
-- [ ] W3~W6 구현·검증.
+- [x] W3 시작 폴더: 탭 메뉴의 직접 입력과 Windows 로컬 폴더 선택기를 제공한다. 경로는
+  로컬 drive-rooted 절대 경로만 정규화하며 UNC·장치 경로, 상대 경로, 환경 변수와
+  command substitution 표기는 거부한다. 존재 확인을 통과한 값은 실행 중 session에
+  쓰지 않고 탭이 보관한 `ShellLaunchSpec.WorkingDirectory`만 바꾸며, 다음 명시적 재시작에
+  `CreateProcessW`의 working-directory 인자로 적용한다. 시작 시 폴더가 사라졌거나 접근할
+  수 없으면 해당 탭만 failed 상태로 두고 폴더 변경과 홈 폴더 재시도 동작을 표시한다.
+  renderer build, Terminal tests 93개, Integration tests 29개와 Debug solution tests 228개를
+  통과했다. 실제 picker 조작과 접근 권한이 제한된 폴더 시나리오는 수동 검증 pending이다.
+- [ ] W4~W6 구현·검증.
 
 W1은 저장소 구현이나 실제 복원 실행을 시작하지 않는다. renderer protocol은 이후 UI가 이름 변경,
 순서 이동, 시작 폴더 변경과 workspace 저장 상태를 명시적으로 교환할 수 있도록만 확장한다.

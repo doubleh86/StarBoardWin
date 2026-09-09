@@ -80,7 +80,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             TerminalWorkspaceSnapshot snapshot;
             lock (stateLock)
             {
-                tab = tabRegistry.Add();
+                tab = tabRegistry.Add(shell.WorkingDirectory);
                 tabShells.Add(tab.SessionId, shell);
                 snapshot = tabRegistry.CreateSnapshot();
             }
@@ -111,9 +111,10 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             TerminalWorkspaceSnapshot snapshot;
             lock (stateLock)
             {
-                tab = tabRegistry.Add();
-                tabShells.Add(tab.SessionId,
-                              defaultShell ?? throw new InvalidOperationException("The terminal shell has not been configured."));
+                var shell = defaultShell
+                    ?? throw new InvalidOperationException("The terminal shell has not been configured.");
+                tab = tabRegistry.Add(shell.WorkingDirectory);
+                tabShells.Add(tab.SessionId, shell);
                 snapshot = tabRegistry.CreateSnapshot();
             }
 
@@ -161,6 +162,33 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         return UpdateWorkspace(() => tabRegistry.MoveRight(sessionId));
     }
 
+    internal TerminalStartingDirectoryUpdateResult UpdateStartingDirectory(TerminalSessionId sessionId,
+                                                                           string? startingDirectory)
+    {
+        var validation = TerminalStartingDirectory.ValidateExisting(startingDirectory);
+        if (validation.Succeeded == false || validation.NormalizedPath is null)
+        {
+            return validation;
+        }
+
+        TerminalWorkspaceSnapshot snapshot;
+        lock (stateLock)
+        {
+            ThrowIfUnavailable();
+            if (tabRegistry.Contains(sessionId) == false || tabShells.TryGetValue(sessionId, out var shell) == false)
+            {
+                return new TerminalStartingDirectoryUpdateResult(false, null, "터미널 탭을 찾을 수 없습니다.");
+            }
+
+            tabShells[sessionId] = shell with { WorkingDirectory = validation.NormalizedPath };
+            tabRegistry.SetStartingDirectory(sessionId, validation.NormalizedPath);
+            snapshot = tabRegistry.CreateSnapshot();
+        }
+
+        WorkspaceChanged?.Invoke(snapshot);
+        return validation;
+    }
+
     internal void UpdateDefaultShell(ShellLaunchSpec shell)
     {
         ArgumentNullException.ThrowIfNull(shell);
@@ -193,8 +221,11 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 tabShells.Remove(sessionId);
                 if (closeResult.ReplacementTab is not null)
                 {
-                    tabShells.Add(closeResult.ReplacementTab.SessionId,
-                                  defaultShell ?? throw new InvalidOperationException("The terminal shell has not been configured."));
+                    var replacementShell = defaultShell
+                        ?? throw new InvalidOperationException("The terminal shell has not been configured.");
+                    tabShells.Add(closeResult.ReplacementTab.SessionId, replacementShell);
+                    tabRegistry.SetStartingDirectory(closeResult.ReplacementTab.SessionId,
+                                                     replacementShell.WorkingDirectory);
                 }
                 snapshot = tabRegistry.CreateSnapshot();
             }
@@ -432,6 +463,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
         try
         {
+            var workingDirectory = TerminalStartingDirectory.GetRequiredExisting(launchSpec.WorkingDirectory);
+            launchSpec = launchSpec with { WorkingDirectory = workingDirectory };
             session = sessionFactory.Start(launchSpec, columns, rows);
             entry = new SessionEntry(sessionId, session);
             entry.OutputHandler = data => OnOutputReceived(entry, data);

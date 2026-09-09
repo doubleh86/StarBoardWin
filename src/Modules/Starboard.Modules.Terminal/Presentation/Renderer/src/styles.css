@@ -69,7 +69,8 @@ button:focus-visible {
 .tab-button,
 .tab-close,
 .new-tab,
-.session-restart {
+.session-restart,
+.session-recovery {
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -140,7 +141,8 @@ button:focus-visible {
 .tab-button:hover,
 .tab-close:hover,
 .new-tab:hover,
-.session-restart:hover {
+.session-restart:hover,
+.session-recovery:hover {
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   color: var(--color-ink);
 }
@@ -148,7 +150,8 @@ button:focus-visible {
 .tab-button:active,
 .tab-close:active,
 .new-tab:active,
-.session-restart:active {
+.session-restart:active,
+.session-recovery:active {
   background: color-mix(in srgb, var(--color-accent) 24%, transparent);
 }
 
@@ -222,7 +225,8 @@ button:focus-visible {
 
 .session-pane[hidden],
 .session-status[hidden],
-.session-restart[hidden] {
+.session-restart[hidden],
+.session-recovery[hidden] {
   display: none !important;
 }
 
@@ -283,7 +287,8 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-.session-restart {
+.session-restart,
+.session-recovery {
   min-height: 24px;
   flex: 0 0 auto;
   padding: 0 var(--space-2xs);
@@ -291,6 +296,63 @@ button:focus-visible {
   color: var(--color-accent);
   font-size: 11px;
   font-weight: 600;
+}
+
+.starting-directory-dialog {
+  width: min(520px, calc(100% - 32px));
+  padding: var(--space-sm);
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: var(--color-canvas-raised);
+  color: var(--color-ink);
+  font: 12px var(--font-ui);
+}
+
+.starting-directory-dialog::backdrop {
+  background: color-mix(in srgb, black 58%, transparent);
+}
+
+.starting-directory-dialog h2 {
+  margin: 0 0 var(--space-sm);
+  font-size: 14px;
+}
+
+.starting-directory-dialog label {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.starting-directory-dialog input {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 var(--space-xs);
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: 12px var(--font-mono);
+}
+
+.starting-directory-dialog p {
+  margin: var(--space-xs) 0 0;
+  color: var(--color-neutral);
+}
+
+.starting-directory-dialog .starting-directory-validation {
+  min-height: 16px;
+  color: var(--color-error);
+}
+
+.starting-directory-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2xs);
+  margin-top: var(--space-xs);
+}
+
+.starting-directory-actions button {
+  min-height: 28px;
+  padding: 0 var(--space-xs);
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: transparent;
 }
 
 @keyframes status-pulse {

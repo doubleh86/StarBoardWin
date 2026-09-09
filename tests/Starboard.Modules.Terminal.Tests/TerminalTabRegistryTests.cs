@@ -11,8 +11,8 @@ public sealed class TerminalTabRegistryTests
     {
         var registry = CreateRegistry(3);
 
-        var first = registry.Add();
-        var second = registry.Add();
+        var first = registry.Add("C:\\Test");
+        var second = registry.Add("C:\\Test");
         var snapshot = registry.CreateSnapshot();
 
         Assert.AreEqual(new TerminalSessionId(CreateGuid(1)), first.SessionId);
@@ -26,9 +26,9 @@ public sealed class TerminalTabRegistryTests
     public void SelectNextAndPreviousAtBothEndsWrapsInTabOrder()
     {
         var registry = CreateRegistry(3);
-        var first = registry.Add();
-        var second = registry.Add();
-        var third = registry.Add();
+        var first = registry.Add("C:\\Test");
+        var second = registry.Add("C:\\Test");
+        var third = registry.Add("C:\\Test");
 
         Assert.IsTrue(registry.Select(first.SessionId));
         Assert.IsTrue(registry.SelectPrevious());
@@ -45,10 +45,10 @@ public sealed class TerminalTabRegistryTests
     public void CloseActiveMiddleAndLastTabsSelectsRightThenLeftNeighbor()
     {
         var registry = CreateRegistry(4);
-        _ = registry.Add();
-        var second = registry.Add();
-        var third = registry.Add();
-        var fourth = registry.Add();
+        _ = registry.Add("C:\\Test");
+        var second = registry.Add("C:\\Test");
+        var third = registry.Add("C:\\Test");
+        var fourth = registry.Add("C:\\Test");
 
         Assert.IsTrue(registry.Select(second.SessionId));
         _ = registry.Close(second.SessionId);
@@ -63,9 +63,9 @@ public sealed class TerminalTabRegistryTests
     public void CloseInactiveTabKeepsCurrentActiveTab()
     {
         var registry = CreateRegistry(3);
-        var first = registry.Add();
-        _ = registry.Add();
-        var third = registry.Add();
+        var first = registry.Add("C:\\Test");
+        _ = registry.Add("C:\\Test");
+        var third = registry.Add("C:\\Test");
 
         var result = registry.Close(first.SessionId);
 
@@ -77,7 +77,7 @@ public sealed class TerminalTabRegistryTests
     public void CloseLastTabCreatesAndActivatesNewDefaultTab()
     {
         var registry = CreateRegistry(2);
-        var first = registry.Add();
+        var first = registry.Add("C:\\Test");
 
         var result = registry.Close(first.SessionId);
         var snapshot = registry.CreateSnapshot();
@@ -95,10 +95,10 @@ public sealed class TerminalTabRegistryTests
     {
         var identifiersRequested = 0;
         var registry = new TerminalTabRegistry(() => new TerminalSessionId(CreateGuid(++identifiersRequested)), 2);
-        _ = registry.Add();
-        _ = registry.Add();
+        _ = registry.Add("C:\\Test");
+        _ = registry.Add("C:\\Test");
 
-        Assert.ThrowsExactly<InvalidOperationException>(() => registry.Add());
+        Assert.ThrowsExactly<InvalidOperationException>(() => registry.Add("C:\\Test"));
         Assert.AreEqual(2, identifiersRequested);
     }
 
@@ -109,7 +109,7 @@ public sealed class TerminalTabRegistryTests
         var configurationId = new TerminalTabConfigurationId(CreateGuid(2));
         var registry = new TerminalTabRegistry(() => sessionId, 2, () => configurationId);
 
-        var tab = registry.Add();
+        var tab = registry.Add("C:\\Test");
 
         Assert.AreEqual(sessionId, tab.SessionId);
         Assert.AreEqual(configurationId, tab.ConfigurationId);
@@ -120,7 +120,7 @@ public sealed class TerminalTabRegistryTests
     public void RenameTrimsValidKoreanNameAndPreservesSessionIdentity()
     {
         var registry = CreateRegistry(2);
-        var tab = registry.Add();
+        var tab = registry.Add("C:\\Test");
 
         var renamed = registry.Rename(tab.SessionId, "  서버 운영  ");
 
@@ -136,7 +136,7 @@ public sealed class TerminalTabRegistryTests
     public void RenameWithEmptyOrControlNameRejectsAndKeepsExistingName(string name)
     {
         var registry = CreateRegistry(2);
-        var tab = registry.Add();
+        var tab = registry.Add("C:\\Test");
 
         var renamed = registry.Rename(tab.SessionId, name);
 
@@ -148,7 +148,7 @@ public sealed class TerminalTabRegistryTests
     public void RenameWithMoreThanThirtyTwoTextElementsRejectsName()
     {
         var registry = CreateRegistry(2);
-        var tab = registry.Add();
+        var tab = registry.Add("C:\\Test");
 
         var renamed = registry.Rename(tab.SessionId, new string('가', 33));
 
@@ -157,12 +157,25 @@ public sealed class TerminalTabRegistryTests
     }
 
     [TestMethod]
+    public void SetStartingDirectoryChangesConfigurationWithoutChangingSessionIdentity()
+    {
+        var registry = CreateRegistry(2);
+        var tab = registry.Add("C:\\Initial");
+
+        registry.SetStartingDirectory(tab.SessionId, "C:\\새 작업 폴더");
+
+        var updatedTab = registry.CreateSnapshot().Tabs[0];
+        Assert.AreEqual(tab.SessionId, updatedTab.SessionId);
+        Assert.AreEqual("C:\\새 작업 폴더", updatedTab.StartingDirectory);
+    }
+
+    [TestMethod]
     public void MoveLeftAndRightReordersTabsWhileKeepingActiveSessionIdentifier()
     {
         var registry = CreateRegistry(3);
-        var first = registry.Add();
-        var second = registry.Add();
-        var third = registry.Add();
+        var first = registry.Add("C:\\Test");
+        var second = registry.Add("C:\\Test");
+        var third = registry.Add("C:\\Test");
         Assert.IsTrue(registry.Select(second.SessionId));
 
         Assert.IsTrue(registry.MoveRight(second.SessionId));

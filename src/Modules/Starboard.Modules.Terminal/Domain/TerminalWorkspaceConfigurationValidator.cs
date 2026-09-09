@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using Starboard.Modules.Terminal.Contracts;
 
 namespace Starboard.Modules.Terminal.Domain;
@@ -9,9 +8,6 @@ internal static class TerminalWorkspaceConfigurationValidator
     internal const int CurrentSchemaVersion = 1;
     internal const int MaximumTabs = TerminalTabRegistry.DefaultMaximumTabs;
     internal const int MaximumTabNameTextElements = 32;
-
-    private static readonly Regex _localAbsolutePathPattern = new("^[A-Za-z]:[\\\\/]", RegexOptions.CultureInvariant,
-                                                                  TimeSpan.FromMilliseconds(100));
 
     internal static void Validate(TerminalWorkspaceConfiguration configuration)
     {
@@ -83,9 +79,7 @@ internal static class TerminalWorkspaceConfigurationValidator
                                         nameof(tab));
         }
 
-        if (string.IsNullOrWhiteSpace(tab.StartingDirectory) == true ||
-            _localAbsolutePathPattern.IsMatch(tab.StartingDirectory) == false ||
-            tab.StartingDirectory.StartsWith("\\\\", StringComparison.Ordinal) == true)
+        if (TerminalStartingDirectory.IsSupportedLocalAbsolutePath(tab.StartingDirectory) == false)
         {
             throw new ArgumentException("The terminal starting directory must be a local absolute Windows path.", nameof(tab));
         }

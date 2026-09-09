@@ -32,7 +32,7 @@ internal sealed class TerminalTabRegistry
 
     internal TerminalSessionId? ActiveSessionId { get; private set; }
 
-    internal TerminalTab Add()
+    internal TerminalTab Add(string startingDirectory)
     {
         if (tabs.Count >= maximumTabs)
         {
@@ -61,7 +61,8 @@ internal sealed class TerminalTabRegistry
             throw new InvalidOperationException("The terminal tab configuration identifier must be unique.");
         }
 
-        var tab = new TerminalTab(sessionId, configurationId, $"PowerShell {nextTabNumber}", TerminalSessionState.Starting, null);
+        var tab = new TerminalTab(sessionId, configurationId, $"PowerShell {nextTabNumber}", startingDirectory,
+                                  TerminalSessionState.Starting, null);
         nextTabNumber++;
         tabs.Add(tab);
         ActiveSessionId = sessionId;
@@ -119,6 +120,17 @@ internal sealed class TerminalTabRegistry
         return Move(sessionId, 1);
     }
 
+    internal void SetStartingDirectory(TerminalSessionId sessionId, string startingDirectory)
+    {
+        var index = tabs.FindIndex(tab => tab.SessionId == sessionId);
+        if (index < 0)
+        {
+            throw new InvalidOperationException("The terminal tab does not exist.");
+        }
+
+        tabs[index] = tabs[index] with { StartingDirectory = startingDirectory };
+    }
+
     internal TerminalTabCloseResult? Close(TerminalSessionId sessionId)
     {
         var closedIndex = tabs.FindIndex(tab => tab.SessionId == sessionId);
@@ -134,7 +146,7 @@ internal sealed class TerminalTabRegistry
         TerminalTab? replacementTab = null;
         if (tabs.Count == 0)
         {
-            replacementTab = Add();
+            replacementTab = Add(closedTab.StartingDirectory);
         }
         else if (wasActive == true)
         {
