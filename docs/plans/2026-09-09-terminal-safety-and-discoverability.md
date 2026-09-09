@@ -193,7 +193,16 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
 
 - [x] 2026-09-09: 사용자 동의에 따라 네 기능의 우선순위·실패 정책·영향 파일과
   병렬 작업 분해를 작성했다. 기존 코드와 기획을 참고했고 제품 코드는 수정하지 않았다.
-- [ ] S0~S3 구현·검증.
+- [x] 2026-09-09: S0 공통 계약 범위를 확정했다. Terminal은 비어 있지 않은 요청 ID와
+  세션 ID, 1부터 증가하는 세션 세대를 묶은 대상을 확인 요청·응답에 함께 싣고, 응답
+  적용 전에 현재 대상과의 완전 일치를 검사한다. 취소·승인 결과는 별도 enum으로 두며
+  새 출력 표시는 세대별 immutable snapshot으로 전달한다. DesktopIntegration은 도움말
+  요청과 각 전역 단축키의 configured gesture, effective gesture, 실제 등록 상태를 공개
+  계약으로 제공한다. 두 module 계약은 서로의 타입을 참조하지 않고 host가 조정한다.
+- [x] 2026-09-09: S0 집중 테스트(Terminal 140, DesktopIntegration 74), architecture
+  tests 6개, Debug solution build와 전체 automated tests 285개가 통과했다. 실제 확인 UI,
+  clipboard, renderer 복구와 Windows 단축키 충돌 시나리오는 S1~S3 구현·manual 검증 대상이다.
+- [ ] S1~S3 구현·검증.
 
-문서 검증은 내용·상호 참조·diff 확인만 수행한다. 코드 테스트·바탕화면 배포는 이번
-기획 작성의 완료 조건이 아니며, 문서에 적힌 테스트는 아직 실행한 결과가 아니다.
+초기 기획 작성 단계의 테스트 항목은 실행 결과가 아니며, 위 진행 기록에서 명시적으로
+완료한 S0 automated 검증만 현재 결과다. 바탕화면 배포와 manual UI 검증은 수행하지 않았다.

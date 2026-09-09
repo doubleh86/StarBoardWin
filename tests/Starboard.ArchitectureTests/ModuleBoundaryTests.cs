@@ -1,8 +1,10 @@
 using System.Reflection;
 using System.Xml.Linq;
 using Starboard.Modules.DesktopIntegration;
+using Starboard.Modules.DesktopIntegration.Contracts;
 using Starboard.Modules.Preferences;
 using Starboard.Modules.Terminal;
+using Starboard.Modules.Terminal.Contracts;
 using Starboard.SharedKernel.Diagnostics;
 
 namespace Starboard.ArchitectureTests;
@@ -33,6 +35,18 @@ public sealed class ModuleBoundaryTests
             Assert.AreEqual(0, forbiddenReferences.Length,
                             $"{assembly.GetName().Name} references another feature module.");
         }
+    }
+
+    [TestMethod]
+    public void SafetyAndShortcutGuideContractsAreOwnedByTheirFeatureModules()
+    {
+        Assert.AreSame(typeof(TerminalModule).Assembly, typeof(TerminalConfirmationResponse).Assembly);
+        Assert.AreEqual("Starboard.Modules.Terminal.Contracts",
+                        typeof(TerminalNewOutputStateSnapshot).Namespace);
+        Assert.AreSame(typeof(DesktopIntegrationModule).Assembly,
+                       typeof(GlobalShortcutRegistrationSnapshot).Assembly);
+        Assert.AreEqual("Starboard.Modules.DesktopIntegration.Contracts",
+                        typeof(ShortcutGuideRequestEventArgs).Namespace);
     }
 
     [TestMethod]

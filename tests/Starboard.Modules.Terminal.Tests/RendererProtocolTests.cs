@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Starboard.Modules.Terminal.Application;
+using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
 
 namespace Starboard.Modules.Terminal.Tests;
@@ -273,5 +274,77 @@ public sealed class RendererProtocolTests
     {
         Assert.ThrowsExactly<ArgumentException>(() => RendererProtocol.SerializeSessionMessage("initialize", SessionId, new { }));
         Assert.ThrowsExactly<ArgumentException>(() => RendererProtocol.SerializeSessionMessage("apply-appearance", SessionId, new { }));
+    }
+
+    [TestMethod]
+    [DataRow("confirmed", TerminalConfirmationResult.Confirmed)]
+    [DataRow("cancelled", TerminalConfirmationResult.Cancelled)]
+    public void TryParseConfirmationResponseReturnsCorrelationAndResult(
+        string result, TerminalConfirmationResult expectedResult)
+    {
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = RendererProtocol.CurrentVersion,
+                                                type = "confirmation-response",
+                                                sessionId = SessionId.ToString(),
+                                                payload = new
+                                                {
+                                                    requestId = "20000000000000000000000000000001",
+                                                    sessionGeneration = 7,
+                                                    result,
+                                                },
+                                            });
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(RendererMessageType.ConfirmationResponse, message.Type);
+        Assert.AreEqual(SessionId, message.SessionId);
+        Assert.IsNotNull(message.ConfirmationResponse);
+        Assert.AreEqual(new TerminalConfirmationRequestId(
+                            Guid.Parse("20000000-0000-0000-0000-000000000001")),
+                        message.ConfirmationResponse.Token.RequestId);
+        Assert.AreEqual(SessionId.Value, message.ConfirmationResponse.Token.Session.SessionId);
+        Assert.AreEqual(7L, message.ConfirmationResponse.Token.Session.Generation);
+        Assert.AreEqual(expectedResult, message.ConfirmationResponse.Result);
+    }
+
+    [TestMethod]
+    [DataRow("00000000000000000000000000000000", 1, "confirmed")]
+    [DataRow("not-a-request", 1, "confirmed")]
+    [DataRow("20000000000000000000000000000001", 0, "confirmed")]
+    [DataRow("20000000000000000000000000000001", 1, "dismissed")]
+    public void TryParseConfirmationResponseWithInvalidCorrelationRejectsMessage(string requestId,
+                                                                                 long sessionGeneration,
+                                                                                 string result)
+    {
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = RendererProtocol.CurrentVersion,
+                                                type = "confirmation-response",
+                                                sessionId = SessionId.ToString(),
+                                                payload = new { requestId, sessionGeneration, result },
+                                            });
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(message);
+    }
+
+    [TestMethod]
+    [DataRow("confirmation-request")]
+    [DataRow("confirmation-cancel")]
+    [DataRow("new-output-state")]
+    public void SerializeSafetyStateMessageUsesSessionScope(string type)
+    {
+        var json = RendererProtocol.SerializeSessionMessage(type, SessionId, new { sessionGeneration = 2 });
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.AreEqual(type, root.GetProperty("type").GetString());
+        Assert.AreEqual(SessionId.ToString(), root.GetProperty("sessionId").GetString());
+        Assert.AreEqual(2, root.GetProperty("payload").GetProperty("sessionGeneration").GetInt32());
     }
 }

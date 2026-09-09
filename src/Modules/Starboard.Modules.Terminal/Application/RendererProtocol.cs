@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
 
 namespace Starboard.Modules.Terminal.Application;
@@ -21,6 +22,9 @@ internal static class RendererProtocol
         "reset",
         "remove-session",
         "session-error",
+        "confirmation-request",
+        "confirmation-cancel",
+        "new-output-state",
     ];
 
     internal const int CurrentVersion = 2;
@@ -102,6 +106,7 @@ internal static class RendererProtocol
                                                       "startingDirectory", 32_767),
                 "session-error" => ParseSession(RendererMessageType.SessionError, root, payload),
                 "renderer-error" => ParseGlobal(RendererMessageType.RendererError, root, payload),
+                "confirmation-response" => ParseConfirmationResponse(root, payload),
                 _ => null,
             };
 
@@ -165,6 +170,32 @@ internal static class RendererProtocol
         return new RendererMessage(type);
     }
 
+    private static RendererMessage? ParseConfirmationResponse(JsonElement root, JsonElement payload)
+    {
+        if (TryParseSessionId(root, out var sessionId) == false || payload.ValueKind != JsonValueKind.Object ||
+            payload.TryGetProperty("requestId", out var requestIdElement) == false ||
+            requestIdElement.ValueKind != JsonValueKind.String ||
+            payload.TryGetProperty("sessionGeneration", out var generationElement) == false ||
+            generationElement.TryGetInt64(out var generation) == false ||
+            payload.TryGetProperty("result", out var resultElement) == false ||
+            resultElement.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var requestIdText = requestIdElement.GetString();
+        if (Guid.TryParseExact(requestIdText, "N", out var requestId) == false || requestId == Guid.Empty ||
+            generation < 1 || TryParseConfirmationResult(resultElement.GetString(), out var result) == false)
+        {
+            return null;
+        }
+
+        var token = new TerminalConfirmationToken(new TerminalConfirmationRequestId(requestId),
+                                                  new TerminalSessionReference(sessionId.Value, generation));
+        return new RendererMessage(RendererMessageType.ConfirmationResponse, sessionId,
+                                   ConfirmationResponse: new TerminalConfirmationResponse(token, result));
+    }
+
     private static RendererMessage? ParseSession(RendererMessageType type, JsonElement root, JsonElement payload)
     {
         if (TryParseSessionId(root, out var sessionId) == false || payload.ValueKind != JsonValueKind.Object)
@@ -206,5 +237,17 @@ internal static class RendererProtocol
         {
             throw new ArgumentException("The renderer message type is not valid for this message scope.", nameof(type));
         }
+    }
+
+    private static bool TryParseConfirmationResult(string? value, out TerminalConfirmationResult result)
+    {
+        result = value switch
+        {
+            "confirmed" => TerminalConfirmationResult.Confirmed,
+            "cancelled" => TerminalConfirmationResult.Cancelled,
+            _ => default,
+        };
+
+        return value is "confirmed" or "cancelled";
     }
 }

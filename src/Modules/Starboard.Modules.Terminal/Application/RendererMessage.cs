@@ -1,3 +1,4 @@
+using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
 
 namespace Starboard.Modules.Terminal.Application;
@@ -20,7 +21,9 @@ internal enum RendererMessageType
     SetStartingDirectory,
     SessionError,
     RendererError,
+    ConfirmationResponse,
 }
 
 internal sealed record RendererMessage(RendererMessageType Type, TerminalSessionId? SessionId = null,
-                                       string? Data = null, int Columns = 0, int Rows = 0);
+                                       string? Data = null, int Columns = 0, int Rows = 0,
+                                       TerminalConfirmationResponse? ConfirmationResponse = null);
