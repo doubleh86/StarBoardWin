@@ -41,13 +41,13 @@ public sealed class DesktopWindowIntegrationTests
         using var module = CreateModule(runtime);
         module.Attach(new nint(42), new PanelOptions(200));
 
-        Assert.AreEqual(new PixelRect(0, 834, 1920, 1034), runtime.Placements[0]);
+        Assert.AreEqual(new PixelRect(0, 840, 1920, 1040), runtime.Placements[0]);
 
         runtime.Geometry = CreateGeometry(new PixelRect(-2560, 0, 0, 1440), new PixelRect(-2560, 0, 0, 1400),
                                           new PixelRect(-2560, 1400, 0, 1440), new DisplayDpi(144, 144));
         runtime.RaiseEnvironmentChanged();
 
-        Assert.AreEqual(new PixelRect(-2560, 1091, 0, 1391), runtime.Placements[runtime.Placements.Count - 1]);
+        Assert.AreEqual(new PixelRect(-2560, 1100, 0, 1400), runtime.Placements[runtime.Placements.Count - 1]);
 
         var suggestedRectangle = new NativeRect
         {
@@ -69,7 +69,7 @@ public sealed class DesktopWindowIntegrationTests
             Marshal.FreeHGlobal(rectanglePointer);
         }
 
-        Assert.AreEqual(new PixelRect(-2560, 1091, 0, 1391), runtime.Placements[runtime.Placements.Count - 1]);
+        Assert.AreEqual(new PixelRect(-2560, 1100, 0, 1400), runtime.Placements[runtime.Placements.Count - 1]);
         Assert.AreEqual(0, runtime.ActivationCount);
     }
 
@@ -126,7 +126,7 @@ public sealed class DesktopWindowIntegrationTests
         Assert.IsFalse(presentations[1]);
         Assert.IsTrue(presentations[2]);
         Assert.AreEqual(0, runtime.ActivationCount);
-        Assert.AreEqual(new PixelRect(0, 834, 1920, 1034), runtime.Placements[runtime.Placements.Count - 1]);
+        Assert.AreEqual(new PixelRect(0, 840, 1920, 1040), runtime.Placements[runtime.Placements.Count - 1]);
     }
 
     [TestMethod]
@@ -150,7 +150,7 @@ public sealed class DesktopWindowIntegrationTests
                                           new PixelRect(-1280, 984, 0, 1024), new DisplayDpi(96, 96), new nint(2));
         module.ToggleExpanded();
 
-        Assert.AreEqual(new PixelRect(-1280, 778, 0, 978), runtime.Placements[runtime.Placements.Count - 1]);
+        Assert.AreEqual(new PixelRect(-1280, 784, 0, 984), runtime.Placements[runtime.Placements.Count - 1]);
         Assert.AreEqual(0, runtime.ActivationCount);
     }
 
@@ -257,6 +257,7 @@ public sealed class DesktopWindowIntegrationTests
             var workArea = runtime.CurrentGeometry.Monitor.WorkArea;
             Assert.AreEqual(TaskbarEdge.Bottom, runtime.CurrentGeometry.Taskbar.Edge);
             Assert.IsTrue(IsWithin(collapsedBounds, workArea));
+            Assert.AreEqual(runtime.CurrentGeometry.Taskbar.TaskbarBounds.Top, collapsedBounds.Bottom);
 
             module.ToggleExpanded();
             var expandedBounds = runtime.GetWindowBounds(windowHandle);

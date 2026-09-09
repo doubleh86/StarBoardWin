@@ -20,7 +20,7 @@ public sealed class DesktopSettingsApplyTests
 
         Assert.AreEqual(DesktopSettingsApplyStatus.Applied, result.Status);
         Assert.AreEqual(0.8, runtime.LastOpacity);
-        Assert.AreEqual(new PixelRect(0, 531, 1000, 891), runtime.LastPlacedBounds);
+        Assert.AreEqual(new PixelRect(0, 540, 1000, 900), runtime.LastPlacedBounds);
         Assert.AreEqual(240, result.EffectiveSettings.CollapsedHeightDip);
     }
 
@@ -98,7 +98,7 @@ public sealed class DesktopSettingsApplyTests
         Assert.AreEqual(200, result.EffectiveSettings.CollapsedHeightDip);
         Assert.AreEqual(0.97, result.EffectiveSettings.Opacity);
         Assert.AreEqual(0.97, runtime.LastOpacity);
-        Assert.AreEqual(new PixelRect(0, 591, 1000, 891), runtime.LastPlacedBounds);
+        Assert.AreEqual(new PixelRect(0, 600, 1000, 900), runtime.LastPlacedBounds);
         Assert.AreEqual(DesktopSettingsOperationStatus.Restored, result.Operations[0].Status);
     }
 

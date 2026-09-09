@@ -6,8 +6,6 @@ internal readonly record struct DipRect(double Left, double Top, double Right, d
 
 internal static class PanelGeometryCalculator
 {
-    private const double _BottomTaskbarGapDip = 6;
-
     internal static PixelRect CalculateCollapsed(TaskbarSnapshot snapshot, double requestedHeightDip)
     {
         return CalculateCollapsed(snapshot, new DisplayDpi(snapshot.Dpi, snapshot.Dpi), requestedHeightDip);
@@ -33,13 +31,6 @@ internal static class PanelGeometryCalculator
         }
 
         var thickness = Math.Clamp(requestedThickness, 1, maximumThickness);
-        if (snapshot.Edge == TaskbarEdge.Bottom)
-        {
-            // Preserve terminal rows; reduce only the gap when the work area is tight.
-            var gap = Math.Min(DipToPixels(_BottomTaskbarGapDip, dpi.Y), maximumThickness - thickness);
-            innerEdge -= gap;
-        }
-
         return snapshot.Edge switch
         {
             TaskbarEdge.Left => new PixelRect(innerEdge, snapshot.WorkArea.Top, innerEdge + thickness,

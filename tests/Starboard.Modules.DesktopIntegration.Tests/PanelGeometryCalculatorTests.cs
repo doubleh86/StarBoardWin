@@ -14,7 +14,7 @@ public sealed class PanelGeometryCalculatorTests
 
         var result = PanelGeometryCalculator.CalculateCollapsed(snapshot, 200);
 
-        Assert.AreEqual(new PixelRect(0, 834, 1920, 1034), result);
+        Assert.AreEqual(new PixelRect(0, 840, 1920, 1040), result);
     }
 
     [TestMethod]
@@ -25,7 +25,7 @@ public sealed class PanelGeometryCalculatorTests
 
         var result = PanelGeometryCalculator.CalculateCollapsed(snapshot, 96);
 
-        Assert.AreEqual(new PixelRect(0, 938, 1920, 1034), result);
+        Assert.AreEqual(new PixelRect(0, 944, 1920, 1040), result);
     }
 
     [TestMethod]
@@ -36,7 +36,7 @@ public sealed class PanelGeometryCalculatorTests
 
         var result = PanelGeometryCalculator.CalculateCollapsed(snapshot, 184);
 
-        Assert.AreEqual(new PixelRect(0, 1107, 2560, 1383), result);
+        Assert.AreEqual(new PixelRect(0, 1116, 2560, 1392), result);
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ public sealed class PanelGeometryCalculatorTests
 
         var result = PanelGeometryCalculator.CalculateCollapsed(snapshot, 96);
 
-        Assert.AreEqual(new PixelRect(-1920, 938, 0, 1034), result);
+        Assert.AreEqual(new PixelRect(-1920, 944, 0, 1040), result);
     }
 
     [TestMethod]
