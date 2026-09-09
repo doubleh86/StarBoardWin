@@ -15,6 +15,9 @@ internal enum RendererMessageType
     PasteRequest,
     CloseSession,
     RestartSession,
+    RenameSession,
+    MoveSession,
+    SetStartingDirectory,
     SessionError,
     RendererError,
 }

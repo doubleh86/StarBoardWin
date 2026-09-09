@@ -23,6 +23,9 @@ type SessionRendererMessageType =
   | "paste-request"
   | "close-session"
   | "restart-session"
+  | "rename-session"
+  | "move-session"
+  | "set-starting-directory"
   | "session-error";
 
 type RendererMessage =
@@ -39,7 +42,10 @@ type RendererMessage =
       payload: Record<string, unknown>;
     };
 
-type GlobalHostMessageType = "initialize" | "apply-appearance";
+type GlobalHostMessageType =
+  | "initialize"
+  | "apply-appearance"
+  | "workspace-save-status";
 
 type SessionHostMessageType =
   | "session-upsert"
@@ -53,9 +59,15 @@ type SessionHostMessageType =
 type HostMessage =
   | {
       version: number;
-      type: GlobalHostMessageType;
+      type: "initialize" | "apply-appearance";
       sessionId?: never;
       payload: AppearancePayload;
+    }
+  | {
+      version: number;
+      type: "workspace-save-status";
+      sessionId?: never;
+      payload: WorkspaceSaveStatusPayload;
     }
   | {
       version: number;
@@ -76,6 +88,11 @@ type AppearancePayload = {
     selection: string;
     ansiPalette: string[];
   };
+};
+
+type WorkspaceSaveStatusPayload = {
+  state: "saved" | "failed" | "deleted" | "disabled";
+  message: string | null;
 };
 
 type SessionState = "starting" | "running" | "restarting" | "exited" | "failed";
@@ -170,7 +187,11 @@ function getPayload(message: Record<string, unknown>): Record<string, unknown> |
 }
 
 function isGlobalHostMessageType(value: string): value is GlobalHostMessageType {
-  return value === "initialize" || value === "apply-appearance";
+  return (
+    value === "initialize" ||
+    value === "apply-appearance" ||
+    value === "workspace-save-status"
+  );
 }
 
 function isSessionHostMessageType(value: string): value is SessionHostMessageType {
@@ -197,6 +218,21 @@ function parseHostMessage(value: unknown): HostMessage | undefined {
   const payload = getPayload(value);
   if (payload === undefined) {
     return undefined;
+  }
+
+  if (value.type === "workspace-save-status") {
+    if (
+      value.sessionId !== undefined ||
+      isWorkspaceSaveStatusPayload(payload) === false
+    ) {
+      return undefined;
+    }
+
+    return {
+      version: ProtocolVersion,
+      type: value.type,
+      payload,
+    };
   }
 
   if (isGlobalHostMessageType(value.type) === true) {
@@ -718,6 +754,18 @@ function isAppearancePayload(
   );
 }
 
+function isWorkspaceSaveStatusPayload(
+  payload: Record<string, unknown>,
+): payload is Record<string, unknown> & WorkspaceSaveStatusPayload {
+  return (
+    (payload.state === "saved" ||
+      payload.state === "failed" ||
+      payload.state === "deleted" ||
+      payload.state === "disabled") &&
+    (typeof payload.message === "string" || payload.message === null)
+  );
+}
+
 function isSessionPayload(
   payload: Record<string, unknown>,
 ): payload is Record<string, unknown> & SessionPayload {
@@ -746,6 +794,12 @@ function handleHostMessage(value: unknown): void {
 
   if (message.type === "initialize" || message.type === "apply-appearance") {
     applyAppearance(message.payload);
+    return;
+  }
+
+  if (message.type === "workspace-save-status") {
+    // The status is global: it describes workspace persistence, not a live shell.
+    // The tab-management UI added in W2 presents this value without changing a session.
     return;
   }
 

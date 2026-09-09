@@ -10,11 +10,11 @@ public sealed class AppSettingsContractTests
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
     [TestMethod]
-    public void DefaultsForNewSettingsProvideCompleteSchemaFiveSnapshot()
+    public void DefaultsForNewSettingsProvideCompleteSchemaSixSnapshot()
     {
         var settings = new AppSettings();
 
-        Assert.AreEqual(5, settings.SchemaVersion);
+        Assert.AreEqual(6, settings.SchemaVersion);
         Assert.IsNull(settings.ShellExecutable);
         Assert.AreEqual("Tokyo Night", settings.Theme);
         Assert.AreEqual(200, settings.CollapsedHeightDip);
@@ -25,6 +25,7 @@ public sealed class AppSettingsContractTests
         Assert.AreEqual("Taskbar", settings.PreferredMonitor);
         Assert.AreEqual("Ctrl+Alt+E", settings.ExpandShortcut);
         Assert.AreEqual("Ctrl+Alt+S", settings.ActivationShortcut);
+        Assert.IsFalse(settings.RestoreWorkspaceOnLaunch);
     }
 
     [TestMethod]
@@ -40,13 +41,14 @@ public sealed class AppSettingsContractTests
 
         var settings = SettingsValidator.Normalize(candidate);
 
-        Assert.AreEqual(5, settings.SchemaVersion);
+        Assert.AreEqual(6, settings.SchemaVersion);
         Assert.AreEqual("Dark", settings.Theme);
         Assert.AreEqual(16, settings.FontSize);
         Assert.AreEqual(200, settings.CollapsedHeightDip);
         Assert.AreEqual("Cascadia Mono", settings.FontFamily);
         Assert.AreEqual("Ctrl+Alt+E", settings.ExpandShortcut);
         Assert.AreEqual("Ctrl+Alt+S", settings.ActivationShortcut);
+        Assert.IsFalse(settings.RestoreWorkspaceOnLaunch);
     }
 
     [TestMethod]
@@ -70,7 +72,7 @@ public sealed class AppSettingsContractTests
 
         var settings = SettingsValidator.Normalize(candidate);
 
-        Assert.AreEqual(5, settings.SchemaVersion);
+        Assert.AreEqual(6, settings.SchemaVersion);
         Assert.AreEqual("pwsh.exe", settings.ShellExecutable);
         Assert.AreEqual("One Dark", settings.Theme);
         Assert.AreEqual(240, settings.CollapsedHeightDip);
@@ -81,5 +83,24 @@ public sealed class AppSettingsContractTests
         Assert.AreEqual("Taskbar", settings.PreferredMonitor);
         Assert.AreEqual("Ctrl+Shift+E", settings.ExpandShortcut);
         Assert.AreEqual("Ctrl+Alt+S", settings.ActivationShortcut);
+        Assert.IsFalse(settings.RestoreWorkspaceOnLaunch);
+    }
+
+    [TestMethod]
+    public void NormalizeSchemaFiveJsonDisablesWorkspaceRestoreUntilUserEnablesIt()
+    {
+        const string Json = """
+            {
+              "schemaVersion": 5,
+              "theme": "Dark"
+            }
+            """;
+        var candidate = JsonSerializer.Deserialize<AppSettings>(Json, SerializerOptions);
+
+        var settings = SettingsValidator.Normalize(candidate);
+
+        Assert.AreEqual(6, settings.SchemaVersion);
+        Assert.AreEqual("Dark", settings.Theme);
+        Assert.IsFalse(settings.RestoreWorkspaceOnLaunch);
     }
 }

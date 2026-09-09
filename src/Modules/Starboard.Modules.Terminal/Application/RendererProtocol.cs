@@ -9,6 +9,7 @@ internal static class RendererProtocol
     [
         "initialize",
         "apply-appearance",
+        "workspace-save-status",
     ];
 
     private static readonly HashSet<string> _sessionHostMessageTypes =
@@ -95,6 +96,10 @@ internal static class RendererProtocol
                 "paste-request" => ParseSession(RendererMessageType.PasteRequest, root, payload),
                 "close-session" => ParseSession(RendererMessageType.CloseSession, root, payload),
                 "restart-session" => ParseSession(RendererMessageType.RestartSession, root, payload),
+                "rename-session" => ParseData(RendererMessageType.RenameSession, root, payload, "name", 128),
+                "move-session" => ParseData(RendererMessageType.MoveSession, root, payload, "direction", 5),
+                "set-starting-directory" => ParseData(RendererMessageType.SetStartingDirectory, root, payload,
+                                                      "startingDirectory", 32_767),
                 "session-error" => ParseSession(RendererMessageType.SessionError, root, payload),
                 "renderer-error" => ParseGlobal(RendererMessageType.RendererError, root, payload),
                 _ => null,
@@ -108,21 +113,22 @@ internal static class RendererProtocol
         }
     }
 
-    private static RendererMessage? ParseData(RendererMessageType type, JsonElement root, JsonElement payload)
+    private static RendererMessage? ParseData(RendererMessageType type, JsonElement root, JsonElement payload,
+                                              string propertyName = "data", int maximumLength = MaximumMessageLength)
     {
         if (TryParseSessionId(root, out var sessionId) == false)
         {
             return null;
         }
 
-        if (payload.ValueKind != JsonValueKind.Object || payload.TryGetProperty("data", out var dataElement) == false ||
+        if (payload.ValueKind != JsonValueKind.Object || payload.TryGetProperty(propertyName, out var dataElement) == false ||
             dataElement.ValueKind != JsonValueKind.String)
         {
             return null;
         }
 
         var data = dataElement.GetString();
-        if (data is null || data.Length > MaximumMessageLength)
+        if (data is null || data.Length > maximumLength)
         {
             return null;
         }

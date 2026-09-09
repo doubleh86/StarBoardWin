@@ -1,3 +1,5 @@
+using Starboard.Modules.Terminal.Contracts;
+
 namespace Starboard.Modules.Terminal.Domain;
 
 internal sealed record TerminalTabCloseResult(TerminalTab ClosedTab, TerminalTab? ReplacementTab);
@@ -7,12 +9,14 @@ internal sealed class TerminalTabRegistry
     internal const int DefaultMaximumTabs = 8;
 
     private readonly Func<TerminalSessionId> sessionIdFactory;
+    private readonly Func<TerminalTabConfigurationId> configurationIdFactory;
     private readonly int maximumTabs;
     private readonly List<TerminalTab> tabs = [];
 
     private int nextTabNumber = 1;
 
-    internal TerminalTabRegistry(Func<TerminalSessionId>? sessionIdFactory = null, int maximumTabs = DefaultMaximumTabs)
+    internal TerminalTabRegistry(Func<TerminalSessionId>? sessionIdFactory = null, int maximumTabs = DefaultMaximumTabs,
+                                 Func<TerminalTabConfigurationId>? configurationIdFactory = null)
     {
         if (maximumTabs <= 0)
         {
@@ -21,6 +25,7 @@ internal sealed class TerminalTabRegistry
         }
 
         this.sessionIdFactory = sessionIdFactory ?? TerminalSessionId.CreateNew;
+        this.configurationIdFactory = configurationIdFactory ?? TerminalTabConfigurationId.CreateNew;
         this.maximumTabs = maximumTabs;
     }
 
@@ -44,7 +49,18 @@ internal sealed class TerminalTabRegistry
             throw new InvalidOperationException("The session identifier must be unique.");
         }
 
-        var tab = new TerminalTab(sessionId, $"PowerShell {nextTabNumber}", TerminalSessionState.Starting, null);
+        var configurationId = configurationIdFactory();
+        if (configurationId.Value == Guid.Empty)
+        {
+            throw new InvalidOperationException("The terminal tab configuration identifier cannot be empty.");
+        }
+
+        if (tabs.Any(tab => tab.ConfigurationId == configurationId) == true)
+        {
+            throw new InvalidOperationException("The terminal tab configuration identifier must be unique.");
+        }
+
+        var tab = new TerminalTab(sessionId, configurationId, $"PowerShell {nextTabNumber}", TerminalSessionState.Starting, null);
         nextTabNumber++;
         tabs.Add(tab);
         ActiveSessionId = sessionId;

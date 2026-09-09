@@ -2,7 +2,7 @@ namespace Starboard.Modules.Preferences.Contracts;
 
 public sealed record AppSettings
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
@@ -32,4 +32,10 @@ public sealed record AppSettings
     public string ExpandShortcut { get; init; } = "Ctrl+Alt+E";
 
     public string ActivationShortcut { get; init; } = "Ctrl+Alt+S";
+
+    /// <summary>
+    /// Restores only saved terminal-tab configuration on the next launch. This never
+    /// restores a previous shell process, command, output, or interactive session.
+    /// </summary>
+    public bool RestoreWorkspaceOnLaunch { get; init; }
 }

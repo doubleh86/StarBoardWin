@@ -220,6 +220,43 @@ public sealed class RendererProtocolTests
     }
 
     [TestMethod]
+    [DataRow("rename-session", "name", "서버", "RenameSession")]
+    [DataRow("move-session", "direction", "left", "MoveSession")]
+    [DataRow("set-starting-directory", "startingDirectory", "C:\\Work\\Server", "SetStartingDirectory")]
+    public void TryParseWorkspaceTabCommandReturnsSessionScopedPayload(string type, string propertyName, string value,
+                                                                       string expectedType)
+    {
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = RendererProtocol.CurrentVersion,
+                                                type,
+                                                sessionId = SessionId.ToString(),
+                                                payload = new Dictionary<string, string> { [propertyName] = value },
+                                            });
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(expectedType, message.Type.ToString());
+        Assert.AreEqual(SessionId, message.SessionId);
+        Assert.AreEqual(value, message.Data);
+    }
+
+    [TestMethod]
+    public void SerializeWorkspaceSaveStatusUsesGlobalScope()
+    {
+        var json = RendererProtocol.SerializeGlobalMessage("workspace-save-status",
+                                                           new { state = "failed", message = "구성을 저장하지 못했습니다." });
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.AreEqual("workspace-save-status", root.GetProperty("type").GetString());
+        Assert.IsFalse(root.TryGetProperty("sessionId", out _));
+        Assert.AreEqual("failed", root.GetProperty("payload").GetProperty("state").GetString());
+    }
+
+    [TestMethod]
     public void SerializeSessionMessageWithEmptyIdentifierThrows()
     {
         Assert.ThrowsExactly<ArgumentException>(() => RendererProtocol.SerializeSessionMessage("output", default, new { data = "hello" }));

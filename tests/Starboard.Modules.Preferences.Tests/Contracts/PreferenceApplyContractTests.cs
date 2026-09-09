@@ -79,4 +79,26 @@ public sealed class PreferenceApplyContractTests
         Assert.AreEqual(previous, result.EffectiveSettings);
         Assert.AreEqual(previous, result.PersistedSettings);
     }
+
+    [TestMethod]
+    public void ResultWithEnabledWorkspaceRestoreReportsTransitionAfterApply()
+    {
+        var previous = new AppSettings();
+        var requested = previous with { RestoreWorkspaceOnLaunch = true };
+        var result = new PreferenceApplyResult(new PreferenceApplyRequest(previous, requested), PreferenceApplyStatus.Applied,
+                                               requested, requested, []);
+
+        Assert.AreEqual(WorkspaceRestorePreferenceTransition.Enabled, result.WorkspaceRestoreTransition);
+    }
+
+    [TestMethod]
+    public void CanceledOrRestoredResultLeavesWorkspaceRestoreTransitionUnchanged()
+    {
+        var previous = new AppSettings();
+        var requested = previous with { RestoreWorkspaceOnLaunch = true };
+        var result = new PreferenceApplyResult(new PreferenceApplyRequest(previous, requested),
+                                               PreferenceApplyStatus.FailedAndRestored, previous, previous, []);
+
+        Assert.AreEqual(WorkspaceRestorePreferenceTransition.Unchanged, result.WorkspaceRestoreTransition);
+    }
 }

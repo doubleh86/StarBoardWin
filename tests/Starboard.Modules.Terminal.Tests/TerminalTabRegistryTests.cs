@@ -1,4 +1,5 @@
 using Starboard.Modules.Terminal.Domain;
+using Starboard.Modules.Terminal.Contracts;
 
 namespace Starboard.Modules.Terminal.Tests;
 
@@ -99,6 +100,20 @@ public sealed class TerminalTabRegistryTests
 
         Assert.ThrowsExactly<InvalidOperationException>(() => registry.Add());
         Assert.AreEqual(2, identifiersRequested);
+    }
+
+    [TestMethod]
+    public void AddAssignsConfigurationIdentitySeparatelyFromRuntimeSessionIdentity()
+    {
+        var sessionId = new TerminalSessionId(CreateGuid(1));
+        var configurationId = new TerminalTabConfigurationId(CreateGuid(2));
+        var registry = new TerminalTabRegistry(() => sessionId, 2, () => configurationId);
+
+        var tab = registry.Add();
+
+        Assert.AreEqual(sessionId, tab.SessionId);
+        Assert.AreEqual(configurationId, tab.ConfigurationId);
+        Assert.AreNotEqual(tab.SessionId.ToString(), tab.ConfigurationId.ToString());
     }
 
     private static TerminalTabRegistry CreateRegistry(int identifierCount)

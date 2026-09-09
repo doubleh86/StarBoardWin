@@ -16,6 +16,24 @@ public sealed record PreferenceApplyResult(PreferenceApplyRequest Request, Prefe
     public bool PreviousSnapshotRestored =>
         Status == PreferenceApplyStatus.Rejected ||
         Status == PreferenceApplyStatus.FailedAndRestored;
+
+    /// <summary>
+    /// The host uses this transition only after settings persistence has succeeded.
+    /// A canceled or restored settings session therefore leaves workspace data untouched.
+    /// </summary>
+    public WorkspaceRestorePreferenceTransition WorkspaceRestoreTransition =>
+        Request.PreviousSettings.RestoreWorkspaceOnLaunch == EffectiveSettings.RestoreWorkspaceOnLaunch
+            ? WorkspaceRestorePreferenceTransition.Unchanged
+            : EffectiveSettings.RestoreWorkspaceOnLaunch == true
+                ? WorkspaceRestorePreferenceTransition.Enabled
+                : WorkspaceRestorePreferenceTransition.Disabled;
+}
+
+public enum WorkspaceRestorePreferenceTransition
+{
+    Unchanged,
+    Enabled,
+    Disabled,
 }
 
 public enum PreferenceApplyStatus

@@ -182,7 +182,25 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
 ## 진행 기록과 인수인계
 
 - [x] 2026-09-09: 기존 후속 후보와 실제 코드 경계를 확인하고 기획 초안 작성.
-- [ ] W0~W6 구현·검증.
+- [ ] W0 기준선: 기존 수동 입력·focus 항목은 후속 UI 통합에서 수행한다.
+- [x] W1 계약: Terminal 공개 구성은 configuration ID, 이름, 순서, 시작 폴더와 제한된 shell kind만
+  표현하고 runtime session ID는 renderer/실행 수명 내부에만 남긴다. Preferences schema 6은
+  `restoreWorkspaceOnLaunch`를 기본 `false`로 추가하며 schema 5와 부분 JSON은 이 값이 꺼진
+  상태로 migration한다. 설정 apply 결과는 옵션 전환을 계산할 수 있게 하고, Terminal의
+  저장·삭제·종료 flush 실패는 별도 결과 계약으로 host가 표시·재시도할 수 있게 한다.
+- [ ] W2~W6 구현·검증.
 
-이번 산출물은 기획서와 이전 기획의 후속 링크뿐이다. 기존 제품 코드·미커밋 변경·
-바탕화면 실행본은 수정하지 않는다. 문서 내용·경로·diff를 검증하고 .NET 빌드는 생략한다.
+W1은 저장소 구현이나 실제 복원 실행을 시작하지 않는다. renderer protocol은 이후 UI가 이름 변경,
+순서 이동, 시작 폴더 변경과 workspace 저장 상태를 명시적으로 교환할 수 있도록만 확장한다.
+
+### W1 완료 요약
+
+- Terminal 구성 DTO와 shell kind는 Terminal module의 공개 Contracts에만 두고, runtime session ID는
+  internal tab/renderer 경로에 유지했다. 구성 ID는 새 탭마다 별도로 생성한다.
+- Preferences schema 6은 기존 schema 5와 부분 JSON을 `restoreWorkspaceOnLaunch: false`로
+  정규화한다. apply 결과는 enabled/disabled/unchanged 전환을 계산하므로 host가 설정 저장 성공 뒤에만
+  Terminal 저장·삭제를 조정할 수 있다.
+- `dotnet test tests/Starboard.Modules.Preferences.Tests/Starboard.Modules.Preferences.Tests.csproj --configuration Debug`
+  30개와 `dotnet test tests/Starboard.Modules.Terminal.Tests/Starboard.Modules.Terminal.Tests.csproj --configuration Debug`
+  70개를 통과했다. renderer bundle 재생성은 W1의 source-only protocol 변경과 배정된 경로 제한 때문에
+  후속 UI 통합 작업에서 수행한다.
