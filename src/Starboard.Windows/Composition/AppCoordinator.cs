@@ -313,6 +313,8 @@ internal sealed class AppCoordinator : IDisposable
             return;
         }
 
+        terminalModule.NotifyPanelVisibilityChanged(isVisible);
+
         if (isVisible == true)
         {
             if (mainWindow.IsVisible == false)

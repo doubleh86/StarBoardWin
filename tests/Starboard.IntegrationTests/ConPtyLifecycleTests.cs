@@ -23,6 +23,70 @@ public sealed class ConPtyLifecycleTests
         await RunHostAsync("tabs", TimeSpan.FromSeconds(40));
     }
 
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task GuiHostRejectedModeExitsWithinDeadlineAndLeavesNoTemporaryResult()
+    {
+        if (OperatingSystem.IsWindows() == false)
+        {
+            Assert.Inconclusive("The GUI ConPTY host is only available on Windows.");
+        }
+
+        var helperAssemblyPath = typeof(ConPtyTestHostMarker).Assembly.Location;
+        var helperPath = Path.ChangeExtension(helperAssemblyPath, ".exe");
+        var resultPath = Path.Combine(Path.GetTempPath(), $"starboard-conpty-rejected-{Guid.NewGuid():N}.json");
+        Process? process = null;
+        string? temporaryResultPath = null;
+        try
+        {
+            var startInfo = new ProcessStartInfo(helperPath)
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            };
+            startInfo.ArgumentList.Add("unsupported-mode");
+            startInfo.ArgumentList.Add(resultPath);
+
+            process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("The GUI ConPTY test host did not start.");
+            temporaryResultPath = $"{resultPath}.{process.Id}.tmp";
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.AreEqual(2, process.ExitCode);
+            Assert.IsTrue(File.Exists(resultPath));
+            Assert.IsFalse(File.Exists(temporaryResultPath));
+            var json = await File.ReadAllTextAsync(resultPath);
+            var result = JsonSerializer.Deserialize<TestHostResult>(json, JsonSerializerOptions.Web);
+            Assert.IsNotNull(result);
+            Assert.IsFalse(result.Succeeded);
+            Assert.AreEqual("InProgress", result.ErrorType);
+        }
+        finally
+        {
+            if (process is not null)
+            {
+                if (process.HasExited == false)
+                {
+                    process.Kill(true);
+                    await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
+                }
+
+                process.Dispose();
+            }
+
+            if (File.Exists(resultPath) == true)
+            {
+                File.Delete(resultPath);
+            }
+
+            if (temporaryResultPath is not null && File.Exists(temporaryResultPath) == true)
+            {
+                File.Delete(temporaryResultPath);
+            }
+        }
+    }
+
     private static async Task RunHostAsync(string mode, TimeSpan timeout)
     {
         if (OperatingSystem.IsWindows() == false)

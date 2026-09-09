@@ -50,6 +50,23 @@ public sealed class ModuleBoundaryTests
     }
 
     [TestMethod]
+    public void TerminalPanelVisibilityLifecycleIsExposedOnlyThroughModuleEntryPoint()
+    {
+        var visibilityMethod = typeof(TerminalModule).GetMethod(nameof(TerminalModule.NotifyPanelVisibilityChanged),
+                                                                BindingFlags.Instance | BindingFlags.Public);
+
+        Assert.IsNotNull(visibilityMethod);
+        Assert.AreEqual(typeof(void), visibilityMethod.ReturnType);
+        CollectionAssert.AreEqual(new[] { typeof(bool) },
+                                  visibilityMethod.GetParameters().Select(parameter => parameter.ParameterType).ToArray());
+
+        var root = FindSolutionRoot();
+        var hostCoordinatorPath = Path.Combine(root, "src", "Starboard.Windows", "Composition", "AppCoordinator.cs");
+        var hostCoordinatorSource = File.ReadAllText(hostCoordinatorPath);
+        StringAssert.Contains(hostCoordinatorSource, "terminalModule.NotifyPanelVisibilityChanged(isVisible);");
+    }
+
+    [TestMethod]
     public void SharedKernelDoesNotReferenceProductionAssemblies()
     {
         var forbiddenReferences = typeof(IDiagnosticLog)

@@ -24,10 +24,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly TerminalSessionCoordinator sessionCoordinator;
     private readonly TerminalWorkspacePersistence workspacePersistence;
     private readonly Lock outputLock = new();
-    private readonly Dictionary<TerminalSessionId, StringBuilder> pendingOutput = [];
+    private readonly Dictionary<TerminalSessionId, PendingSessionOutput> pendingOutput = [];
     private readonly HashSet<TerminalSessionId> outputFlushScheduled = [];
     private readonly HashSet<TerminalSessionId> outputOverflowReported = [];
     private readonly HashSet<TerminalSessionId> rendererSessionIds = [];
+    private readonly Dictionary<TerminalSessionId, long> rendererSessionGenerations = [];
     private readonly CancellationTokenSource lifetimeCancellation = new();
 
     private TaskCompletionSource rendererReady = CreateCompletionSource();
@@ -35,6 +36,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private TerminalAppearanceState? appearanceState;
     private ShellLaunchSpec? defaultShell;
     private TerminalShellKind? defaultShellKind;
+    private PendingSafetyConfirmation? pendingSafetyConfirmation;
     private bool rendererFailed;
     private bool isDisposed;
     private int columns = 80;
@@ -49,6 +51,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         sessionCoordinator.WorkspaceChanged += Session_WorkspaceChanged;
         sessionCoordinator.OutputReceived += Session_OutputReceived;
         sessionCoordinator.SessionExited += Session_Exited;
+        sessionCoordinator.NewOutputStateChanged += Session_NewOutputStateChanged;
         workspacePersistence.StatusChanged += WorkspacePersistence_StatusChanged;
         InitializeComponent();
         var canvas = ((SolidColorBrush)FindResource("CanvasBrush")).Color;
@@ -201,16 +204,27 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             return ValueTask.CompletedTask;
         }
 
+        CancelPendingSafetyConfirmation(sendRendererCancellation: false);
         isDisposed = true;
         lifetimeCancellation.Cancel();
         sessionCoordinator.WorkspaceChanged -= Session_WorkspaceChanged;
         sessionCoordinator.OutputReceived -= Session_OutputReceived;
         sessionCoordinator.SessionExited -= Session_Exited;
+        sessionCoordinator.NewOutputStateChanged -= Session_NewOutputStateChanged;
         workspacePersistence.StatusChanged -= WorkspacePersistence_StatusChanged;
         Renderer.Dispose();
+        rendererSessionGenerations.Clear();
         lifetimeCancellation.Dispose();
 
         return ValueTask.CompletedTask;
+    }
+
+    internal void NotifyPanelVisibilityChanged(bool isVisible)
+    {
+        if (isVisible == false && isDisposed == false)
+        {
+            CancelPendingSafetyConfirmation(sendRendererCancellation: true);
+        }
     }
 
     private async Task InitializeRendererAsync(CancellationToken cancellationToken)
@@ -239,9 +253,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         core.Navigate($"https://{RendererHostName}/index.html");
 
         await rendererReady.Task.WaitAsync(cancellationToken);
+        rendererFailed = false;
         SendInitializeMessage();
         rendererSessionIds.Clear();
         SyncWorkspace(sessionCoordinator.Snapshot);
+        SchedulePendingOutputFlushes();
     }
 
     private void ConfigureRenderer(CoreWebView2 core)
@@ -312,6 +328,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private void Core_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
     {
         _ = sender;
+        if (isDisposed == true)
+        {
+            return;
+        }
+
         var json = eventArgs.WebMessageAsJson;
         if (RendererProtocol.TryParse(json, out var message) == false || message is null)
         {
@@ -338,7 +359,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 SelectAdjacentSession(selectPrevious: true);
                 break;
             case RendererMessageType.Input:
-                if (message.SessionId is { } inputSessionId)
+                if (message.SessionId is { } inputSessionId && pendingSafetyConfirmation is null)
                 {
                     _ = WriteInputAsync(inputSessionId, message.Data ?? string.Empty);
                 }
@@ -360,7 +381,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             case RendererMessageType.PasteRequest:
                 if (message.SessionId is { } pasteSessionId && ContainsSession(pasteSessionId) == true)
                 {
-                    PasteFromClipboard(pasteSessionId);
+                    RequestPasteFromClipboard(pasteSessionId);
                 }
                 break;
             case RendererMessageType.CloseSession:
@@ -410,6 +431,12 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             case RendererMessageType.RendererError:
                 diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererRuntime",
                                     "The terminal renderer reported a local runtime error.");
+                break;
+            case RendererMessageType.ConfirmationResponse:
+                if (message.ConfirmationResponse is { } confirmationResponse)
+                {
+                    _ = ApplyConfirmationResponseAsync(confirmationResponse);
+                }
                 break;
             default:
                 throw new InvalidOperationException("Unexpected renderer message type.");
@@ -514,7 +541,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         _ = sender;
         diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "RendererProcess",
                             $"The renderer process failed ({eventArgs.ProcessFailedKind}).");
+        CancelPendingSafetyConfirmation(sendRendererCancellation: false);
         rendererFailed = true;
+        rendererSessionGenerations.Clear();
         appearanceState?.MarkRendererUnavailable();
         ShowError("Terminal renderer가 중단됐습니다. shell session은 유지되며 renderer를 다시 연결할 수 있습니다.");
     }
@@ -545,14 +574,17 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             }
             else if (rendererFailed == true)
             {
+                CancelPendingSafetyConfirmation(sendRendererCancellation: false);
                 rendererReady = CreateCompletionSource();
                 rendererSessionIds.Clear();
+                rendererSessionGenerations.Clear();
                 appearanceState?.MarkRendererUnavailable();
                 Renderer.CoreWebView2.Navigate($"https://{RendererHostName}/index.html");
                 await rendererReady.Task.WaitAsync(lifetimeCancellation.Token);
                 rendererFailed = false;
                 SendInitializeMessage();
                 SyncWorkspace(sessionCoordinator.Snapshot);
+                SchedulePendingOutputFlushes();
             }
 
             if (reconnectRendererOnly == true)
@@ -571,6 +603,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             }
             else
             {
+                CancelPendingSafetyConfirmation(sendRendererCancellation: true);
+                RemovePendingOutput(activeSessionId.Value);
                 SendSessionMessage("reset", activeSessionId.Value, new { });
                 await sessionCoordinator.RestartAsync(activeSessionId.Value, lifetimeCancellation.Token);
             }
@@ -599,6 +633,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         try
         {
+            CancelPendingSafetyConfirmation(sendRendererCancellation: true);
             await sessionCoordinator.AddAsync(lifetimeCancellation.Token);
         }
         catch (Exception exception) when (
@@ -621,6 +656,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         try
         {
+            CancelPendingSafetyConfirmation(sendRendererCancellation: true);
             _ = sessionCoordinator.Select(sessionId.Value);
         }
         catch (InvalidOperationException exception)
@@ -639,6 +675,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         try
         {
+            CancelPendingSafetyConfirmation(sendRendererCancellation: true);
             if (selectPrevious == true)
             {
                 _ = sessionCoordinator.SelectPrevious();
@@ -663,6 +700,13 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         try
         {
+            var confirmation = sessionCoordinator.RequestCloseConfirmation(sessionId);
+            if (confirmation is not null)
+            {
+                PresentCloseConfirmation(confirmation);
+                return;
+            }
+
             _ = await sessionCoordinator.CloseAsync(sessionId, lifetimeCancellation.Token);
         }
         catch (Exception exception) when (
@@ -677,6 +721,92 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
+    private void PresentCloseConfirmation(TerminalCloseConfirmationRequest request)
+    {
+        var sessionId = new TerminalSessionId(request.Token.Session.SessionId);
+        pendingSafetyConfirmation = new PendingSafetyConfirmation(request.Token, ConfirmationKind.Close);
+        SendSessionMessage("confirmation-request", sessionId,
+                           new
+                           {
+                               requestId = request.Token.RequestId.ToString(),
+                               sessionGeneration = request.Token.Session.Generation,
+                               kind = "close",
+                               request.SessionName,
+                           });
+    }
+
+    private void PresentPasteConfirmation(TerminalPasteConfirmationRequest request)
+    {
+        var sessionId = new TerminalSessionId(request.Token.Session.SessionId);
+        pendingSafetyConfirmation = new PendingSafetyConfirmation(request.Token, ConfirmationKind.Paste);
+        SendSessionMessage("confirmation-request", sessionId,
+                           new
+                           {
+                               requestId = request.Token.RequestId.ToString(),
+                               sessionGeneration = request.Token.Session.Generation,
+                               kind = "paste",
+                               request.SessionName,
+                               request.ClipboardText,
+                           });
+    }
+
+    private async Task ApplyConfirmationResponseAsync(TerminalConfirmationResponse response)
+    {
+        var pending = pendingSafetyConfirmation;
+        if (pending is null || pending.Token != response.Token || isDisposed == true)
+        {
+            return;
+        }
+
+        pendingSafetyConfirmation = null;
+        try
+        {
+            if (pending.Kind == ConfirmationKind.Close)
+            {
+                _ = await sessionCoordinator.ApplyCloseConfirmationAsync(response, lifetimeCancellation.Token);
+                return;
+            }
+
+            _ = await sessionCoordinator.ApplyPasteConfirmationAsync(response, lifetimeCancellation.Token);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException or OperationCanceledException or Win32Exception or
+                UnauthorizedAccessException)
+        {
+            if (isDisposed == false && exception is not OperationCanceledException)
+            {
+                var sessionId = new TerminalSessionId(response.Token.Session.SessionId);
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "SafetyConfirmation",
+                                    $"A terminal {pending.Kind.ToString().ToLowerInvariant()} confirmation could not be applied.",
+                                    exception);
+                if (ContainsSession(sessionId) == true)
+                {
+                    SendSessionMessage("session-error", sessionId,
+                                       new { message = "요청을 안전하게 처리하지 못했습니다. 다시 시도해 주세요." });
+                }
+            }
+        }
+    }
+
+    private void CancelPendingSafetyConfirmation(bool sendRendererCancellation)
+    {
+        var pending = pendingSafetyConfirmation;
+        pendingSafetyConfirmation = null;
+        sessionCoordinator.CancelPendingConfirmation();
+        if (pending is null || sendRendererCancellation == false || rendererFailed == true)
+        {
+            return;
+        }
+
+        var sessionId = new TerminalSessionId(pending.Token.Session.SessionId);
+        SendSessionMessage("confirmation-cancel", sessionId,
+                           new
+                           {
+                               requestId = pending.Token.RequestId.ToString(),
+                               sessionGeneration = pending.Token.Session.Generation,
+                           });
+    }
+
     private async Task RestartSessionAsync(TerminalSessionId sessionId)
     {
         if (isDisposed == true)
@@ -684,6 +814,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             return;
         }
 
+        CancelPendingSafetyConfirmation(sendRendererCancellation: true);
+        RemovePendingOutput(sessionId);
         SendSessionMessage("reset", sessionId, new { });
         try
         {
@@ -815,6 +947,66 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         {
             rendererSessionIds.Clear();
             rendererSessionIds.UnionWith(currentSessionIds);
+            SyncNewOutputState(sessionCoordinator.NewOutputState);
+        }
+    }
+
+    private void Session_NewOutputStateChanged(TerminalNewOutputStateSnapshot snapshot)
+    {
+        if (isDisposed == true)
+        {
+            return;
+        }
+
+        if (Dispatcher.CheckAccess() == true)
+        {
+            SyncNewOutputState(snapshot);
+            return;
+        }
+
+        _ = Dispatcher.BeginInvoke(() => SyncNewOutputState(snapshot));
+    }
+
+    private void SyncNewOutputState(TerminalNewOutputStateSnapshot snapshot)
+    {
+        if (isDisposed == true || rendererFailed == true || Renderer.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        _ = snapshot;
+        var currentSnapshot = sessionCoordinator.NewOutputState;
+        var liveSessionIds = currentSnapshot.States
+            .Select(state => new TerminalSessionId(state.Session.SessionId))
+            .ToHashSet();
+        foreach (var removedSessionId in rendererSessionGenerations.Keys
+                     .Where(sessionId => liveSessionIds.Contains(sessionId) == false)
+                     .ToArray())
+        {
+            rendererSessionGenerations.Remove(removedSessionId);
+        }
+
+        foreach (var state in currentSnapshot.States)
+        {
+            var sessionId = new TerminalSessionId(state.Session.SessionId);
+            if (rendererSessionIds.Contains(sessionId) == false)
+            {
+                continue;
+            }
+
+            if (rendererSessionGenerations.TryGetValue(sessionId, out var previousGeneration) == true &&
+                previousGeneration != state.Session.Generation)
+            {
+                RemovePendingOutput(sessionId);
+            }
+
+            rendererSessionGenerations[sessionId] = state.Session.Generation;
+            SendSessionMessage("new-output-state", sessionId,
+                               new
+                               {
+                                   sessionGeneration = state.Session.Generation,
+                                   state.HasNewOutput,
+                               });
         }
     }
 
@@ -830,34 +1022,47 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void Session_OutputReceived(TerminalSessionOutput output)
     {
+        if (isDisposed == true)
+        {
+            return;
+        }
+
+        var state = sessionCoordinator.NewOutputState.States.FirstOrDefault(
+            candidate => candidate.Session.SessionId == output.SessionId.Value);
+        if (state.Session.SessionId == Guid.Empty)
+        {
+            return;
+        }
+
         var data = output.Data;
         var reportOverflow = false;
         var scheduleFlush = false;
 
         lock (outputLock)
         {
-            if (pendingOutput.TryGetValue(output.SessionId, out var sessionOutput) == false)
+            if (pendingOutput.TryGetValue(output.SessionId, out var sessionOutput) == false ||
+                sessionOutput.Generation != state.Session.Generation)
             {
-                sessionOutput = new StringBuilder();
-                pendingOutput.Add(output.SessionId, sessionOutput);
+                sessionOutput = new PendingSessionOutput(state.Session.Generation);
+                pendingOutput[output.SessionId] = sessionOutput;
             }
 
             if (data.Length >= MaximumPendingOutputLength)
             {
-                sessionOutput.Clear();
-                sessionOutput.Append(data.AsSpan(data.Length - MaximumPendingOutputLength));
+                sessionOutput.Data.Clear();
+                sessionOutput.Data.Append(data.AsSpan(data.Length - MaximumPendingOutputLength));
                 reportOverflow = outputOverflowReported.Add(output.SessionId);
             }
             else
             {
-                var overflowLength = sessionOutput.Length + data.Length - MaximumPendingOutputLength;
+                var overflowLength = sessionOutput.Data.Length + data.Length - MaximumPendingOutputLength;
                 if (overflowLength > 0)
                 {
-                    sessionOutput.Remove(0, overflowLength);
+                    sessionOutput.Data.Remove(0, overflowLength);
                     reportOverflow = outputOverflowReported.Add(output.SessionId);
                 }
 
-                sessionOutput.Append(data);
+                sessionOutput.Data.Append(data);
             }
 
             scheduleFlush = outputFlushScheduled.Add(output.SessionId);
@@ -877,7 +1082,24 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void FlushOutput(TerminalSessionId sessionId)
     {
+        if (isDisposed == true)
+        {
+            RemovePendingOutput(sessionId);
+            return;
+        }
+
+        if (rendererFailed == true || Renderer.CoreWebView2 is null)
+        {
+            lock (outputLock)
+            {
+                outputFlushScheduled.Remove(sessionId);
+            }
+
+            return;
+        }
+
         string output = string.Empty;
+        long generation;
         bool hasMoreOutput;
 
         lock (outputLock)
@@ -888,28 +1110,55 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 return;
             }
 
-            var length = Math.Min(sessionOutput.Length, MaximumOutputBatchLength);
-            output = sessionOutput.ToString(0, length);
-            sessionOutput.Remove(0, length);
-            hasMoreOutput = sessionOutput.Length > 0;
+            generation = sessionOutput.Generation;
+            var length = Math.Min(sessionOutput.Data.Length, MaximumOutputBatchLength);
+            output = sessionOutput.Data.ToString(0, length);
+            sessionOutput.Data.Remove(0, length);
+            hasMoreOutput = sessionOutput.Data.Length > 0;
             if (hasMoreOutput == false)
             {
                 pendingOutput.Remove(sessionId);
                 outputFlushScheduled.Remove(sessionId);
             }
 
-            if (sessionOutput.Length < MaximumPendingOutputLength / 2)
+            if (sessionOutput.Data.Length < MaximumPendingOutputLength / 2)
             {
                 outputOverflowReported.Remove(sessionId);
             }
         }
 
-        if (string.IsNullOrEmpty(output) == false && isDisposed == false)
+        var currentState = sessionCoordinator.NewOutputState.States.FirstOrDefault(
+            state => state.Session.SessionId == sessionId.Value);
+        var isCurrentGeneration = currentState.Session.SessionId != Guid.Empty &&
+                                  currentState.Session.Generation == generation;
+        if (isCurrentGeneration == false)
+        {
+            RemovePendingOutput(sessionId);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(output) == false)
         {
             SendSessionMessage("output", sessionId, new { data = output });
         }
 
         if (hasMoreOutput == true && isDisposed == false)
+        {
+            _ = Dispatcher.BeginInvoke(() => FlushOutput(sessionId));
+        }
+    }
+
+    private void SchedulePendingOutputFlushes()
+    {
+        TerminalSessionId[] sessionIds;
+        lock (outputLock)
+        {
+            sessionIds = pendingOutput.Keys
+                .Where(sessionId => outputFlushScheduled.Add(sessionId) == true)
+                .ToArray();
+        }
+
+        foreach (var sessionId in sessionIds)
         {
             _ = Dispatcher.BeginInvoke(() => FlushOutput(sessionId));
         }
@@ -982,7 +1231,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
         catch (Exception exception) when (exception is InvalidOperationException or COMException)
         {
+            CancelPendingSafetyConfirmation(sendRendererCancellation: false);
             rendererFailed = true;
+            rendererSessionGenerations.Clear();
             appearanceState?.MarkRendererUnavailable();
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererOutput",
                                 "The renderer could not accept a host message.", exception);
@@ -1008,8 +1259,13 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
-    private void PasteFromClipboard(TerminalSessionId sessionId)
+    private void RequestPasteFromClipboard(TerminalSessionId sessionId)
     {
+        if (pendingSafetyConfirmation is not null)
+        {
+            return;
+        }
+
         try
         {
             if (Clipboard.ContainsText() == true)
@@ -1017,7 +1273,18 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 var data = Clipboard.GetText();
                 if (data.Length <= RendererProtocol.MaximumMessageLength)
                 {
-                    SendSessionMessage("paste", sessionId, new { data });
+                    var confirmation = sessionCoordinator.RequestPasteConfirmation(sessionId, data);
+                    if (confirmation is null)
+                    {
+                        if (data.Contains('\r') == false && data.Contains('\n') == false)
+                        {
+                            SendSessionMessage("paste", sessionId, new { data });
+                        }
+
+                        return;
+                    }
+
+                    PresentPasteConfirmation(confirmation);
                 }
                 else
                 {
@@ -1030,6 +1297,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         {
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Paste",
                                 "The clipboard was temporarily unavailable.", exception);
+        }
+        catch (InvalidOperationException exception)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Paste",
+                                "The clipboard paste request no longer targeted a live terminal session.", exception);
         }
     }
 
@@ -1216,5 +1488,25 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private static TaskCompletionSource CreateCompletionSource()
     {
         return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private enum ConfirmationKind
+    {
+        Close,
+        Paste,
+    }
+
+    private sealed record PendingSafetyConfirmation(TerminalConfirmationToken Token, ConfirmationKind Kind);
+
+    private sealed class PendingSessionOutput
+    {
+        internal PendingSessionOutput(long generation)
+        {
+            Generation = generation;
+        }
+
+        internal long Generation { get; }
+
+        internal StringBuilder Data { get; } = new();
     }
 }

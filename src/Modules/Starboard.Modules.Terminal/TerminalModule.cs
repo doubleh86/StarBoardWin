@@ -54,6 +54,22 @@ public sealed class TerminalModule : IDisposable
         return terminalView.SetWorkspacePersistenceEnabledAsync(enabled, cancellationToken);
     }
 
+    public void NotifyPanelVisibilityChanged(bool isVisible)
+    {
+        if (isDisposed == true)
+        {
+            return;
+        }
+
+        if (terminalView.Dispatcher.CheckAccess() == true)
+        {
+            terminalView.NotifyPanelVisibilityChanged(isVisible);
+            return;
+        }
+
+        terminalView.Dispatcher.Invoke(() => terminalView.NotifyPanelVisibilityChanged(isVisible));
+    }
+
     public Task<TerminalWorkspacePersistenceResult> ShutdownAsync()
     {
         lock (shutdownLock)
