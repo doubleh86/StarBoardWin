@@ -367,10 +367,16 @@ collapsed bottom-taskbar 기본값:
 ```text
 left   = workArea.left
 right  = workArea.right
-bottom = taskbarRect.top
-height = clamp(settings.heightDip * dpi / 96, minHeightPx, workArea.height)
+inner  = clamp(taskbarRect.top, workArea.top, workArea.bottom)
+height = clamp(round(settings.heightDip * dpiY / 96), 1, inner - workArea.top)
+gap    = min(round(6 * dpiY / 96), inner - workArea.top - height)
+bottom = inner - gap
 top    = bottom - height
 ```
+
+축소 하단 패널은 입력 줄과 작업표시줄 사이에 6 DIP 간격을 둔다. 높이를 유지할 공간이
+부족하면 간격만 줄이고 work area를 넘지 않는다. 반올림은 midpoint away from zero다.
+작업표시줄 bounds가 없으면 기존 work-area edge fallback을 사용한다.
 
 top/left/right taskbar도 edge별로 work area 안쪽에 붙인다. 사용자가 지정한 높이는
 taskbar에 평행한 panel의 두께 의미로 사용한다.

@@ -36,6 +36,34 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-09 (하단 패널 간격 수정본 바탕화면 배포)
+- Release build 경고·오류 0개, 전체 193개 테스트 통과. portable ZIP 재생성 hash,
+  SHA-256 및 추출 검증 통과. publish와 바탕화면 교체본 499개 파일 hash가 일치한다.
+- 기존 instance를 종료한 뒤 배포 후보 smoke를 별도 실행해 exit code 0을 확인했다.
+  기존 폴더를 `Starboard-win-x64-backup-20260909-102608`로 보존하고 교체했다.
+- Explorer를 통해 재실행한 바탕화면 배포본의 응답 상태와 PowerShell, ConHost,
+  WebView2 자식 process를 확인했다. 오류 log는 이전 2026-09-05 이후 갱신되지 않았다.
+- package는 `a0607c5` 기반 미커밋 스타일·간격 수정을 포함한다. SHA-256:
+  `e46d0cdf743209c1754b60c836a5aa2dc885bfa7acca0bb93826d5ba8c519017`.
+  실제 사용자 화면의 6 DIP 간격, 입력 및 hardware 시나리오는 미수행이다.
+
+- 실행일: 2026-09-09 (하단 패널 간격)
+- 축소 패널을 하단 작업표시줄에서 6 DIP 띄우되 높이를 보존하도록 수정했다.
+  100/125/150/200% DPI와 공간 부족에서의 간격 축소를 추가 검증하고, 음수 monitor 좌표,
+  auto-hide, 상단·좌우 배치 및 확장/복원 테스트를 유지했다.
+- geometry 집중 테스트 21개와 전체 Debug build/test 193개 통과, 빌드 경고·오류 0개.
+  실제 바탕화면 배포본은 교체하지 않았으므로 사용자 화면에서의 간격 확인은 미수행이다.
+
+- 실행일: 2026-09-09 (코드 스타일 동기화)
+- TRK 공통 CodeStyle을 반영한 C# 98개 파일 정리 후 Debug restore/build가 경고·오류
+  없이 통과했고 전체 188개 test가 통과했다. 결과는 `out/code-style-tests/`에 보관한다.
+- production은 공백·줄바꿈 변경만 포함한다. token/구문 비교와 formatter 재실행
+  추가 변경 0개, TRK 정렬 검사기 self-test/working-tree 검사 및 diff 검사를 통과했다.
+- IDE0055의 기본 initializer 정렬은 TRK 규칙과 충돌하므로 해당 진단만 비활성화하고
+  `scripts/Test-CSharpAlignment.ps1` 검사로 보완했다. 나머지 analyzer는 유지한다.
+- 테스트 2개 파일의 await 결과/JSON fixture 지역 변수 분리 외 runtime 로직 변경은 없다.
+  이번 작업에서 Release 배포나 UI/hardware 시나리오는 재실행하지 않았다.
+
 - 실행일: 2026-09-09
 - 범위: 바탕화면 시작 오류(Win32 error 87) 수정 및 재배포
 - 수정 전 실제 opaque WPF 창의 native opacity 적용에서 같은 오류와

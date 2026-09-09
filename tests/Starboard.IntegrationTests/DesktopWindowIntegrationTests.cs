@@ -21,8 +21,7 @@ public sealed class DesktopWindowIntegrationTests
             Assert.Inconclusive("The WPF window smoke test is only available on Windows.");
         }
 
-        var completion = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() => RunLocalWpfPanelSmoke(completion));
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
@@ -36,27 +35,19 @@ public sealed class DesktopWindowIntegrationTests
     {
         var runtime = new FakeDesktopIntegrationRuntime
         {
-            Geometry = CreateGeometry(
-                new PixelRect(0, 0, 1920, 1080),
-                new PixelRect(0, 0, 1920, 1040),
-                new PixelRect(0, 1040, 1920, 1080),
-                new DisplayDpi(96, 96)),
+            Geometry = CreateGeometry(new PixelRect(0, 0, 1920, 1080), new PixelRect(0, 0, 1920, 1040),
+                                      new PixelRect(0, 1040, 1920, 1080), new DisplayDpi(96, 96)),
         };
         using var module = CreateModule(runtime);
         module.Attach(new nint(42), new PanelOptions(200));
 
-        Assert.AreEqual(new PixelRect(0, 840, 1920, 1040), runtime.Placements[0]);
+        Assert.AreEqual(new PixelRect(0, 834, 1920, 1034), runtime.Placements[0]);
 
-        runtime.Geometry = CreateGeometry(
-            new PixelRect(-2560, 0, 0, 1440),
-            new PixelRect(-2560, 0, 0, 1400),
-            new PixelRect(-2560, 1400, 0, 1440),
-            new DisplayDpi(144, 144));
+        runtime.Geometry = CreateGeometry(new PixelRect(-2560, 0, 0, 1440), new PixelRect(-2560, 0, 0, 1400),
+                                          new PixelRect(-2560, 1400, 0, 1440), new DisplayDpi(144, 144));
         runtime.RaiseEnvironmentChanged();
 
-        Assert.AreEqual(
-            new PixelRect(-2560, 1100, 0, 1400),
-            runtime.Placements[runtime.Placements.Count - 1]);
+        Assert.AreEqual(new PixelRect(-2560, 1091, 0, 1391), runtime.Placements[runtime.Placements.Count - 1]);
 
         var suggestedRectangle = new NativeRect
         {
@@ -69,20 +60,16 @@ public sealed class DesktopWindowIntegrationTests
         try
         {
             Marshal.StructureToPtr(suggestedRectangle, rectanglePointer, false);
-            _ = module.HandleWindowMessage(new WindowMessage(
-                new nint(42),
-                DesktopIntegrationModule.WindowMessageDpiChanged,
-                PackDpi(144, 144),
-                rectanglePointer));
+            _ = module.HandleWindowMessage(new WindowMessage(new nint(42),
+                                                             DesktopIntegrationModule.WindowMessageDpiChanged,
+                                                             PackDpi(144, 144), rectanglePointer));
         }
         finally
         {
             Marshal.FreeHGlobal(rectanglePointer);
         }
 
-        Assert.AreEqual(
-            new PixelRect(-2560, 1100, 0, 1400),
-            runtime.Placements[runtime.Placements.Count - 1]);
+        Assert.AreEqual(new PixelRect(-2560, 1091, 0, 1391), runtime.Placements[runtime.Placements.Count - 1]);
         Assert.AreEqual(0, runtime.ActivationCount);
     }
 
@@ -101,11 +88,8 @@ public sealed class DesktopWindowIntegrationTests
         module.SetPanelVisible(false);
         runtime.Fullscreen = CreateFullscreen(PanelFullscreenState.FullscreenOnPanelMonitor);
         runtime.RaiseForegroundChanged();
-        _ = module.HandleWindowMessage(new WindowMessage(
-            new nint(42),
-            unchecked((int)runtime.TaskbarCreatedMessage),
-            0,
-            0));
+        _ = module.HandleWindowMessage(new WindowMessage(new nint(42), unchecked((int)runtime.TaskbarCreatedMessage), 0,
+                                                         0));
         runtime.Fullscreen = CreateFullscreen(PanelFullscreenState.Normal);
         runtime.RaiseForegroundChanged();
 
@@ -142,9 +126,7 @@ public sealed class DesktopWindowIntegrationTests
         Assert.IsFalse(presentations[1]);
         Assert.IsTrue(presentations[2]);
         Assert.AreEqual(0, runtime.ActivationCount);
-        Assert.AreEqual(
-            new PixelRect(0, 840, 1920, 1040),
-            runtime.Placements[runtime.Placements.Count - 1]);
+        Assert.AreEqual(new PixelRect(0, 834, 1920, 1034), runtime.Placements[runtime.Placements.Count - 1]);
     }
 
     [TestMethod]
@@ -161,22 +143,14 @@ public sealed class DesktopWindowIntegrationTests
         module.ToggleExpanded();
         module.ToggleExpanded();
 
-        Assert.AreEqual(
-            originalCollapsedBounds,
-            runtime.Placements[runtime.Placements.Count - 1]);
+        Assert.AreEqual(originalCollapsedBounds, runtime.Placements[runtime.Placements.Count - 1]);
 
         module.ToggleExpanded();
-        runtime.Geometry = CreateGeometry(
-            new PixelRect(-1280, 0, 0, 1024),
-            new PixelRect(-1280, 0, 0, 984),
-            new PixelRect(-1280, 984, 0, 1024),
-            new DisplayDpi(96, 96),
-            new nint(2));
+        runtime.Geometry = CreateGeometry(new PixelRect(-1280, 0, 0, 1024), new PixelRect(-1280, 0, 0, 984),
+                                          new PixelRect(-1280, 984, 0, 1024), new DisplayDpi(96, 96), new nint(2));
         module.ToggleExpanded();
 
-        Assert.AreEqual(
-            new PixelRect(-1280, 784, 0, 984),
-            runtime.Placements[runtime.Placements.Count - 1]);
+        Assert.AreEqual(new PixelRect(-1280, 778, 0, 978), runtime.Placements[runtime.Placements.Count - 1]);
         Assert.AreEqual(0, runtime.ActivationCount);
     }
 
@@ -227,11 +201,8 @@ public sealed class DesktopWindowIntegrationTests
         module.Attach(new nint(42), new PanelOptions(200));
 
         runtime.RaiseTraySignals();
-        _ = module.HandleWindowMessage(new WindowMessage(
-            new nint(42),
-            unchecked((int)runtime.TaskbarCreatedMessage),
-            0,
-            0));
+        _ = module.HandleWindowMessage(new WindowMessage(new nint(42), unchecked((int)runtime.TaskbarCreatedMessage), 0,
+                                                         0));
         runtime.RaiseTraySignals();
 
         Assert.AreEqual(2, toggleCount);
@@ -240,13 +211,9 @@ public sealed class DesktopWindowIntegrationTests
         Assert.AreEqual(1, runtime.TrayRecreationCount);
     }
 
-    private static DesktopIntegrationModule CreateModule(
-        FakeDesktopIntegrationRuntime runtime)
+    private static DesktopIntegrationModule CreateModule(FakeDesktopIntegrationRuntime runtime)
     {
-        return new DesktopIntegrationModule(
-            new NullDiagnosticLog(),
-            runtime,
-            false);
+        return new DesktopIntegrationModule(new NullDiagnosticLog(), runtime, false);
     }
 
     private static void RunLocalWpfPanelSmoke(TaskCompletionSource completion)
@@ -272,10 +239,7 @@ public sealed class DesktopWindowIntegrationTests
             window.Show();
 
             var windowHandle = new WindowInteropHelper(window).Handle;
-            module = new DesktopIntegrationModule(
-                new NullDiagnosticLog(),
-                runtime,
-                false);
+            module = new DesktopIntegrationModule(new NullDiagnosticLog(), runtime, false);
             module.SetPanelEngaged(true);
             module.PanelPresentationRequested += isVisible =>
             {
@@ -324,58 +288,33 @@ public sealed class DesktopWindowIntegrationTests
             bounds.Bottom <= workArea.Bottom;
     }
 
-    private static DesktopGeometrySnapshot CreateDefaultGeometry(
-        TaskbarPresence taskbarPresence = TaskbarPresence.Visible)
+    private static DesktopGeometrySnapshot CreateDefaultGeometry(TaskbarPresence taskbarPresence = TaskbarPresence.Visible)
     {
-        return CreateGeometry(
-            new PixelRect(0, 0, 1920, 1080),
-            new PixelRect(0, 0, 1920, 1040),
-            new PixelRect(0, 1040, 1920, 1080),
-            new DisplayDpi(96, 96),
-            new nint(1),
-            taskbarPresence);
+        return CreateGeometry(new PixelRect(0, 0, 1920, 1080), new PixelRect(0, 0, 1920, 1040),
+                              new PixelRect(0, 1040, 1920, 1080), new DisplayDpi(96, 96), new nint(1), taskbarPresence);
     }
 
-    private static DesktopGeometrySnapshot CreateGeometry(
-        PixelRect monitorBounds,
-        PixelRect workArea,
-        PixelRect taskbarBounds,
-        DisplayDpi dpi,
-        nint monitorHandle = default,
-        TaskbarPresence taskbarPresence = TaskbarPresence.Visible)
+    private static DesktopGeometrySnapshot CreateGeometry(PixelRect monitorBounds, PixelRect workArea,
+                                                          PixelRect taskbarBounds, DisplayDpi dpi,
+                                                          nint monitorHandle = default,
+                                                          TaskbarPresence taskbarPresence = TaskbarPresence.Visible)
     {
         if (monitorHandle == 0)
         {
             monitorHandle = new nint(1);
         }
 
-        return new DesktopGeometrySnapshot(
-            new TaskbarSnapshot(
-                TaskbarEdge.Bottom,
-                taskbarBounds,
-                monitorBounds,
-                workArea,
-                taskbarPresence != TaskbarPresence.Visible,
-                dpi.Y),
-            new MonitorSnapshot(
-                monitorHandle,
-                monitorBounds,
-                workArea,
-                dpi),
-            taskbarPresence,
-            DisplayTrackingState.Tracked,
-            null,
-            null);
+        return new DesktopGeometrySnapshot(new TaskbarSnapshot(TaskbarEdge.Bottom, taskbarBounds, monitorBounds,
+                                                               workArea, taskbarPresence != TaskbarPresence.Visible,
+                                                               dpi.Y),
+                                           new MonitorSnapshot(monitorHandle, monitorBounds, workArea, dpi),
+                                           taskbarPresence, DisplayTrackingState.Tracked, null, null);
     }
 
     private static FullscreenObservation CreateFullscreen(PanelFullscreenState state)
     {
-        return new FullscreenObservation(
-            state,
-            true,
-            null,
-            PanelWindowActivation.PreserveForeground,
-            PanelWindowZOrder.PreserveNormal);
+        return new FullscreenObservation(state, true, null, PanelWindowActivation.PreserveForeground,
+                                         PanelWindowZOrder.PreserveNormal);
     }
 
     private static nuint PackDpi(uint dpiX, uint dpiY)
@@ -418,6 +357,7 @@ public sealed class DesktopWindowIntegrationTests
             _ = windowHandle;
             _ = identifier;
             _ = virtualKey;
+
             return true;
         }
 
@@ -433,12 +373,11 @@ public sealed class DesktopWindowIntegrationTests
             return Geometry;
         }
 
-        public FullscreenObservation CaptureFullscreen(
-            nint panelWindowHandle,
-            MonitorSnapshot panelMonitor)
+        public FullscreenObservation CaptureFullscreen(nint panelWindowHandle, MonitorSnapshot panelMonitor)
         {
             _ = panelWindowHandle;
             _ = panelMonitor;
+
             return Fullscreen;
         }
 
@@ -544,6 +483,7 @@ public sealed class DesktopWindowIntegrationTests
             _ = windowHandle;
             _ = identifier;
             _ = virtualKey;
+
             return true;
         }
 
@@ -559,12 +499,11 @@ public sealed class DesktopWindowIntegrationTests
             return CurrentGeometry;
         }
 
-        public FullscreenObservation CaptureFullscreen(
-            nint panelWindowHandle,
-            MonitorSnapshot panelMonitor)
+        public FullscreenObservation CaptureFullscreen(nint panelWindowHandle, MonitorSnapshot panelMonitor)
         {
             _ = panelWindowHandle;
             _ = panelMonitor;
+
             return CreateFullscreen(PanelFullscreenState.Normal);
         }
 
@@ -575,8 +514,7 @@ public sealed class DesktopWindowIntegrationTests
 
         public void ActivateOnExplicitRequest(nint windowHandle)
         {
-            throw new InvalidOperationException(
-                "The background placement smoke test must not activate its panel.");
+            throw new InvalidOperationException("The background placement smoke test must not activate its panel.");
         }
 
         public void SetTrayPanelVisible(bool isVisible)
@@ -601,12 +539,8 @@ public sealed class DesktopWindowIntegrationTests
 
     private sealed class NullDiagnosticLog : IDiagnosticLog
     {
-        public void Write(
-            DiagnosticLevel level,
-            string subsystem,
-            string operation,
-            string message,
-            Exception? exception = null)
+        public void Write(DiagnosticLevel level, string subsystem, string operation, string message,
+                          Exception? exception = null)
         {
             _ = level;
             _ = subsystem;

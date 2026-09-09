@@ -16,13 +16,11 @@ public sealed class DesktopSettingsApplyTests
         var runtime = new FakeRuntime();
         using var module = CreateAttachedModule(runtime, new FakeStartupRegistration());
 
-        var result = module.ApplySettings(CreateSettings(
-            collapsedHeightDip: 240,
-            opacity: 0.8));
+        var result = module.ApplySettings(CreateSettings(collapsedHeightDip: 240, opacity: 0.8));
 
         Assert.AreEqual(DesktopSettingsApplyStatus.Applied, result.Status);
         Assert.AreEqual(0.8, runtime.LastOpacity);
-        Assert.AreEqual(new PixelRect(0, 540, 1000, 900), runtime.LastPlacedBounds);
+        Assert.AreEqual(new PixelRect(0, 531, 1000, 891), runtime.LastPlacedBounds);
         Assert.AreEqual(240, result.EffectiveSettings.CollapsedHeightDip);
     }
 
@@ -93,16 +91,14 @@ public sealed class DesktopSettingsApplyTests
         };
         using var module = CreateAttachedModule(runtime, new FakeStartupRegistration());
 
-        var result = module.ApplySettings(CreateSettings(
-            collapsedHeightDip: 240,
-            opacity: 0.8,
-            expandShortcut: "Ctrl+Alt+X"));
+        var result = module.ApplySettings(CreateSettings(collapsedHeightDip: 240, opacity: 0.8,
+                                                         expandShortcut: "Ctrl+Alt+X"));
 
         Assert.AreEqual(DesktopSettingsApplyStatus.FailedAndRestored, result.Status);
         Assert.AreEqual(200, result.EffectiveSettings.CollapsedHeightDip);
         Assert.AreEqual(0.97, result.EffectiveSettings.Opacity);
         Assert.AreEqual(0.97, runtime.LastOpacity);
-        Assert.AreEqual(new PixelRect(0, 600, 1000, 900), runtime.LastPlacedBounds);
+        Assert.AreEqual(new PixelRect(0, 591, 1000, 891), runtime.LastPlacedBounds);
         Assert.AreEqual(DesktopSettingsOperationStatus.Restored, result.Operations[0].Status);
     }
 
@@ -116,10 +112,8 @@ public sealed class DesktopSettingsApplyTests
         };
         using var module = CreateAttachedModule(runtime, new FakeStartupRegistration());
 
-        var result = module.ApplySettings(CreateSettings(
-            collapsedHeightDip: 240,
-            opacity: 0.8,
-            expandShortcut: "Ctrl+Alt+X"));
+        var result = module.ApplySettings(CreateSettings(collapsedHeightDip: 240, opacity: 0.8,
+                                                         expandShortcut: "Ctrl+Alt+X"));
 
         Assert.AreEqual(DesktopSettingsApplyStatus.FailedAndRestoreIncomplete, result.Status);
         Assert.AreEqual(240, result.EffectiveSettings.CollapsedHeightDip);
@@ -188,59 +182,42 @@ public sealed class DesktopSettingsApplyTests
     [TestMethod]
     public void QuoteExecutablePath_PathContainsSpacesAndKorean_QuotesEntirePath()
     {
-        var command = RegistryStartupRegistration.QuoteExecutablePath(
-            "C:\\사용자 파일\\Starboard App\\Starboard.exe");
+        var command = RegistryStartupRegistration.QuoteExecutablePath("C:\\사용자 파일\\Starboard App\\Starboard.exe");
 
         Assert.AreEqual("\"C:\\사용자 파일\\Starboard App\\Starboard.exe\"", command);
     }
 
-    private static DesktopIntegrationModule CreateAttachedModule(
-        FakeRuntime runtime,
-        FakeStartupRegistration startupRegistration)
+    private static DesktopIntegrationModule CreateAttachedModule(FakeRuntime runtime,
+                                                                 FakeStartupRegistration startupRegistration)
     {
-        var module = new DesktopIntegrationModule(
-            new NullDiagnosticLog(),
-            runtime,
-            startupRegistration,
-            false);
+        var module = new DesktopIntegrationModule(new NullDiagnosticLog(), runtime, startupRegistration, false);
         module.Attach(new nint(1), new PanelOptions(200));
+
         return module;
     }
 
-    private static DesktopSettings CreateSettings(
-        double collapsedHeightDip = 200,
-        double opacity = 0.97,
-        bool startWithWindows = false,
-        string expandShortcut = "Ctrl+Alt+E",
-        string activationShortcut = "Ctrl+Alt+S")
+    private static DesktopSettings CreateSettings(double collapsedHeightDip = 200, double opacity = 0.97,
+                                                  bool startWithWindows = false, string expandShortcut = "Ctrl+Alt+E",
+                                                  string activationShortcut = "Ctrl+Alt+S")
     {
-        return new DesktopSettings(
-            collapsedHeightDip,
-            opacity,
-            PreferredMonitorBehavior.TaskbarMonitor,
-            new HotkeySettings(expandShortcut, activationShortcut),
-            new StartupSettings(startWithWindows));
+        return new DesktopSettings(collapsedHeightDip, opacity, PreferredMonitorBehavior.TaskbarMonitor,
+                                   new HotkeySettings(expandShortcut, activationShortcut),
+                                   new StartupSettings(startWithWindows));
     }
 
     private sealed class FakeRuntime : IDesktopIntegrationRuntime
     {
-        private readonly DesktopGeometrySnapshot geometry = new(
-            new TaskbarSnapshot(
-                TaskbarEdge.Bottom,
-                new PixelRect(0, 900, 1000, 940),
-                new PixelRect(0, 0, 1000, 940),
-                new PixelRect(0, 0, 1000, 900),
-                false,
-                144),
-            new MonitorSnapshot(
-                new nint(1),
-                new PixelRect(0, 0, 1000, 940),
-                new PixelRect(0, 0, 1000, 900),
-                new DisplayDpi(144, 144)),
-            TaskbarPresence.Visible,
-            DisplayTrackingState.Tracked,
-            null,
-            null);
+        private readonly DesktopGeometrySnapshot geometry = new(new TaskbarSnapshot(TaskbarEdge.Bottom,
+                                                                                    new PixelRect(0, 900, 1000, 940),
+                                                                                    new PixelRect(0, 0, 1000, 940),
+                                                                                    new PixelRect(0, 0, 1000, 900),
+                                                                                    false, 144),
+                                                                new MonitorSnapshot(new nint(1),
+                                                                                    new PixelRect(0, 0, 1000, 940),
+                                                                                    new PixelRect(0, 0, 1000, 900),
+                                                                                    new DisplayDpi(144, 144)),
+                                                                TaskbarPresence.Visible, DisplayTrackingState.Tracked,
+                                                                null, null);
 
         public uint TaskbarCreatedMessage => 0;
 
@@ -308,6 +285,7 @@ public sealed class DesktopSettingsApplyTests
             }
 
             RegisteredShortcuts[identifier] = hotkey.DisplayText;
+
             return true;
         }
 
@@ -316,6 +294,7 @@ public sealed class DesktopSettingsApplyTests
             _ = windowHandle;
             _ = identifier;
             _ = virtualKey;
+
             return true;
         }
 
@@ -331,18 +310,13 @@ public sealed class DesktopSettingsApplyTests
             return geometry;
         }
 
-        public FullscreenObservation CaptureFullscreen(
-            nint panelWindowHandle,
-            MonitorSnapshot panelMonitor)
+        public FullscreenObservation CaptureFullscreen(nint panelWindowHandle, MonitorSnapshot panelMonitor)
         {
             _ = panelWindowHandle;
             _ = panelMonitor;
-            return new FullscreenObservation(
-                PanelFullscreenState.Normal,
-                true,
-                null,
-                PanelWindowActivation.PreserveForeground,
-                PanelWindowZOrder.PreserveNormal);
+
+            return new FullscreenObservation(PanelFullscreenState.Normal, true, null,
+                                             PanelWindowActivation.PreserveForeground, PanelWindowZOrder.PreserveNormal);
         }
 
         public void PlaceWithoutActivation(nint windowHandle, PixelRect bounds)
@@ -406,12 +380,8 @@ public sealed class DesktopSettingsApplyTests
 
     private sealed class NullDiagnosticLog : IDiagnosticLog
     {
-        public void Write(
-            DiagnosticLevel level,
-            string subsystem,
-            string operation,
-            string message,
-            Exception? exception = null)
+        public void Write(DiagnosticLevel level, string subsystem, string operation, string message,
+                          Exception? exception = null)
         {
             _ = level;
             _ = subsystem;

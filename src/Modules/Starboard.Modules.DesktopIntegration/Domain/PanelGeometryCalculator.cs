@@ -2,28 +2,18 @@ using Starboard.Modules.DesktopIntegration.Contracts;
 
 namespace Starboard.Modules.DesktopIntegration.Domain;
 
-internal readonly record struct DipRect(
-    double Left,
-    double Top,
-    double Right,
-    double Bottom);
+internal readonly record struct DipRect(double Left, double Top, double Right, double Bottom);
 
 internal static class PanelGeometryCalculator
 {
-    internal static PixelRect CalculateCollapsed(
-        TaskbarSnapshot snapshot,
-        double requestedHeightDip)
+    private const double _BottomTaskbarGapDip = 6;
+
+    internal static PixelRect CalculateCollapsed(TaskbarSnapshot snapshot, double requestedHeightDip)
     {
-        return CalculateCollapsed(
-            snapshot,
-            new DisplayDpi(snapshot.Dpi, snapshot.Dpi),
-            requestedHeightDip);
+        return CalculateCollapsed(snapshot, new DisplayDpi(snapshot.Dpi, snapshot.Dpi), requestedHeightDip);
     }
 
-    internal static PixelRect CalculateCollapsed(
-        TaskbarSnapshot snapshot,
-        DisplayDpi dpi,
-        double requestedHeightDip)
+    internal static PixelRect CalculateCollapsed(TaskbarSnapshot snapshot, DisplayDpi dpi, double requestedHeightDip)
     {
         var thicknessDpi = snapshot.Edge is TaskbarEdge.Left or TaskbarEdge.Right
             ? dpi.X
@@ -43,29 +33,22 @@ internal static class PanelGeometryCalculator
         }
 
         var thickness = Math.Clamp(requestedThickness, 1, maximumThickness);
+        if (snapshot.Edge == TaskbarEdge.Bottom)
+        {
+            // Preserve terminal rows; reduce only the gap when the work area is tight.
+            var gap = Math.Min(DipToPixels(_BottomTaskbarGapDip, dpi.Y), maximumThickness - thickness);
+            innerEdge -= gap;
+        }
 
         return snapshot.Edge switch
         {
-            TaskbarEdge.Left => new PixelRect(
-                innerEdge,
-                snapshot.WorkArea.Top,
-                innerEdge + thickness,
-                snapshot.WorkArea.Bottom),
-            TaskbarEdge.Top => new PixelRect(
-                snapshot.WorkArea.Left,
-                innerEdge,
-                snapshot.WorkArea.Right,
-                innerEdge + thickness),
-            TaskbarEdge.Right => new PixelRect(
-                innerEdge - thickness,
-                snapshot.WorkArea.Top,
-                innerEdge,
-                snapshot.WorkArea.Bottom),
-            _ => new PixelRect(
-                snapshot.WorkArea.Left,
-                innerEdge - thickness,
-                snapshot.WorkArea.Right,
-                innerEdge),
+            TaskbarEdge.Left => new PixelRect(innerEdge, snapshot.WorkArea.Top, innerEdge + thickness,
+                                              snapshot.WorkArea.Bottom),
+            TaskbarEdge.Top => new PixelRect(snapshot.WorkArea.Left, innerEdge, snapshot.WorkArea.Right,
+                                             innerEdge + thickness),
+            TaskbarEdge.Right => new PixelRect(innerEdge - thickness, snapshot.WorkArea.Top, innerEdge,
+                                               snapshot.WorkArea.Bottom),
+            _ => new PixelRect(snapshot.WorkArea.Left, innerEdge - thickness, snapshot.WorkArea.Right, innerEdge),
         };
     }
 
@@ -77,9 +60,7 @@ internal static class PanelGeometryCalculator
     internal static int DipToPixels(double dip, uint dpi)
     {
         var effectiveDpi = dpi == 0 ? DisplayDpi.Default : dpi;
-        return (int)Math.Round(
-            dip * effectiveDpi / DisplayDpi.Default,
-            MidpointRounding.AwayFromZero);
+        return (int)Math.Round(dip * effectiveDpi / DisplayDpi.Default, MidpointRounding.AwayFromZero);
     }
 
     internal static double PixelsToDip(int pixels, uint dpi)
@@ -90,11 +71,8 @@ internal static class PanelGeometryCalculator
 
     internal static DipRect PixelsToDip(PixelRect rectangle, DisplayDpi dpi)
     {
-        return new DipRect(
-            PixelsToDip(rectangle.Left, dpi.X),
-            PixelsToDip(rectangle.Top, dpi.Y),
-            PixelsToDip(rectangle.Right, dpi.X),
-            PixelsToDip(rectangle.Bottom, dpi.Y));
+        return new DipRect(PixelsToDip(rectangle.Left, dpi.X), PixelsToDip(rectangle.Top, dpi.Y),
+                           PixelsToDip(rectangle.Right, dpi.X), PixelsToDip(rectangle.Bottom, dpi.Y));
     }
 
     private static int GetTaskbarInnerEdge(TaskbarSnapshot snapshot)
@@ -112,22 +90,13 @@ internal static class PanelGeometryCalculator
 
         return snapshot.Edge switch
         {
-            TaskbarEdge.Left => Math.Clamp(
-                snapshot.TaskbarBounds.Right,
-                snapshot.WorkArea.Left,
-                snapshot.WorkArea.Right),
-            TaskbarEdge.Top => Math.Clamp(
-                snapshot.TaskbarBounds.Bottom,
-                snapshot.WorkArea.Top,
-                snapshot.WorkArea.Bottom),
-            TaskbarEdge.Right => Math.Clamp(
-                snapshot.TaskbarBounds.Left,
-                snapshot.WorkArea.Left,
-                snapshot.WorkArea.Right),
-            _ => Math.Clamp(
-                snapshot.TaskbarBounds.Top,
-                snapshot.WorkArea.Top,
-                snapshot.WorkArea.Bottom),
+            TaskbarEdge.Left => Math.Clamp(snapshot.TaskbarBounds.Right, snapshot.WorkArea.Left,
+                                           snapshot.WorkArea.Right),
+            TaskbarEdge.Top => Math.Clamp(snapshot.TaskbarBounds.Bottom, snapshot.WorkArea.Top,
+                                          snapshot.WorkArea.Bottom),
+            TaskbarEdge.Right => Math.Clamp(snapshot.TaskbarBounds.Left, snapshot.WorkArea.Left,
+                                            snapshot.WorkArea.Right),
+            _ => Math.Clamp(snapshot.TaskbarBounds.Top, snapshot.WorkArea.Top, snapshot.WorkArea.Bottom),
         };
     }
 }
