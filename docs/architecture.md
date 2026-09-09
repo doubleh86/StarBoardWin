@@ -284,6 +284,22 @@ tabpanel은 숨기기만 하므로 output buffer, scrollback과 emulator state�
 다시 확인한다. 실제 WebView2 화면에서 비활성 xterm scrollback을 눈으로 확인하는
 항목은 자동 검증과 구분해 수동 test로 남긴다.
 
+### Workspace persistence and restore
+
+`restoreWorkspaceOnLaunch`는 Preferences schema 6의 opt-in 값이며 기본값은 `false`다.
+꺼진 설정은 남아 있는 workspace 파일보다 우선한다. 시작 시 기본 탭 하나를 만들고,
+설정 저장이 성공한 뒤에는 기존 workspace 파일을 삭제한다. 켜진 경우에만 Terminal이
+`%LOCALAPPDATA%/Starboard/workspace.json`을 읽고, 1~8개 탭의 구성 ID, 이름, 연속된
+순서, 시작 폴더, 제한된 shell kind와 활성 구성 ID를 복원한다.
+
+workspace 저장은 64 KiB 상한과 strict validation을 거친 뒤 같은 directory의 flush된
+`.tmp` file을 `File.Replace`(최초 저장은 move)로 교체한다. 유효한 primary만 `.bak`으로
+승격한다. primary가 손상되면 valid backup으로 복구하고, 미래 schema가 발견되면 primary와
+backup을 보존한 채 그 실행의 restore와 autosave를 중단한다. 복원은 각 구성 ID를 새 runtime
+session ID와 새 ConPTY process에 매핑하므로 PID, shell의 현재 state, history, command,
+output, scrollback, clipboard, environment는 복원하지 않는다. 개별 shell 또는 directory
+실패는 failed tab으로 격리해 이후 tab 복원을 계속한다.
+
 기본 collapsed 높이는 schema 4의 200 DIP다. 32 DIP tab strip 아래에 13px font와
 1.35 line-height 기준 약 8행의 terminal body를 표시한다. schema 3 이하에서 이전
 기본값인 148 DIP만 200 DIP로 migration하고 다른 설정 높이는 사용자 지정으로
@@ -506,6 +522,8 @@ WebView2 transparent composition 위험 때문에 glassmorphism과 blur를 쓰�
 - subsystem, operation, native error code, recoverability만 기록한다.
 - command, terminal output, clipboard, environment value와 full custom arguments는
   기록하지 않는다.
+- opt-in workspace JSON은 탭 이름·순서·시작 폴더처럼 사용자가 선택한 구성만 담으며,
+  command, output, clipboard, environment, runtime session ID와 PID는 담지 않는다.
 - analytics, crash upload, remote config와 runtime asset fetch를 사용하지 않는다.
 
 ## Portable release와 build metadata
@@ -520,8 +538,8 @@ build는 commit을 `unknown`으로 표시할 수 있고, package 흐름은 확�
 `staging`만 정리한다. staging이 reparse point이거나 계산한 경로가 root를 벗어나면
 중단한다. publish는 self-contained `win-x64`, multi-file이고 WebView2 Runtime 자체는
 포함하지 않는다. committed `Renderer` asset, 제품 MIT `LICENSE`, README, third-party
-notice/license와 release metadata를 포함한 뒤 settings/log/WebView2 user data, dump,
-PDB와 개발 PC 절대 경로가 없는지 검사한다.
+notice/license와 release metadata를 포함한 뒤 settings/workspace JSON과 그 backup·temporary
+파일, logs/WebView2 user data, dump, PDB와 개발 PC 절대 경로가 없는지 검사한다.
 
 ZIP entry는 ordinal 경로 순서와 source commit 시각을 사용한다. SHA-256 파일을 만든 뒤
 다시 계산해 일치 여부를 확인하고 별도 staging에 압축 해제한다. 추출본은 전용 smoke

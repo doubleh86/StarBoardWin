@@ -159,8 +159,8 @@ function Test-PortableContents {
     foreach ($file in $files) {
         $relativePath = $file.FullName.Substring($publishPrefix.Length).Replace("\", "/")
         $segments = $relativePath.Split("/")
-        if ($file.Name -in @("settings.json", "settings.json.bak", "Starboard.settings.json") -or
-            $file.Extension -in @(".log", ".pdb", ".dmp", ".hdmp") -or
+        if ($file.Name -in @("settings.json", "settings.json.bak", "Starboard.settings.json", "workspace.json") -or
+            $file.Extension -in @(".bak", ".tmp", ".log", ".pdb", ".dmp", ".hdmp") -or
             $segments -contains "WebView2" -or
             $segments -contains "WebView2Data" -or
             $segments -contains "Logs") {

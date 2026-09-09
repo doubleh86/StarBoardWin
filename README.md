@@ -15,7 +15,7 @@ Windows 10 1809 이상은 best-effort 대상이다.
 - Windows ConPTY를 통한 실제 양방향 persistent session
 - bundled xterm.js와 local-only WebView2 renderer
 - 하나의 WebView2 안에서 탭별 xterm, scrollback과 shell 상태 유지
-- 최대 8개 탭, 탭별 독립 ConPTY process·working directory·interactive state
+- 최대 8개 탭, 탭별 독립 ConPTY process·working directory·interactive state와 이름·순서 변경
 - terminal resize를 ConPTY cell size로 전달
 - shell/renderer 오류 surface와 shell restart
 - `Ctrl+Alt+E` global hotkey로 work area 전체 확장/축소
@@ -33,11 +33,17 @@ Windows 10 1809 이상은 best-effort 대상이다.
 장비 검증은 아직 남아 있다. 구현 범위와 미수행 matrix는
 [`docs/test-plan.md`](docs/test-plan.md)를 참고한다.
 
-탭은 앱을 다시 시작하면 복원되지 않는다. 비활성 탭은 DOM에서 제거하지 않아
-10,000줄 xterm scrollback과 shell 상태를 유지하지만, renderer process 자체가
-재시작되면 과거 xterm scrollback은 복원하지 않고 살아 있는 ConPTY의 이후 output과
-현재 탭 snapshot만 다시 연결한다. 실제 mixed-DPI, 한글 IME와 3-tab WebView2 조작
-smoke는 아직 수동 검증이 필요하다.
+`설정 > 작업공간 복원`은 기본적으로 꺼져 있다. 켜면 다음 시작에 탭 이름·순서,
+선택된 탭, 시작 폴더와 기본 shell 종류를 새 ConPTY process로 복원한다. 실행 중인
+shell, PID, 현재 working directory, history, command, output, scrollback, clipboard와
+environment는 저장하거나 복원하지 않는다. 복원 탭은 항상 새 PID를 얻으며, 폴더나
+shell 시작 실패는 해당 탭만 오류 상태로 남기고 나머지 탭 복원을 계속한다.
+
+옵션을 끄고 설정 저장에 성공하면 저장된 작업공간을 삭제하고 다음 시작에는 기본 탭
+하나로 시작한다. 비활성 탭은 DOM에서 제거하지 않아 10,000줄 xterm scrollback과
+shell 상태를 유지하지만, renderer process 자체가 재시작되면 과거 scrollback은
+복원하지 않고 살아 있는 ConPTY의 이후 output과 현재 탭 snapshot만 다시 연결한다.
+실제 mixed-DPI, 한글 IME와 작업공간 재시작 UI smoke는 아직 수동 검증이 필요하다.
 
 ## 요구 사항
 
@@ -76,7 +82,8 @@ pwsh -NoProfile -File scripts/package-portable.ps1 -DotNetPath '<dotnet.exe 경�
 `.sha256` 파일이다. 스크립트는 Git이 확인한 저장소 루트 아래의 해당 버전
 `staging`만 정리하며, reparse point나 범위를 벗어난 경로는 거부한다. ZIP은 실행
 파일, local renderer, 제품 `LICENSE`, third-party notice와 release metadata를 포함하고
-사용자 설정, 로그, WebView2 user data와 PDB는 거부한다. 같은 source commit과 SDK/
+사용자 설정, 작업공간 JSON과 backup/temporary 파일, 로그, WebView2 user data와 PDB는
+거부한다. 같은 source commit과 SDK/
 dependency 입력에서 파일 순서와 ZIP entry 시각을 고정해 다시 만들 수 있다.
 
 portable package는 .NET Runtime을 포함하므로 별도 .NET 설치가 필요 없지만,
@@ -144,13 +151,19 @@ renderer는 runtime CDN, 외부 font, remote script를 사용하지 않는다.
 %LOCALAPPDATA%/Starboard/
   settings.json
   settings.json.bak
+  workspace.json                 # 복원 옵션을 켠 경우의 탭 구성만
+  workspace.json.bak
+  workspace.json.tmp             # 원자 저장 중에만 존재 가능
   Logs/starboard.log
   WebView2/
 ```
 
 Starboard에는 analytics, telemetry, crash upload, remote configuration이 없다.
-terminal command, output, clipboard 내용과 environment 값은 로그에 남기지 않는다.
-로그는 subsystem, operation, 복구 가능성에 필요한 오류 종류만 기록한다.
+작업공간 파일은 최대 64 KiB의 일반 로컬 JSON이며 암호화되지 않는다. 여기에는 탭
+구성 ID, 이름, 순서, 시작 폴더, shell 종류와 활성 탭만 들어간다. terminal command,
+output, clipboard 내용, environment 값, runtime PID/session ID는 로그나 작업공간
+파일에 남기지 않는다. 로그는 subsystem, operation, 복구 가능성에 필요한 오류
+종류만 기록한다. portable ZIP에는 이 사용자 데이터, backup, temporary 파일이 포함되지 않는다.
 
 ## 구조
 

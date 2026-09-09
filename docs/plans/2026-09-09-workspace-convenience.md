@@ -218,6 +218,11 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
   이전 실패 실행의 추적·미추적 변경을 유지한 동일 worktree에서 Preferences 31개, Terminal 121개,
   Integration 34개, Architecture 5개 및 Debug solution 전체 262개 테스트와 C# 정렬 검사를 다시
   통과했다. 설정 UI 조작, 실제 재실행과 foreground 보존 확인은 W6 수동 검증에 남긴다.
+- [x] W6 문서·배포 검증: README/architecture/privacy/test matrix를 opt-in 복원과 새 PID 한계,
+  local workspace 저장 범위에 맞췄다. portable package 검사는 `workspace.json`, 모든 `.bak`/`.tmp`,
+  logs와 WebView2 user data를 거부하며, renderer source/dist offline 동기화와 Debug solution
+  restore/build/test(전체 262개), `git diff --check`를 다시 검증했다. 실제 workspace 재시작 UI, 한글 IME,
+  권한 제한 폴더, multi-monitor/DPI는 MAN-041~043 및 기존 MAN 항목에서 `Not run`으로 남긴다.
 
 W1은 저장소 구현이나 실제 복원 실행을 시작하지 않는다. renderer protocol은 이후 UI가 이름 변경,
 순서 이동, 시작 폴더 변경과 workspace 저장 상태를 명시적으로 교환할 수 있도록만 확장한다.

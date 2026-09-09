@@ -36,6 +36,16 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-09 (workspace release verification)
+- 지정된 user-local .NET SDK로 Debug restore/build/test를 다시 실행해 경고·오류 0개와
+  전체 262개 test 통과를 확인했다(Architecture 5, Preferences 31, Terminal 121,
+  DesktopIntegration 71, Integration 34). renderer는 `npm run build`로 source에서
+  재생성한 뒤 committed `dist` diff가 없음을 확인했다.
+- portable package 검사는 workspace JSON, 모든 `.bak`/`.tmp`, logs와 WebView2 user
+  data를 publish, ZIP, 추출 smoke directory에서 거부하도록 보강했다. 실제 package
+  생성과 workspace 재시작 UI, 한글 IME, 권한 제한 folder 및 multi-monitor/DPI hardware
+  실행은 이 작업에서 하지 않았으므로 MAN-041~043과 기존 관련 MAN 항목은 `Not run`이다.
+
 - 실행일: 2026-09-09 (하단 패널 간격 수정본 바탕화면 배포)
 - Release build 경고·오류 0개, 전체 193개 테스트 통과. portable ZIP 재생성 hash,
   SHA-256 및 추출 검증 통과. publish와 바탕화면 교체본 499개 파일 hash가 일치한다.
@@ -239,6 +249,11 @@ npm run build
 | TRM-014 | multi-session bounded shutdown | 모든 session cleanup 병렬 시작, 전체 deadline 안에 반환 | Passed |
 | TRM-015 | renderer protocol v2 session ID | session message serialize/parse 및 missing/empty/malformed ID 거부 | Passed |
 | TRM-016 | targeted input/resize routing | 선택 변경 없이 지정 session transport 하나만 호출 | Passed |
+| TRM-017 | workspace tab name/order round trip | 한글 이름과 0-based 순서, 활성 tab 구성이 보존됨 | Passed |
+| TRM-018 | workspace starting directory/shell restore | 허용된 절대 폴더와 shell kind만 저장·복원함 | Passed |
+| TRM-019 | workspace corrupt/future schema recovery | 손상 primary는 valid backup으로, 미래 schema는 보존·중단함 | Passed |
+| TRM-020 | workspace partial restore failure | 한 tab의 shell/folder 실패가 다른 tab 복원을 막지 않음 | Passed |
+| TRM-021 | workspace opt-out/delete | 기본 꺼짐, 옵션 해제 뒤 파일 삭제와 기본 tab 시작 | Passed |
 
 ### Preferences와 theme
 
@@ -299,6 +314,9 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-025 | live appearance와 새-tab shell | 기존 session PID/cwd 유지, 변경 shell은 이후 tab만 사용 | Passed (module automated) |
 | INT-026 | build metadata 표시 | 설정 표시용 version/short commit이 assembly metadata에서 일관되게 생성됨 | Passed (automated) |
 | INT-027 | portable smoke guard | metadata mismatch, renderer 누락과 shell 누락을 non-zero로 거부하고 normal startup은 변경하지 않음 | Passed (automated) |
+| INT-028 | restored workspace process identity | 저장 구성마다 새 PID를 시작하고 runtime session ID/command/output은 재사용하지 않음 | Passed |
+| INT-029 | renderer source/dist offline contract | committed bundle이 source와 동기화되고 CDN·remote font/script 없이 local asset만 사용 | Passed |
+| INT-030 | portable user-data exclusion | publish/ZIP/추출본에 workspace JSON, `.bak`, `.tmp`, log와 WebView2 data가 없음을 package 검사로 거부 | Passed (automated package) |
 
 ConPTY test는 각 case에 timeout을 두고 실패 시 orphan child process를 남기지 않는다.
 
@@ -366,6 +384,9 @@ build hash를 함께 기록한다.
 | MAN-038 | 실제 설정 live apply/rollback | theme/font/높이 적용 중 PID·cwd 유지, hotkey 충돌과 저장 실패 UI 확인 | Not run |
 | MAN-039 | portable WebView2/terminal UI | 새 폴더에서 실제 WebView2 Runtime 초기화, local renderer와 interactive shell 확인 | Not run |
 | MAN-040 | portable update/rollback | 기존 설정 유지, startup 경로 변경과 이전 폴더 복귀 확인 | Not run |
+| MAN-041 | workspace restore UI | 복원 opt-in 뒤 재시작에서 탭 이름·순서·선택·시작 폴더가 보존되고 각 tab이 새 PID인지 확인 | Not run |
+| MAN-042 | workspace IME and partial failure | 한글 IME 이름 편집, 없는/권한 없는 폴더 또는 shell 한 tab 실패가 다른 tab을 막지 않는지 확인 | Not run |
+| MAN-043 | workspace opt-out | 옵션 해제 뒤 구성 파일 삭제와 다음 시작의 기본 tab 하나를 확인 | Not run |
 
 ## Focus 검증 절차
 
@@ -403,10 +424,12 @@ launch focus 보존과 terminal click activation은 서로 다른 요구사항�
 - clean restore/build/test 성공
 - self-contained `win-x64` publish 성공
 - committed renderer `dist`와 license notice 존재
+- renderer source 재빌드 결과와 committed `dist`가 일치하고 runtime CDN/remote asset이 없음
 - 제품 version/build commit과 `release-metadata.json` 일치
 - versioned staging 밖의 출력이나 사용자 data를 정리하지 않음
 - ZIP SHA-256 일치와 추출 smoke 성공
 - runtime network request 없음
+- workspace JSON, `.bak`, `.tmp`, command 또는 terminal output이 publish/ZIP/추출본에 없음
 - automated/integration 결과가 이 문서에 갱신됨
 - 실제로 실행한 manual case만 `Passed`로 표시
 - 미실행 DPI, multi-monitor, fullscreen과 IME case가 숨김없이 남아 있음
