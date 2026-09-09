@@ -36,6 +36,11 @@ public partial class App : Application, IDisposable
 
     protected override void OnExit(ExitEventArgs e)
     {
+        if (coordinator is not null)
+        {
+            coordinator.ShutdownAsync().GetAwaiter().GetResult();
+        }
+
         Dispose();
         base.OnExit(e);
     }

@@ -22,6 +22,7 @@ internal sealed class AppCoordinator : IDisposable
     private MainWindow? mainWindow;
     private SettingsApplicationService? settingsApplicationService;
     private SettingsWindowController? settingsWindowController;
+    private Task? shutdownTask;
     private bool isDisposed;
 
     internal AppCoordinator()
@@ -64,9 +65,7 @@ internal sealed class AppCoordinator : IDisposable
         var windowHandle = mainWindow.AttachDesktopIntegration(desktopIntegrationModule);
         desktopIntegrationModule.Attach(windowHandle, new PanelOptions(settings.CollapsedHeightDip));
 
-        var terminalSettings = SettingsApplicationService.ToTerminalSettings(settings);
-        var terminalOptions = new TerminalOptions(settings.ShellExecutable, settings.FontFamily, settings.FontSize,
-                                                  terminalSettings.Appearance.Theme);
+        var terminalOptions = SettingsApplicationService.ToTerminalOptions(settings);
         mainWindow.SetTerminalContent(terminalModule.Surface);
         await terminalModule.StartAsync(terminalOptions, cancellationToken);
 
@@ -95,6 +94,18 @@ internal sealed class AppCoordinator : IDisposable
 
     public void Dispose()
     {
+        ShutdownAsync().GetAwaiter().GetResult();
+    }
+
+    internal Task ShutdownAsync()
+    {
+        shutdownTask ??= ShutdownCoreAsync();
+
+        return shutdownTask;
+    }
+
+    private async Task ShutdownCoreAsync()
+    {
         if (isDisposed == true)
         {
             return;
@@ -109,9 +120,27 @@ internal sealed class AppCoordinator : IDisposable
         desktopIntegrationModule.ExitRequested -= HandleExitRequested;
         settingsWindowController?.Dispose();
         settingsApplicationService?.Dispose();
-        terminalModule.Dispose();
+        var workspaceResult = await terminalModule.ShutdownAsync();
+        LogWorkspaceShutdownResult(workspaceResult);
         desktopIntegrationModule.Dispose();
         mainWindow?.Close();
+    }
+
+    private void LogWorkspaceShutdownResult(TerminalWorkspacePersistenceResult result)
+    {
+        var level = result.Status == TerminalWorkspacePersistenceStatus.Failed
+            ? DiagnosticLevel.Warning
+            : DiagnosticLevel.Information;
+        var message = result.Status switch
+        {
+            TerminalWorkspacePersistenceStatus.Succeeded => "The latest terminal workspace was flushed during shutdown.",
+            TerminalWorkspacePersistenceStatus.Failed =>
+                result.FailureDetail ?? "The latest terminal workspace could not be flushed during shutdown.",
+            TerminalWorkspacePersistenceStatus.Skipped =>
+                result.FailureDetail ?? "Terminal workspace flush was not required during shutdown.",
+            _ => throw new ArgumentOutOfRangeException(nameof(result)),
+        };
+        diagnosticLog.Write(level, "Host", result.Operation.ToString(), message);
     }
 
     private void HandlePanelVisibilityToggleRequested(object? sender, EventArgs eventArguments)

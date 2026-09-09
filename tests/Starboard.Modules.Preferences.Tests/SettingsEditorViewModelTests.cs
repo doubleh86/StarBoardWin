@@ -28,16 +28,21 @@ public sealed class SettingsEditorViewModelTests
     [TestMethod]
     public async Task CancelDiscardsDraftAndReturnsOriginalSnapshot()
     {
-        var original = new AppSettings { Theme = "Dark" };
-        var viewModel = new SettingsEditorViewModel(original, new RecordingSaveHandler());
+        var original = new AppSettings { Theme = "Dark", RestoreWorkspaceOnLaunch = true };
+        var saveHandler = new RecordingSaveHandler();
+        var viewModel = new SettingsEditorViewModel(original, saveHandler);
         viewModel.Theme = "Light";
+        viewModel.RestoreWorkspaceOnLaunch = false;
 
         viewModel.Cancel();
         var outcome = await viewModel.Completion;
 
         Assert.AreEqual("Dark", viewModel.Theme);
+        Assert.IsTrue(viewModel.RestoreWorkspaceOnLaunch);
         Assert.AreEqual(SettingsEditorCompletionKind.Canceled, outcome.CompletionKind);
         Assert.AreEqual("Dark", outcome.Settings.Theme);
+        Assert.IsTrue(outcome.Settings.RestoreWorkspaceOnLaunch);
+        Assert.AreEqual(0, saveHandler.SaveCount);
     }
 
     [TestMethod]
@@ -77,6 +82,30 @@ public sealed class SettingsEditorViewModelTests
     }
 
     [TestMethod]
+    public async Task SaveAsyncHostRetryGuidanceShowsSpecificMessageAndKeepsEditorOpen()
+    {
+        var saveHandler = new RecordingSaveHandler
+        {
+            ExceptionToThrow = new SettingsEditorSaveException("설정은 저장했지만 작업공간 삭제를 재시도해야 합니다."),
+        };
+        var viewModel = new SettingsEditorViewModel(new AppSettings { RestoreWorkspaceOnLaunch = true }, saveHandler)
+        {
+            RestoreWorkspaceOnLaunch = false,
+        };
+
+        await viewModel.SaveAsync(CancellationToken.None);
+
+        Assert.AreEqual("설정은 저장했지만 작업공간 삭제를 재시도해야 합니다.", viewModel.SaveError);
+        Assert.IsFalse(viewModel.RestoreWorkspaceOnLaunch);
+        Assert.IsFalse(viewModel.Completion.IsCompleted);
+
+        viewModel.Cancel();
+        var outcome = await viewModel.Completion;
+
+        Assert.IsFalse(outcome.Settings.RestoreWorkspaceOnLaunch);
+    }
+
+    [TestMethod]
     public async Task SaveAsyncValidDraftCompletesWithRequestedSettings()
     {
         var saveHandler = new RecordingSaveHandler();
@@ -90,6 +119,7 @@ public sealed class SettingsEditorViewModelTests
             StartWithWindows = true,
             ExpandShortcut = "Ctrl+Shift+E",
             ActivationShortcut = "Ctrl+Shift+S",
+            RestoreWorkspaceOnLaunch = true,
         };
 
         await viewModel.SaveAsync(CancellationToken.None);
@@ -100,6 +130,7 @@ public sealed class SettingsEditorViewModelTests
         Assert.AreEqual("One Dark", outcome.Settings.Theme);
         Assert.AreEqual(240, outcome.Settings.CollapsedHeightDip);
         Assert.AreEqual("Ctrl+Shift+S", outcome.Settings.ActivationShortcut);
+        Assert.IsTrue(outcome.Settings.RestoreWorkspaceOnLaunch);
     }
 
     private sealed class RecordingSaveHandler : ISettingsEditorSaveHandler

@@ -76,14 +76,26 @@
                     <GroupBox Header="동작" Foreground="{StaticResource ForegroundBrush}">
                         <Grid Margin="12">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="160" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                             <CheckBox Content="Windows 로그인 시 시작" IsChecked="{Binding StartWithWindows}" Grid.ColumnSpan="2" />
-                            <TextBlock Grid.Row="1" Text="표시 모니터" VerticalAlignment="Center" Margin="0,12,0,0" />
-                            <ComboBox Grid.Row="1" Grid.Column="1" Margin="0,8,0,0" SelectedItem="{Binding PreferredMonitor}" ItemsSource="{Binding PreferredMonitors}" />
-                            <TextBlock Grid.Row="2" Text="확장 단축키" VerticalAlignment="Center" Margin="0,12,0,0" />
-                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,8,0,0"><TextBox Text="{Binding ExpandShortcut, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" /><TextBlock Text="{Binding ExpandShortcutError}" Foreground="{StaticResource ErrorBrush}" /></StackPanel>
-                            <TextBlock Grid.Row="3" Text="호출/숨김 단축키" VerticalAlignment="Center" Margin="0,12,0,0" />
-                            <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,8,0,0"><TextBox Text="{Binding ActivationShortcut, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" /><TextBlock Text="{Binding ActivationShortcutError}" Foreground="{StaticResource ErrorBrush}" /></StackPanel>
+                            <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,4">
+                                <CheckBox Content="다음 실행 시 탭 구성 복원"
+                                          IsChecked="{Binding RestoreWorkspaceOnLaunch}" />
+                                <TextBlock Margin="22,4,0,0"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           Text="이름·순서·시작 폴더를 로컬 파일에 저장합니다. 실행 중인 명령, 출력, 환경, 클립보드는 저장하거나 복원하지 않습니다."
+                                           TextWrapping="Wrap" />
+                                <TextBlock Margin="22,3,0,0"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           Text="옵션을 끄고 저장하면 현재 세션은 유지하고 저장된 구성과 백업 삭제를 시도합니다."
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="2" Text="표시 모니터" VerticalAlignment="Center" Margin="0,12,0,0" />
+                            <ComboBox Grid.Row="2" Grid.Column="1" Margin="0,8,0,0" SelectedItem="{Binding PreferredMonitor}" ItemsSource="{Binding PreferredMonitors}" />
+                            <TextBlock Grid.Row="3" Text="확장 단축키" VerticalAlignment="Center" Margin="0,12,0,0" />
+                            <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,8,0,0"><TextBox Text="{Binding ExpandShortcut, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" /><TextBlock Text="{Binding ExpandShortcutError}" Foreground="{StaticResource ErrorBrush}" /></StackPanel>
+                            <TextBlock Grid.Row="4" Text="호출/숨김 단축키" VerticalAlignment="Center" Margin="0,12,0,0" />
+                            <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,8,0,0"><TextBox Text="{Binding ActivationShortcut, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" /><TextBlock Text="{Binding ActivationShortcutError}" Foreground="{StaticResource ErrorBrush}" /></StackPanel>
                         </Grid>
                     </GroupBox>
                 </StackPanel>

@@ -1,3 +1,4 @@
+using Starboard.Modules.Terminal;
 using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
 
@@ -106,6 +107,28 @@ public sealed class TerminalWorkspaceConfigurationTests
 
         Assert.IsFalse(result.Succeeded);
         Assert.AreEqual(TerminalWorkspacePersistenceOperation.ShutdownFlush, result.Operation);
+    }
+
+    [TestMethod]
+    public void CreateShutdownResultSavedStatusReportsSuccessfulFlush()
+    {
+        var result = TerminalModule.CreateShutdownResult(
+            new TerminalWorkspaceSaveStatus(TerminalWorkspaceSaveState.Saved, null));
+
+        Assert.AreEqual(TerminalWorkspacePersistenceOperation.ShutdownFlush, result.Operation);
+        Assert.AreEqual(TerminalWorkspacePersistenceStatus.Succeeded, result.Status);
+        Assert.IsNull(result.FailureDetail);
+    }
+
+    [TestMethod]
+    public void CreateShutdownResultFailurePreservesUserSafeMessage()
+    {
+        var result = TerminalModule.CreateShutdownResult(
+            new TerminalWorkspaceSaveStatus(TerminalWorkspaceSaveState.Failed, "종료 전에 저장하지 못했습니다."));
+
+        Assert.AreEqual(TerminalWorkspacePersistenceOperation.ShutdownFlush, result.Operation);
+        Assert.AreEqual(TerminalWorkspacePersistenceStatus.Failed, result.Status);
+        Assert.AreEqual("종료 전에 저장하지 못했습니다.", result.FailureDetail);
     }
 
     private static Guid CreateGuid(int value)

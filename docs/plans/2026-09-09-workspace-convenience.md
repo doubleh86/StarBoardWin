@@ -209,6 +209,15 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
   process로 매핑해 순차 시작하고, 폴더·shell 시작 실패는 해당 탭만 failed로 남긴 채
   다음 탭을 계속 시작한다. W5 host 통합을 위해 시작 옵션과 저장 활성화/비활성화
   결과 API만 Terminal 공개 계약에 추가한다.
+- [x] W5 설정·수명 주기 통합: 설정 editor의 동작 영역에서 복원 옵션과 로컬 저장 범위를
+  편집하되 취소 시에는 draft만 버린다. Host는 기존 terminal/desktop/appearance apply와 설정 파일
+  저장이 모두 성공한 뒤에만 작업공간 저장 또는 삭제를 호출한다. 작업공간 실패는 이미 성공한 일반
+  설정을 rollback하지 않고 별도 상태로 표시하며, editor를 유지해 같은 의도 상태로 재시도한다.
+  시작 시에는 설정 값을 `TerminalOptions`에 전달해 꺼짐을 잔존 파일보다 우선하고, 종료 시에는
+  Terminal의 제한 시간 flush 결과를 composition root가 받아 작업 종류와 성공·실패를 구분해 기록한다.
+  이전 실패 실행의 추적·미추적 변경을 유지한 동일 worktree에서 Preferences 31개, Terminal 121개,
+  Integration 34개, Architecture 5개 및 Debug solution 전체 262개 테스트와 C# 정렬 검사를 다시
+  통과했다. 설정 UI 조작, 실제 재실행과 foreground 보존 확인은 W6 수동 검증에 남긴다.
 
 W1은 저장소 구현이나 실제 복원 실행을 시작하지 않는다. renderer protocol은 이후 UI가 이름 변경,
 순서 이동, 시작 폴더 변경과 workspace 저장 상태를 명시적으로 교환할 수 있도록만 확장한다.
@@ -239,4 +248,4 @@ W1은 저장소 구현이나 실제 복원 실행을 시작하지 않는다. ren
   2초 제한을 적용하고 persistence event를 먼저 해제해 종료 뒤 새 작업을 예약하지 않는다.
 - 자동화 검증은 공유 MSBuild server 경합을 피하는 `--disable-build-servers -m:1`을 추가해 수행했다.
   Terminal module tests 119개와 Integration tests 29개, C# alignment 검사와 `git diff --check`가 통과했다.
-  실제 앱 재실행·폴더 권한 실패 UI와 W5 설정 토글 연결은 후속 수동/통합 범위다.
+  실제 앱 재실행·폴더 권한 실패 UI는 W6 수동 검증 범위다.

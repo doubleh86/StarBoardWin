@@ -13,6 +13,9 @@ public sealed class SettingsApplicationServiceTests
     private static readonly string[] SuccessfulApplyOperations =
         ["terminal", "desktop", "host", "persistence"];
 
+    private static readonly string[] WorkspaceEnableOperations =
+        ["settings", "workspace-enable"];
+
     private static readonly string[] PersistenceFailureOperations =
     [
         "terminal-apply",
@@ -330,6 +333,165 @@ public sealed class SettingsApplicationServiceTests
     }
 
     [TestMethod]
+    public void ToTerminalOptionsCarriesWorkspaceRestorePreference()
+    {
+        var disabled = SettingsApplicationService.ToTerminalOptions(new AppSettings());
+        var enabled = SettingsApplicationService.ToTerminalOptions(
+            new AppSettings { RestoreWorkspaceOnLaunch = true });
+
+        Assert.IsFalse(disabled.RestoreWorkspaceOnLaunch);
+        Assert.IsTrue(enabled.RestoreWorkspaceOnLaunch);
+    }
+
+    [TestMethod]
+    public async Task SaveAsyncEnablePersistsSettingsBeforeSavingCurrentWorkspace()
+    {
+        var previous = new AppSettings();
+        var requested = CreateRequestedSettings() with { RestoreWorkspaceOnLaunch = true };
+        var operations = new List<string>();
+        using var service = CreateService(previous,
+                                          settings => TerminalApplied(settings, previous),
+                                          settings => DesktopApplied(settings, previous),
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+                                              operations.Add("settings");
+
+                                              return Task.CompletedTask;
+                                          },
+                                          setWorkspacePersistence: (enabled, cancellationToken) =>
+                                          {
+                                              _ = cancellationToken;
+                                              operations.Add(enabled == true ? "workspace-enable" : "workspace-disable");
+
+                                              return Task.FromResult(new TerminalWorkspacePersistenceResult(
+                                                  TerminalWorkspacePersistenceOperation.Save,
+                                                  TerminalWorkspacePersistenceStatus.Succeeded, null));
+                                          });
+
+        await service.SaveAsync(requested, CancellationToken.None);
+
+        CollectionAssert.AreEqual(WorkspaceEnableOperations, operations);
+        Assert.AreEqual(TerminalWorkspacePersistenceStatus.Succeeded,
+                        service.LastWorkspacePersistenceResult!.Status);
+        Assert.IsNull(service.StatusMessage);
+    }
+
+    [TestMethod]
+    public async Task SaveAsyncEnableFailureKeepsPersistedSettingAndRetriesCurrentWorkspaceSave()
+    {
+        var previous = new AppSettings();
+        var requested = CreateRequestedSettings() with { RestoreWorkspaceOnLaunch = true };
+        var workspaceCalls = 0;
+        using var service = CreateService(previous,
+                                          settings => TerminalApplied(settings, previous),
+                                          settings => DesktopApplied(settings, previous),
+                                          setWorkspacePersistence: (enabled, cancellationToken) =>
+                                          {
+                                              _ = enabled;
+                                              _ = cancellationToken;
+                                              workspaceCalls++;
+
+                                              return Task.FromResult(new TerminalWorkspacePersistenceResult(
+                                                  TerminalWorkspacePersistenceOperation.Save,
+                                                  workspaceCalls == 1
+                                                      ? TerminalWorkspacePersistenceStatus.Failed
+                                                      : TerminalWorkspacePersistenceStatus.Succeeded,
+                                                  workspaceCalls == 1 ? "구성 파일을 저장할 수 없습니다." : null));
+                                          });
+
+        await Assert.ThrowsExactlyAsync<SettingsEditorSaveException>(
+            () => service.SaveAsync(requested, CancellationToken.None));
+
+        Assert.IsTrue(service.PersistedSettings.RestoreWorkspaceOnLaunch);
+        Assert.IsTrue(service.EffectiveSettings.RestoreWorkspaceOnLaunch);
+        StringAssert.Contains(service.StatusMessage, "현재 탭 구성을 저장하지 못했습니다");
+        StringAssert.Contains(service.StatusMessage, "작업공간 저장을 재시도");
+
+        await service.SaveAsync(requested, CancellationToken.None);
+
+        Assert.AreEqual(2, workspaceCalls);
+        Assert.AreEqual(TerminalWorkspacePersistenceStatus.Succeeded,
+                        service.LastWorkspacePersistenceResult!.Status);
+        Assert.IsNull(service.StatusMessage);
+    }
+
+    [TestMethod]
+    public async Task SaveAsyncDisableDeleteFailureKeepsPersistedSettingAndRetriesDelete()
+    {
+        var previous = new AppSettings { RestoreWorkspaceOnLaunch = true };
+        var requested = CreateRequestedSettings() with { RestoreWorkspaceOnLaunch = false };
+        var workspaceCalls = 0;
+        using var service = CreateService(previous,
+                                          settings => TerminalApplied(settings, previous),
+                                          settings => DesktopApplied(settings, previous),
+                                          setWorkspacePersistence: (enabled, cancellationToken) =>
+                                          {
+                                              _ = enabled;
+                                              _ = cancellationToken;
+                                              workspaceCalls++;
+
+                                              return Task.FromResult(new TerminalWorkspacePersistenceResult(
+                                                  TerminalWorkspacePersistenceOperation.Delete,
+                                                  workspaceCalls == 1
+                                                      ? TerminalWorkspacePersistenceStatus.Failed
+                                                      : TerminalWorkspacePersistenceStatus.Succeeded,
+                                                  workspaceCalls == 1 ? "백업 파일을 삭제할 수 없습니다." : null));
+                                          });
+
+        await Assert.ThrowsExactlyAsync<SettingsEditorSaveException>(
+            () => service.SaveAsync(requested, CancellationToken.None));
+
+        Assert.IsFalse(service.PersistedSettings.RestoreWorkspaceOnLaunch);
+        Assert.IsFalse(service.EffectiveSettings.RestoreWorkspaceOnLaunch);
+        StringAssert.Contains(service.StatusMessage, "구성과 백업 데이터가 남아 있을 수 있습니다");
+        StringAssert.Contains(service.StatusMessage, "삭제를 재시도");
+
+        await service.SaveAsync(requested, CancellationToken.None);
+
+        Assert.AreEqual(2, workspaceCalls);
+        Assert.AreEqual(TerminalWorkspacePersistenceStatus.Succeeded,
+                        service.LastWorkspacePersistenceResult!.Status);
+        Assert.IsNull(service.StatusMessage);
+    }
+
+    [TestMethod]
+    public async Task SaveAsyncSettingsFailureDoesNotAttemptWorkspaceChange()
+    {
+        var previous = new AppSettings();
+        var requested = CreateRequestedSettings() with { RestoreWorkspaceOnLaunch = true };
+        var workspaceCalls = 0;
+        using var service = CreateService(previous,
+                                          settings => TerminalApplied(settings, previous),
+                                          settings => DesktopApplied(settings, previous),
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+
+                                              throw new IOException("Settings replace failed.");
+                                          },
+                                          setWorkspacePersistence: (enabled, cancellationToken) =>
+                                          {
+                                              _ = enabled;
+                                              _ = cancellationToken;
+                                              workspaceCalls++;
+
+                                              return Task.FromResult(new TerminalWorkspacePersistenceResult(
+                                                  TerminalWorkspacePersistenceOperation.Save,
+                                                  TerminalWorkspacePersistenceStatus.Succeeded, null));
+                                          });
+
+        await Assert.ThrowsExactlyAsync<SettingsApplicationException>(
+            () => service.SaveAsync(requested, CancellationToken.None));
+
+        Assert.AreEqual(0, workspaceCalls);
+        Assert.IsFalse(service.PersistedSettings.RestoreWorkspaceOnLaunch);
+        Assert.IsNull(service.LastWorkspacePersistenceResult);
+    }
+
+    [TestMethod]
     public async Task ApplyValidatedAsyncCanceledBeforeApplyDoesNotChangeLiveModules()
     {
         var previous = new AppSettings();
@@ -359,7 +521,10 @@ public sealed class SettingsApplicationServiceTests
                                                             Func<TerminalSettings, TerminalSettingsApplyResult> applyTerminal,
                                                             Func<DesktopSettings, DesktopSettingsApplyResult> applyDesktop,
                                                             Func<AppSettings, CancellationToken, Task>? persist = null,
-                                                            Action<AppSettings>? applyHost = null)
+                                                            Action<AppSettings>? applyHost = null,
+                                                            Func<bool, CancellationToken,
+                                                            Task<TerminalWorkspacePersistenceResult>>?
+                                                            setWorkspacePersistence = null)
     {
         return new SettingsApplicationService(applyTerminal, applyDesktop,
                                               persist ?? ((settings, cancellationToken) =>
@@ -369,7 +534,8 @@ public sealed class SettingsApplicationServiceTests
 
                                                   return Task.CompletedTask;
                                               }),
-                                              previous, previous, applyHost ?? (_ => { }), new NullDiagnosticLog());
+                                              previous, previous, applyHost ?? (_ => { }), new NullDiagnosticLog(),
+                                              setWorkspacePersistence);
     }
 
     private static AppSettings CreateRequestedSettings()

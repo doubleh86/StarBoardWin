@@ -36,6 +36,7 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
     private string preferredMonitor = "Taskbar";
     private string expandShortcut = "Ctrl+Alt+E";
     private string activationShortcut = "Ctrl+Alt+S";
+    private bool restoreWorkspaceOnLaunch;
     private string? saveError;
     private bool isSaving;
     private bool isCompleted;
@@ -118,6 +119,12 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
     {
         get => activationShortcut;
         set => SetDraftProperty(ref activationShortcut, value);
+    }
+
+    public bool RestoreWorkspaceOnLaunch
+    {
+        get => restoreWorkspaceOnLaunch;
+        set => SetDraftProperty(ref restoreWorkspaceOnLaunch, value);
     }
 
     public string? SaveError
@@ -207,6 +214,11 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
         {
             SaveError = "설정 저장이 취소되었습니다. 값을 확인한 뒤 다시 시도해 주세요.";
         }
+        catch (SettingsEditorSaveException exception)
+        {
+            originalSettings = settings;
+            SaveError = exception.Message;
+        }
         catch (Exception)
         {
             SaveError = "설정을 저장하지 못했습니다. 편집한 값은 그대로 유지됩니다.";
@@ -238,6 +250,7 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
             PreferredMonitor = PreferredMonitor,
             ExpandShortcut = ExpandShortcut.Trim(),
             ActivationShortcut = ActivationShortcut.Trim(),
+            RestoreWorkspaceOnLaunch = RestoreWorkspaceOnLaunch,
         };
     }
 
@@ -309,10 +322,12 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
         preferredMonitor = settings.PreferredMonitor;
         expandShortcut = settings.ExpandShortcut;
         activationShortcut = settings.ActivationShortcut;
+        restoreWorkspaceOnLaunch = settings.RestoreWorkspaceOnLaunch;
 
         OnPropertiesChanged(nameof(ShellExecutable), nameof(Theme), nameof(CollapsedHeightText), nameof(FontFamily),
                             nameof(FontSizeText), nameof(OpacityText), nameof(StartWithWindows),
-                            nameof(PreferredMonitor), nameof(ExpandShortcut), nameof(ActivationShortcut));
+                            nameof(PreferredMonitor), nameof(ExpandShortcut), nameof(ActivationShortcut),
+                            nameof(RestoreWorkspaceOnLaunch));
     }
 
     private void SetDraftProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

@@ -18,11 +18,14 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
     private readonly Func<TerminalSettings, TerminalSettingsApplyResult> applyTerminalSettings;
     private readonly Func<DesktopSettings, DesktopSettingsApplyResult> applyDesktopSettings;
     private readonly Func<AppSettings, CancellationToken, Task> persistSettingsAsync;
+    private readonly Func<bool, CancellationToken, Task<TerminalWorkspacePersistenceResult>>
+        setWorkspacePersistenceEnabledAsync;
     private readonly Action<AppSettings> applyHostAppearance;
     private readonly IDiagnosticLog diagnosticLog;
     private readonly SemaphoreSlim applyLock = new(1, 1);
     private AppSettings persistedSettings;
     private AppSettings effectiveSettings;
+    private bool? pendingWorkspacePersistenceState;
     private bool isDisposed;
 
     internal SettingsApplicationService(PreferencesModule preferencesModule, TerminalModule terminalModule,
@@ -30,7 +33,8 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
                                         AppSettings persistedSettings, AppSettings effectiveSettings,
                                         Action<AppSettings> applyHostAppearance, IDiagnosticLog diagnosticLog)
         : this(terminalModule.ApplySettings, desktopIntegrationModule.ApplySettings, preferencesModule.SaveAsync,
-               persistedSettings, effectiveSettings, applyHostAppearance, diagnosticLog)
+               persistedSettings, effectiveSettings, applyHostAppearance, diagnosticLog,
+               terminalModule.SetWorkspacePersistenceEnabledAsync)
     {
     }
 
@@ -38,7 +42,9 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
                                         Func<DesktopSettings, DesktopSettingsApplyResult> applyDesktopSettings,
                                         Func<AppSettings, CancellationToken, Task> persistSettingsAsync,
                                         AppSettings persistedSettings, AppSettings effectiveSettings,
-                                        Action<AppSettings> applyHostAppearance, IDiagnosticLog diagnosticLog)
+                                        Action<AppSettings> applyHostAppearance, IDiagnosticLog diagnosticLog,
+                                        Func<bool, CancellationToken, Task<TerminalWorkspacePersistenceResult>>?
+                                            setWorkspacePersistenceEnabledAsync = null)
     {
         ArgumentNullException.ThrowIfNull(applyTerminalSettings);
         ArgumentNullException.ThrowIfNull(applyDesktopSettings);
@@ -51,6 +57,15 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         this.applyTerminalSettings = applyTerminalSettings;
         this.applyDesktopSettings = applyDesktopSettings;
         this.persistSettingsAsync = persistSettingsAsync;
+        this.setWorkspacePersistenceEnabledAsync = setWorkspacePersistenceEnabledAsync ??
+            ((enabled, cancellationToken) =>
+            {
+                _ = enabled;
+                _ = cancellationToken;
+
+                return Task.FromResult(new TerminalWorkspacePersistenceResult(
+                    TerminalWorkspacePersistenceOperation.Save, TerminalWorkspacePersistenceStatus.Skipped, null));
+            });
         this.persistedSettings = persistedSettings;
         this.effectiveSettings = effectiveSettings;
         this.applyHostAppearance = applyHostAppearance;
@@ -65,6 +80,8 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
 
     internal PreferenceApplyResult? LastResult { get; private set; }
 
+    internal TerminalWorkspacePersistenceResult? LastWorkspacePersistenceResult { get; private set; }
+
     internal string? StatusMessage { get; private set; }
 
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken)
@@ -74,6 +91,18 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         {
             throw new SettingsApplicationException(result);
         }
+
+        if (result.WorkspaceRestoreTransition != WorkspaceRestorePreferenceTransition.Unchanged)
+        {
+            pendingWorkspacePersistenceState = settings.RestoreWorkspaceOnLaunch;
+        }
+
+        if (pendingWorkspacePersistenceState is null)
+        {
+            return;
+        }
+
+        await ApplyWorkspacePersistenceAsync(pendingWorkspacePersistenceState.Value, cancellationToken);
     }
 
     internal async Task<PreferenceApplyResult> ApplyValidatedAsync(AppSettings requestedSettings,
@@ -111,6 +140,14 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
 
         return new TerminalSettings(new TerminalAppearanceSettings(settings.FontFamily, settings.FontSize, terminalTheme),
                                     settings.ShellExecutable);
+    }
+
+    internal static TerminalOptions ToTerminalOptions(AppSettings settings)
+    {
+        var terminalSettings = ToTerminalSettings(settings);
+
+        return new TerminalOptions(settings.ShellExecutable, settings.FontFamily, settings.FontSize,
+                                   terminalSettings.Appearance.Theme, settings.RestoreWorkspaceOnLaunch);
     }
 
     internal static DesktopSettings ToDesktopSettings(AppSettings settings)
@@ -215,6 +252,49 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         effectiveSettings = requestedSettings;
 
         return Complete(request, PreferenceApplyStatus.Applied, effectiveSettings, failures);
+    }
+
+    private async Task ApplyWorkspacePersistenceAsync(bool enabled, CancellationToken cancellationToken)
+    {
+        var operation = enabled == true
+            ? TerminalWorkspacePersistenceOperation.Save
+            : TerminalWorkspacePersistenceOperation.Delete;
+        TerminalWorkspacePersistenceResult workspaceResult;
+        try
+        {
+            workspaceResult = await setWorkspacePersistenceEnabledAsync(enabled, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            workspaceResult = new TerminalWorkspacePersistenceResult(operation,
+                                                                     TerminalWorkspacePersistenceStatus.Failed,
+                                                                     "작업공간 작업이 취소되었습니다.");
+        }
+        catch (Exception exception)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Host", operation.ToString(),
+                                "The terminal workspace operation failed unexpectedly.", exception);
+            workspaceResult = new TerminalWorkspacePersistenceResult(operation,
+                                                                     TerminalWorkspacePersistenceStatus.Failed,
+                                                                     "작업공간 작업을 완료하지 못했습니다.");
+        }
+
+        LastWorkspacePersistenceResult = workspaceResult;
+        if (workspaceResult.Succeeded == true)
+        {
+            pendingWorkspacePersistenceState = null;
+            StatusMessage = null;
+            StatusChanged?.Invoke(this, EventArgs.Empty);
+
+            return;
+        }
+
+        StatusMessage = CreateWorkspacePersistenceMessage(enabled, workspaceResult);
+        StatusChanged?.Invoke(this, EventArgs.Empty);
+        diagnosticLog.Write(DiagnosticLevel.Warning, "Host", enabled == true ? "SaveWorkspace" : "DeleteWorkspace",
+                            StatusMessage);
+
+        throw new SettingsEditorSaveException(StatusMessage);
     }
 
     private TerminalSettingsApplyResult ApplyTerminal(TerminalSettings settings, List<PreferenceApplyFailure> failures,
@@ -469,6 +549,22 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
                 $"실제 적용: {Describe(result.EffectiveSettings)}. 편집 값을 유지한 채 다시 시도해 주세요.",
             _ => throw new ArgumentOutOfRangeException(nameof(result)),
         };
+    }
+
+    private static string CreateWorkspacePersistenceMessage(bool enabled,
+                                                            TerminalWorkspacePersistenceResult result)
+    {
+        var detail = string.IsNullOrWhiteSpace(result.FailureDetail) == true
+            ? null
+            : " " + result.FailureDetail;
+        if (enabled == true)
+        {
+            return "일반 설정은 저장했지만 현재 탭 구성을 저장하지 못했습니다. " +
+                "현재 세션은 유지됩니다. 저장을 다시 누르면 작업공간 저장을 재시도합니다." + detail;
+        }
+
+        return "일반 설정은 저장했고 현재 세션은 유지했지만 저장된 작업공간을 삭제하지 못했습니다. " +
+            "구성과 백업 데이터가 남아 있을 수 있습니다. 저장을 다시 누르면 삭제를 재시도합니다." + detail;
     }
 
     private static string Describe(AppSettings settings)

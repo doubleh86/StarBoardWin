@@ -12,6 +12,10 @@ public sealed class TerminalModule : IDisposable
     private readonly TerminalSessionCoordinator sessionCoordinator;
     private readonly TerminalWorkspacePersistence workspacePersistence;
     private readonly TerminalView terminalView;
+    private readonly Lock shutdownLock = new();
+    private Task<TerminalWorkspacePersistenceResult>? shutdownTask;
+    private volatile TerminalWorkspaceSaveStatus? shutdownWorkspaceSaveStatus;
+    private volatile bool isCapturingShutdownStatus;
     private bool isDisposed;
 
     public TerminalModule(IDiagnosticLog diagnosticLog)
@@ -19,6 +23,7 @@ public sealed class TerminalModule : IDisposable
         sessionCoordinator = new TerminalSessionCoordinator(new ConPtySessionFactory(diagnosticLog), diagnosticLog);
         var workspaceStore = new FileTerminalWorkspaceStore(FileTerminalWorkspaceStore.GetDefaultPath());
         workspacePersistence = new TerminalWorkspacePersistence(workspaceStore, sessionCoordinator, diagnosticLog);
+        workspacePersistence.StatusChanged += HandleWorkspacePersistenceStatusChanged;
         terminalView = new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence);
     }
 
@@ -49,16 +54,69 @@ public sealed class TerminalModule : IDisposable
         return terminalView.SetWorkspacePersistenceEnabledAsync(enabled, cancellationToken);
     }
 
+    public Task<TerminalWorkspacePersistenceResult> ShutdownAsync()
+    {
+        lock (shutdownLock)
+        {
+            shutdownTask ??= ShutdownCoreAsync();
+
+            return shutdownTask;
+        }
+    }
+
     public void Dispose()
+    {
+        _ = ShutdownAsync().GetAwaiter().GetResult();
+    }
+
+    private async Task<TerminalWorkspacePersistenceResult> ShutdownCoreAsync()
     {
         if (isDisposed == true)
         {
-            return;
+            return CreateShutdownResult(shutdownWorkspaceSaveStatus);
         }
 
         isDisposed = true;
-        terminalView.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        workspacePersistence.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        sessionCoordinator.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        await terminalView.DisposeAsync();
+        isCapturingShutdownStatus = true;
+        try
+        {
+            await workspacePersistence.DisposeAsync();
+        }
+        finally
+        {
+            isCapturingShutdownStatus = false;
+            workspacePersistence.StatusChanged -= HandleWorkspacePersistenceStatusChanged;
+        }
+
+        await sessionCoordinator.DisposeAsync();
+
+        return CreateShutdownResult(shutdownWorkspaceSaveStatus);
+    }
+
+    private void HandleWorkspacePersistenceStatusChanged(TerminalWorkspaceSaveStatus status)
+    {
+        if (isCapturingShutdownStatus == true)
+        {
+            shutdownWorkspaceSaveStatus = status;
+        }
+    }
+
+    internal static TerminalWorkspacePersistenceResult CreateShutdownResult(TerminalWorkspaceSaveStatus? status)
+    {
+        if (status?.State == TerminalWorkspaceSaveState.Saved)
+        {
+            return new TerminalWorkspacePersistenceResult(TerminalWorkspacePersistenceOperation.ShutdownFlush,
+                                                          TerminalWorkspacePersistenceStatus.Succeeded, null);
+        }
+
+        if (status?.State == TerminalWorkspaceSaveState.Failed)
+        {
+            return new TerminalWorkspacePersistenceResult(TerminalWorkspacePersistenceOperation.ShutdownFlush,
+                                                          TerminalWorkspacePersistenceStatus.Failed, status.Message);
+        }
+
+        return new TerminalWorkspacePersistenceResult(TerminalWorkspacePersistenceOperation.ShutdownFlush,
+                                                      TerminalWorkspacePersistenceStatus.Skipped, status?.Message);
     }
 }
