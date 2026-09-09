@@ -36,6 +36,23 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-09 (ConPTY GUI-host 수명주기 회귀 안정화)
+- 원인은 제품의 session 정리 결함이 아니라 SAFE-01 뒤에도 GUI test host가 살아 있는
+  재시작 session을 확인 token 없이 `CloseAsync`로 닫던 테스트 계약 불일치였다. 제품은
+  이를 의도대로 거부했으며 기존 generation/instance 검증과 다른 tab 격리는 유지했다.
+- host는 재시작된 session generation의 close confirmation을 적용하고 workspace의 명시적
+  tab 제거 event와 실제 shell PID 종료를 각각 제한 시간·cancellation으로 기다린다. 진행
+  결과에는 terminal command/output 없이 expected/observed host path·PID, session ID,
+  generation, tab 제거와 process 종료 여부만 원자적으로 기록한다. host timeout과 bounded
+  cleanup 실패는 재시도·skip 없이 이 상태를 포함해 실패한다.
+- 대상 test는 build-server 비활성·단일 MSBuild node에서 10회 연속 통과했고 최종 변경 뒤
+  집중 test, filter/skip 없는 IntegrationTests 34개와 단축키 안내 집중 test 4개도 통과했다.
+  기본 병렬 SDK 명령은 이
+  machine의 기존 MSBuild 정체가 테스트 시작 전 다시 발생해 중단했으며, 이는 2026-09-03에
+  기록한 환경 제약과 같은 양상이다.
+- 실제 WPF/WebView2 GUI 조작과 사용자가 입력하는 ConPTY 수동 검증은 수행하지 않았으므로
+  MAN-033~034와 관련 수동 항목은 `Not run`으로 유지한다.
+
 - 실행일: 2026-09-09 (workspace release verification)
 - 지정된 user-local .NET SDK로 Debug restore/build/test를 다시 실행해 경고·오류 0개와
   전체 262개 test 통과를 확인했다(Architecture 5, Preferences 31, Terminal 121,
@@ -298,7 +315,7 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-009 | bundled renderer load | network request 없이 ready message | Planned |
 | INT-010 | WebView2 process failure simulation | app 유지, surface recovery 또는 오류 표시 | Planned |
 | INT-011 | 두 PowerShell session의 독립 상태 | environment, cwd, history와 background job이 서로 섞이지 않음 | Passed |
-| INT-012 | 한 session exit/restart/close | 다른 session의 interactive state가 그대로 유지됨 | Passed |
+| INT-012 | 한 session exit/restart/confirmed close | 같은 generation의 확인만 적용되고 tab 제거·PID 종료 뒤에도 다른 session의 interactive state가 그대로 유지됨 | Passed |
 | INT-013 | multi-session output drain + dispose | hidden GUI host가 8초 cleanup deadline 안에 정상 종료 | Passed |
 | INT-014 | display/DPI message와 observer recapture | 최신 monitor/DPI frame 적용, activation 없음 | Passed (simulated) |
 | INT-015 | 사용자 숨김 + fullscreen + Explorer 복구 | 사용자 호출 전까지 숨김 유지, tray 한 번 재생성 | Passed (simulated) |
@@ -318,7 +335,9 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-029 | renderer source/dist offline contract | committed bundle이 source와 동기화되고 CDN·remote font/script 없이 local asset만 사용 | Passed |
 | INT-030 | portable user-data exclusion | publish/ZIP/추출본에 workspace JSON, `.bak`, `.tmp`, log와 WebView2 data가 없음을 package 검사로 거부 | Passed (automated package) |
 
-ConPTY test는 각 case에 timeout을 두고 실패 시 orphan child process를 남기지 않는다.
+ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan child process를 남기지
+않는다. GUI host는 재시작 close의 session ID·generation, tab 제거와 process 종료 상태를
+입출력 payload 없이 결과 파일에 기록해 timeout과 cleanup 실패 단계를 구분한다.
 
 ## 실제 executable smoke matrix
 

@@ -203,6 +203,19 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
   tests 6개, Debug solution build와 전체 automated tests 285개가 통과했다. 실제 확인 UI,
   clipboard, renderer 복구와 Windows 단축키 충돌 시나리오는 S1~S3 구현·manual 검증 대상이다.
 - [ ] S1~S3 구현·검증.
+- [x] 2026-09-09: SAFE-01 통합 뒤 `GuiHostKeepsConPtyTabsIndependentThroughExitRestartAndClose`가
+  살아 있는 재시작 세션을 이전의 직접 `CloseAsync` 경로로 닫아 새 안전 계약과 불일치하는
+  회귀를 안정화한다. GUI test host는 재시작 세대의 확인 token으로 닫기를 승인하고, terminal
+  입출력을 진단에 남기지 않은 채 host/PID identity, session ID·generation, tab 제거와 process
+  종료 신호를 제한 시간·cancellation 안에서 각각 관찰한다. 단순 재시도나 고정 지연은 사용하지
+  않으며 대상 반복 실행과 filter/skip 없는 IntegrationTests 전체 실행으로 검증한다. 실제 GUI,
+  WebView2와 수동 ConPTY 입력 검증은 이번 자동화 범위와 구분해 pending으로 유지한다.
+  제품 결함이 아닌 테스트 계약 불일치로 판별해 같은 generation의 확인 응답과 명시적
+  tab 제거/PID 종료 signal로 수정했다. 집중 test 10회 반복과 최종 변경 뒤 집중 test,
+  IntegrationTests 34개 및 단축키 안내 집중 test 4개가 filter/skip 없이 통과했다. 이
+  machine의 기본 병렬 SDK 실행은
+  테스트 시작 전 기존 MSBuild 정체가 재현되어 중단했고 build-server 비활성·단일 node로
+  검증했다.
 
 초기 기획 작성 단계의 테스트 항목은 실행 결과가 아니며, 위 진행 기록에서 명시적으로
 완료한 S0 automated 검증만 현재 결과다. 바탕화면 배포와 manual UI 검증은 수행하지 않았다.
