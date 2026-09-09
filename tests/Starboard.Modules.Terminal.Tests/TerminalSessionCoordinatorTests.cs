@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using Starboard.Modules.Terminal.Application;
+using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
 using Starboard.SharedKernel.Diagnostics;
 
@@ -245,6 +246,7 @@ public sealed class TerminalSessionCoordinatorTests
         await using var coordinator = CreateCoordinator(factory);
         var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
         coordinator.UpdateDefaultShell(UpdatedShell);
+        factory.Sessions[0].RaiseExit(0);
 
         var closed = await coordinator.CloseAsync(first.SessionId, CancellationToken.None);
         Assert.IsTrue(closed);
@@ -261,6 +263,7 @@ public sealed class TerminalSessionCoordinatorTests
         await using var coordinator = CreateCoordinator(factory);
         var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
         var second = await coordinator.AddAsync(CancellationToken.None);
+        factory.Sessions[0].RaiseExit(0);
 
         var closed = await coordinator.CloseAsync(first.SessionId, CancellationToken.None);
 
@@ -278,6 +281,7 @@ public sealed class TerminalSessionCoordinatorTests
         var factory = new FakeTerminalSessionFactory(index => new FakeTerminalSession(index == 0 ? cleanupGate : null));
         await using var coordinator = CreateCoordinator(factory);
         var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        factory.Sessions[0].RaiseExit(0);
 
         var closeTask = coordinator.CloseAsync(first.SessionId, CancellationToken.None);
         var snapshotDuringCleanup = coordinator.Snapshot;
@@ -347,6 +351,240 @@ public sealed class TerminalSessionCoordinatorTests
     }
 
     [TestMethod]
+    public async Task CloseConfirmationCancelledPreservesLiveSessionAndRejectsDuplicateRequest()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var originalSession = factory.Sessions[0];
+
+        var request = coordinator.RequestCloseConfirmation(tab.SessionId);
+        var duplicateRequest = coordinator.RequestCloseConfirmation(tab.SessionId);
+
+        Assert.IsNotNull(request);
+        Assert.IsNull(duplicateRequest);
+        var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Cancelled);
+        var applied = await coordinator.ApplyCloseConfirmationAsync(response, CancellationToken.None);
+
+        Assert.IsFalse(applied);
+        Assert.AreSame(originalSession, factory.Sessions[0]);
+        Assert.AreEqual(0, originalSession.DisposeCount);
+        Assert.AreEqual(TerminalSessionState.Running, FindTab(coordinator.Snapshot, tab.SessionId).State);
+        Assert.AreEqual(tab.SessionId, coordinator.Snapshot.ActiveSessionId);
+    }
+
+    [TestMethod]
+    public async Task CloseAsyncWithoutConfirmationDoesNotCloseLiveSession()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+
+        var closed = await coordinator.CloseAsync(tab.SessionId, CancellationToken.None);
+
+        Assert.IsFalse(closed);
+        Assert.AreEqual(0, factory.Sessions[0].DisposeCount);
+        Assert.AreEqual(TerminalSessionState.Running, FindTab(coordinator.Snapshot, tab.SessionId).State);
+    }
+
+    [TestMethod]
+    public async Task CloseConfirmationAfterRestartDoesNotCloseReplacementSession()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var request = coordinator.RequestCloseConfirmation(tab.SessionId);
+        Assert.IsNotNull(request);
+
+        await coordinator.RestartAsync(tab.SessionId, CancellationToken.None);
+        var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Confirmed);
+        var applied = await coordinator.ApplyCloseConfirmationAsync(response, CancellationToken.None);
+
+        Assert.IsFalse(applied);
+        Assert.AreEqual(1, factory.Sessions[0].DisposeCount);
+        Assert.AreEqual(0, factory.Sessions[1].DisposeCount);
+        Assert.AreEqual(TerminalSessionState.Running, FindTab(coordinator.Snapshot, tab.SessionId).State);
+    }
+
+    [TestMethod]
+    public async Task CloseConfirmationConfirmedClosesExactlyOnce()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var second = await coordinator.AddAsync(CancellationToken.None);
+        var request = coordinator.RequestCloseConfirmation(first.SessionId);
+        Assert.IsNotNull(request);
+        var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Confirmed);
+
+        var firstApplied = await coordinator.ApplyCloseConfirmationAsync(response, CancellationToken.None);
+        var secondApplied = await coordinator.ApplyCloseConfirmationAsync(response, CancellationToken.None);
+
+        Assert.IsTrue(firstApplied);
+        Assert.IsFalse(secondApplied);
+        Assert.AreEqual(1, factory.Sessions[0].DisposeCount);
+        Assert.AreEqual(0, factory.Sessions[1].DisposeCount);
+        Assert.AreEqual(second.SessionId, coordinator.Snapshot.ActiveSessionId);
+    }
+
+    [TestMethod]
+    public async Task PasteConfirmationConfirmedWritesCapturedSnapshotExactlyOnce()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        const string clipboardSnapshot = "Set-Location C:\\temp\r\nGet-Location\r\n";
+
+        var request = coordinator.RequestPasteConfirmation(tab.SessionId, clipboardSnapshot);
+        var duplicateRequest = coordinator.RequestPasteConfirmation(tab.SessionId, "ignored\n");
+
+        Assert.IsNotNull(request);
+        Assert.IsNull(duplicateRequest);
+        Assert.AreEqual(clipboardSnapshot, request.ClipboardText);
+        var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Confirmed);
+        var firstApplied = await coordinator.ApplyPasteConfirmationAsync(response, CancellationToken.None);
+        var secondApplied = await coordinator.ApplyPasteConfirmationAsync(response, CancellationToken.None);
+
+        Assert.IsTrue(firstApplied);
+        Assert.IsFalse(secondApplied);
+        CollectionAssert.AreEqual(new[] { clipboardSnapshot }, factory.Sessions[0].Writes);
+    }
+
+    [TestMethod]
+    public async Task PasteConfirmationAfterTargetSelectionChangesIsDiscarded()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var second = await coordinator.AddAsync(CancellationToken.None);
+        var request = coordinator.RequestPasteConfirmation(second.SessionId, "Get-Location\n");
+        Assert.IsNotNull(request);
+
+        Assert.IsTrue(coordinator.Select(first.SessionId));
+        var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Confirmed);
+        var applied = await coordinator.ApplyPasteConfirmationAsync(response, CancellationToken.None);
+
+        Assert.IsFalse(applied);
+        Assert.AreEqual(0, factory.Sessions[0].Writes.Count);
+        Assert.AreEqual(0, factory.Sessions[1].Writes.Count);
+    }
+
+    [TestMethod]
+    public async Task PasteConfirmationAfterRestartIsDiscarded()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var request = coordinator.RequestPasteConfirmation(tab.SessionId, "Get-Location\r");
+        Assert.IsNotNull(request);
+
+        await coordinator.RestartAsync(tab.SessionId, CancellationToken.None);
+        var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Confirmed);
+        var applied = await coordinator.ApplyPasteConfirmationAsync(response, CancellationToken.None);
+
+        Assert.IsFalse(applied);
+        Assert.AreEqual(0, factory.Sessions[0].Writes.Count);
+        Assert.AreEqual(0, factory.Sessions[1].Writes.Count);
+    }
+
+    [TestMethod]
+    public async Task PasteConfirmationCancelledOrResetNeverWritesClipboardSnapshot()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var cancelledRequest = coordinator.RequestPasteConfirmation(tab.SessionId, "cancelled\n");
+        Assert.IsNotNull(cancelledRequest);
+
+        var cancelledResponse = new TerminalConfirmationResponse(cancelledRequest.Token,
+                                                                 TerminalConfirmationResult.Cancelled);
+        var cancelledApplied = await coordinator.ApplyPasteConfirmationAsync(cancelledResponse,
+                                                                             CancellationToken.None);
+        var resetRequest = coordinator.RequestPasteConfirmation(tab.SessionId, "reset\n");
+        Assert.IsNotNull(resetRequest);
+        coordinator.CancelPendingConfirmation();
+        var resetResponse = new TerminalConfirmationResponse(resetRequest.Token, TerminalConfirmationResult.Confirmed);
+        var resetApplied = await coordinator.ApplyPasteConfirmationAsync(resetResponse, CancellationToken.None);
+
+        Assert.IsFalse(cancelledApplied);
+        Assert.IsFalse(resetApplied);
+        Assert.AreEqual(0, factory.Sessions[0].Writes.Count);
+    }
+
+    [TestMethod]
+    public async Task PasteConfirmationAfterTargetRemovalIsDiscarded()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        _ = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var target = await coordinator.AddAsync(CancellationToken.None);
+        var request = coordinator.RequestPasteConfirmation(target.SessionId, "Get-Location\n");
+        Assert.IsNotNull(request);
+
+        factory.Sessions[1].RaiseExit(0);
+        Assert.IsTrue(await coordinator.CloseAsync(target.SessionId, CancellationToken.None));
+        var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Confirmed);
+        var applied = await coordinator.ApplyPasteConfirmationAsync(response, CancellationToken.None);
+
+        Assert.IsFalse(applied);
+        Assert.AreEqual(0, factory.Sessions[1].Writes.Count);
+    }
+
+    [TestMethod]
+    public async Task NewOutputStateTracksInactiveSessionAndResetsBySelectionRestartAndRemoval()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var second = await coordinator.AddAsync(CancellationToken.None);
+        var third = await coordinator.AddAsync(CancellationToken.None);
+
+        factory.Sessions[0].RaiseOutput("first output");
+        factory.Sessions[0].RaiseOutput("more output");
+        factory.Sessions[1].RaiseOutput(string.Empty);
+        factory.Sessions[2].RaiseOutput("active output");
+
+        Assert.IsTrue(FindOutputState(coordinator.NewOutputState, first.SessionId).HasNewOutput);
+        Assert.IsFalse(FindOutputState(coordinator.NewOutputState, second.SessionId).HasNewOutput);
+        Assert.IsFalse(FindOutputState(coordinator.NewOutputState, third.SessionId).HasNewOutput);
+
+        Assert.IsTrue(coordinator.Select(first.SessionId));
+        Assert.IsFalse(FindOutputState(coordinator.NewOutputState, first.SessionId).HasNewOutput);
+
+        factory.Sessions[1].RaiseOutput("second output");
+        var generationBeforeRestart = FindOutputState(coordinator.NewOutputState, second.SessionId).Session.Generation;
+        Assert.IsTrue(FindOutputState(coordinator.NewOutputState, second.SessionId).HasNewOutput);
+
+        await coordinator.RestartAsync(second.SessionId, CancellationToken.None);
+        factory.Sessions[1].RaiseOutput("late output");
+        var restartedState = FindOutputState(coordinator.NewOutputState, second.SessionId);
+        Assert.AreEqual(generationBeforeRestart + 1, restartedState.Session.Generation);
+        Assert.IsFalse(restartedState.HasNewOutput);
+
+        factory.Sessions[3].RaiseExit(0);
+        Assert.IsTrue(await coordinator.CloseAsync(second.SessionId, CancellationToken.None));
+        Assert.IsFalse(coordinator.NewOutputState.States.Any(
+            state => state.Session.SessionId == second.SessionId.Value));
+    }
+
+    [TestMethod]
+    public async Task ClosingActiveExitedTabClearsNewOutputOnAutomaticallySelectedTab()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var second = await coordinator.AddAsync(CancellationToken.None);
+        factory.Sessions[0].RaiseOutput("first output");
+        Assert.IsTrue(FindOutputState(coordinator.NewOutputState, first.SessionId).HasNewOutput);
+        factory.Sessions[1].RaiseExit(0);
+
+        Assert.IsTrue(await coordinator.CloseAsync(second.SessionId, CancellationToken.None));
+
+        Assert.AreEqual(first.SessionId, coordinator.Snapshot.ActiveSessionId);
+        Assert.IsFalse(FindOutputState(coordinator.NewOutputState, first.SessionId).HasNewOutput);
+    }
+
+    [TestMethod]
     public async Task AddAsyncAtMaximumTabsDoesNotCreateAnotherShellProcess()
     {
         var factory = new FakeTerminalSessionFactory();
@@ -398,6 +636,7 @@ public sealed class TerminalSessionCoordinatorTests
         var coordinator = CreateCoordinator(factory, sessionCloseTimeout: TimeSpan.FromMilliseconds(300),
                                             shutdownTimeout: TimeSpan.FromMilliseconds(40));
         var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        factory.Sessions[0].RaiseExit(0);
         var closeTask = coordinator.CloseAsync(first.SessionId, CancellationToken.None);
 
         var stopwatch = Stopwatch.StartNew();
@@ -427,6 +666,12 @@ public sealed class TerminalSessionCoordinatorTests
     private static TerminalTab FindTab(TerminalWorkspaceSnapshot snapshot, TerminalSessionId sessionId)
     {
         return snapshot.Tabs.Single(tab => tab.SessionId == sessionId);
+    }
+
+    private static TerminalSessionNewOutputState FindOutputState(TerminalNewOutputStateSnapshot snapshot,
+                                                                 TerminalSessionId sessionId)
+    {
+        return snapshot.States.Single(state => state.Session.SessionId == sessionId.Value);
     }
 
     private static Guid CreateGuid(int value)

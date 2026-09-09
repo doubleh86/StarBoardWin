@@ -21,9 +21,13 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     private readonly SemaphoreSlim operationLock = new(1, 1);
     private readonly Dictionary<TerminalSessionId, SessionEntry> sessions = [];
     private readonly Dictionary<TerminalSessionId, ShellLaunchSpec> tabShells = [];
+    private readonly Dictionary<TerminalSessionId, long> sessionGenerations = [];
+    private readonly Dictionary<TerminalSessionId, bool> newOutputStates = [];
+    private readonly Func<TerminalConfirmationRequestId> confirmationRequestIdFactory;
 
     private ShellLaunchSpec? defaultShell;
     private TerminalShellKind? defaultShellKind = TerminalShellKind.Automatic;
+    private PendingConfirmation? pendingConfirmation;
     private bool isStarted;
     private bool isDisposed;
     private int columns = 80;
@@ -32,7 +36,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     internal TerminalSessionCoordinator(ITerminalSessionFactory sessionFactory, IDiagnosticLog diagnosticLog,
                                         Func<TerminalSessionId>? sessionIdFactory = null,
                                         int maximumTabs = TerminalTabRegistry.DefaultMaximumTabs,
-                                        TimeSpan? sessionCloseTimeout = null, TimeSpan? shutdownTimeout = null)
+                                        TimeSpan? sessionCloseTimeout = null, TimeSpan? shutdownTimeout = null,
+                                        Func<TerminalConfirmationRequestId>? confirmationRequestIdFactory = null)
     {
         this.sessionFactory = sessionFactory;
         this.diagnosticLog = diagnosticLog;
@@ -40,6 +45,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         this.sessionCloseTimeout = ValidateTimeout(sessionCloseTimeout ?? DefaultSessionCloseTimeout,
                                                    nameof(sessionCloseTimeout));
         this.shutdownTimeout = ValidateTimeout(shutdownTimeout ?? DefaultShutdownTimeout, nameof(shutdownTimeout));
+        this.confirmationRequestIdFactory = confirmationRequestIdFactory
+            ?? TerminalConfirmationRequestId.CreateNew;
     }
 
     internal event Action<TerminalWorkspaceSnapshot>? WorkspaceChanged;
@@ -48,6 +55,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
     internal event Action<TerminalSessionExit>? SessionExited;
 
+    internal event Action<TerminalNewOutputStateSnapshot>? NewOutputStateChanged;
+
     internal TerminalWorkspaceSnapshot Snapshot
     {
         get
@@ -55,6 +64,17 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             lock (stateLock)
             {
                 return tabRegistry.CreateSnapshot();
+            }
+        }
+    }
+
+    internal TerminalNewOutputStateSnapshot NewOutputState
+    {
+        get
+        {
+            lock (stateLock)
+            {
+                return CreateNewOutputSnapshotLocked();
             }
         }
     }
@@ -102,6 +122,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 {
                     defaultTab = tabRegistry.Add(shell.WorkingDirectory, shellKind);
                     tabShells.Add(defaultTab.SessionId, shell);
+                    InitializeSessionLifetimeLocked(defaultTab.SessionId);
                     defaultSnapshot = tabRegistry.CreateSnapshot();
                 }
 
@@ -147,6 +168,11 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                     _ = tabRegistry.SelectConfiguration(activeConfigurationId);
                 }
 
+                if (tabRegistry.ActiveSessionId is { } restoredActiveSessionId)
+                {
+                    newOutputStates[restoredActiveSessionId] = false;
+                }
+
                 restoredSnapshot = tabRegistry.CreateSnapshot();
             }
 
@@ -177,6 +203,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                     ?? throw new InvalidOperationException("The terminal shell has not been configured.");
                 tab = tabRegistry.Add(shell.WorkingDirectory, defaultShellKind);
                 tabShells.Add(tab.SessionId, shell);
+                InitializeSessionLifetimeLocked(tab.SessionId);
+                CancelPendingPasteLocked();
                 snapshot = tabRegistry.CreateSnapshot();
             }
 
@@ -192,6 +220,69 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         {
             operationLock.Release();
         }
+    }
+
+    private async Task<bool> CloseCoreAsync(TerminalSessionId sessionId)
+    {
+        SessionEntry? closedSession;
+        TerminalTabCloseResult? closeResult;
+        TerminalWorkspaceSnapshot snapshot;
+        TerminalNewOutputStateSnapshot outputSnapshot;
+        lock (stateLock)
+        {
+            closeResult = tabRegistry.Close(sessionId);
+            if (closeResult is null)
+            {
+                return false;
+            }
+
+            sessions.Remove(sessionId, out closedSession);
+            tabShells.Remove(sessionId);
+            sessionGenerations.Remove(sessionId);
+            newOutputStates.Remove(sessionId);
+            CancelPendingConfirmationForSessionLocked(sessionId);
+            if (closeResult.ReplacementTab is not null)
+            {
+                var replacementShell = defaultShell
+                    ?? throw new InvalidOperationException("The terminal shell has not been configured.");
+                tabShells.Add(closeResult.ReplacementTab.SessionId, replacementShell);
+                tabRegistry.SetStartingDirectory(closeResult.ReplacementTab.SessionId,
+                                                 replacementShell.WorkingDirectory);
+                tabRegistry.SetShellKind(closeResult.ReplacementTab.SessionId, defaultShellKind);
+                InitializeSessionLifetimeLocked(closeResult.ReplacementTab.SessionId);
+            }
+
+            if (tabRegistry.ActiveSessionId is { } activeSessionId)
+            {
+                newOutputStates[activeSessionId] = false;
+            }
+
+            snapshot = tabRegistry.CreateSnapshot();
+            outputSnapshot = CreateNewOutputSnapshotLocked();
+        }
+
+        Detach(closedSession);
+        WorkspaceChanged?.Invoke(snapshot);
+        NewOutputStateChanged?.Invoke(outputSnapshot);
+
+        ExceptionDispatchInfo? replacementFailure = null;
+        if (closeResult.ReplacementTab is not null)
+        {
+            try
+            {
+                await StartSessionAsync(closeResult.ReplacementTab.SessionId).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                replacementFailure = ExceptionDispatchInfo.Capture(exception);
+            }
+        }
+
+        await DisposeSessionAsync(closedSession, sessionCloseTimeout, "CloseSession").ConfigureAwait(false);
+
+        replacementFailure?.Throw();
+
+        return true;
     }
 
     internal bool Select(TerminalSessionId sessionId)
@@ -267,60 +358,154 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
+    internal TerminalCloseConfirmationRequest? RequestCloseConfirmation(TerminalSessionId sessionId)
+    {
+        lock (stateLock)
+        {
+            ThrowIfUnavailable();
+            if (tabRegistry.Contains(sessionId) == false)
+            {
+                return null;
+            }
+
+            var tab = tabRegistry.GetRequired(sessionId);
+            if (tab.State == TerminalSessionState.Exited)
+            {
+                return null;
+            }
+
+            if (pendingConfirmation is not null)
+            {
+                return null;
+            }
+
+            var token = CreateConfirmationTokenLocked(sessionId);
+            pendingConfirmation = new PendingConfirmation(token, ConfirmationKind.Close, null);
+
+            return new TerminalCloseConfirmationRequest(token, tab.Name);
+        }
+    }
+
+    internal TerminalPasteConfirmationRequest? RequestPasteConfirmation(TerminalSessionId sessionId,
+                                                                        string clipboardText)
+    {
+        ArgumentNullException.ThrowIfNull(clipboardText);
+        if (clipboardText.Contains('\r') == false && clipboardText.Contains('\n') == false)
+        {
+            return null;
+        }
+
+        lock (stateLock)
+        {
+            ThrowIfUnavailable();
+            if (tabRegistry.ActiveSessionId != sessionId || sessions.ContainsKey(sessionId) == false)
+            {
+                return null;
+            }
+
+            if (pendingConfirmation is not null)
+            {
+                return null;
+            }
+
+            var tab = tabRegistry.GetRequired(sessionId);
+            var token = CreateConfirmationTokenLocked(sessionId);
+            pendingConfirmation = new PendingConfirmation(token, ConfirmationKind.Paste, clipboardText);
+
+            return new TerminalPasteConfirmationRequest(token, tab.Name, clipboardText);
+        }
+    }
+
+    internal async Task<bool> ApplyCloseConfirmationAsync(TerminalConfirmationResponse response,
+                                                          CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            lock (stateLock)
+            {
+                ThrowIfUnavailable();
+                if (TryConsumeConfirmationLocked(response, ConfirmationKind.Close, out _) == false)
+                {
+                    return false;
+                }
+            }
+
+            if (response.Result == TerminalConfirmationResult.Cancelled)
+            {
+                return false;
+            }
+
+            var sessionId = new TerminalSessionId(response.Token.Session.SessionId);
+            return await CloseCoreAsync(sessionId).ConfigureAwait(false);
+        }
+        finally
+        {
+            operationLock.Release();
+        }
+    }
+
+    internal async Task<bool> ApplyPasteConfirmationAsync(TerminalConfirmationResponse response,
+                                                          CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            string? clipboardText;
+            lock (stateLock)
+            {
+                ThrowIfUnavailable();
+                if (TryConsumeConfirmationLocked(response, ConfirmationKind.Paste, out clipboardText) == false)
+                {
+                    return false;
+                }
+            }
+
+            if (response.Result == TerminalConfirmationResult.Cancelled)
+            {
+                return false;
+            }
+
+            var sessionId = new TerminalSessionId(response.Token.Session.SessionId);
+            await WriteAsync(sessionId, clipboardText!, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        finally
+        {
+            operationLock.Release();
+        }
+    }
+
+    internal void CancelPendingConfirmation()
+    {
+        lock (stateLock)
+        {
+            pendingConfirmation = null;
+        }
+    }
+
     internal async Task<bool> CloseAsync(TerminalSessionId sessionId, CancellationToken cancellationToken)
     {
         await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ThrowIfUnavailable();
-
-            SessionEntry? closedSession;
-            TerminalTabCloseResult? closeResult;
-            TerminalWorkspaceSnapshot snapshot;
             lock (stateLock)
             {
-                closeResult = tabRegistry.Close(sessionId);
-                if (closeResult is null)
+                if (tabRegistry.Contains(sessionId) == false)
                 {
                     return false;
                 }
 
-                sessions.Remove(sessionId, out closedSession);
-                tabShells.Remove(sessionId);
-                if (closeResult.ReplacementTab is not null)
+                if (tabRegistry.GetRequired(sessionId).State != TerminalSessionState.Exited)
                 {
-                    var replacementShell = defaultShell
-                        ?? throw new InvalidOperationException("The terminal shell has not been configured.");
-                    tabShells.Add(closeResult.ReplacementTab.SessionId, replacementShell);
-                    tabRegistry.SetStartingDirectory(closeResult.ReplacementTab.SessionId,
-                                                     replacementShell.WorkingDirectory);
-                    tabRegistry.SetShellKind(closeResult.ReplacementTab.SessionId, defaultShellKind);
-                }
-                snapshot = tabRegistry.CreateSnapshot();
-            }
-
-            Detach(closedSession);
-            WorkspaceChanged?.Invoke(snapshot);
-
-            ExceptionDispatchInfo? replacementFailure = null;
-            if (closeResult.ReplacementTab is not null)
-            {
-                try
-                {
-                    await StartSessionAsync(closeResult.ReplacementTab.SessionId)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception exception)
-                {
-                    replacementFailure = ExceptionDispatchInfo.Capture(exception);
+                    return false;
                 }
             }
 
-            await DisposeSessionAsync(closedSession, sessionCloseTimeout, "CloseSession").ConfigureAwait(false);
-
-            replacementFailure?.Throw();
-
-            return true;
+            return await CloseCoreAsync(sessionId).ConfigureAwait(false);
         }
         finally
         {
@@ -346,11 +531,13 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
                 tabRegistry.SetState(sessionId, TerminalSessionState.Restarting);
                 sessions.Remove(sessionId, out previousSession);
+                AdvanceSessionLifetimeLocked(sessionId);
                 restartingSnapshot = tabRegistry.CreateSnapshot();
             }
 
             Detach(previousSession);
             WorkspaceChanged?.Invoke(restartingSnapshot);
+            NewOutputStateChanged?.Invoke(NewOutputState);
 
             await DisposeSessionAsync(previousSession, sessionCloseTimeout, "RestartSession").ConfigureAwait(false);
 
@@ -467,9 +654,12 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 }
 
                 isDisposed = true;
+                pendingConfirmation = null;
                 ownedSessions = sessions.Values.ToArray();
                 sessions.Clear();
                 tabShells.Clear();
+                sessionGenerations.Clear();
+                newOutputStates.Clear();
             }
 
             foreach (var entry in ownedSessions)
@@ -628,12 +818,14 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     {
         SessionEntry? selectedSession = null;
         TerminalWorkspaceSnapshot snapshot;
+        TerminalNewOutputStateSnapshot? outputSnapshot = null;
         int currentColumns;
         int currentRows;
 
         lock (stateLock)
         {
             ThrowIfUnavailable();
+            var previousActiveSessionId = tabRegistry.ActiveSessionId;
             if (select() == false)
             {
                 return false;
@@ -642,6 +834,17 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             if (tabRegistry.ActiveSessionId is { } activeSessionId)
             {
                 sessions.TryGetValue(activeSessionId, out selectedSession);
+                if (newOutputStates.TryGetValue(activeSessionId, out var hasNewOutput) == true &&
+                    hasNewOutput == true)
+                {
+                    newOutputStates[activeSessionId] = false;
+                    outputSnapshot = CreateNewOutputSnapshotLocked();
+                }
+            }
+
+            if (previousActiveSessionId != tabRegistry.ActiveSessionId)
+            {
+                CancelPendingPasteLocked();
             }
 
             currentColumns = columns;
@@ -650,6 +853,11 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
 
         WorkspaceChanged?.Invoke(snapshot);
+        if (outputSnapshot is not null)
+        {
+            NewOutputStateChanged?.Invoke(outputSnapshot);
+        }
+
         ResizeEntry(selectedSession, currentColumns, currentRows);
 
         return true;
@@ -679,6 +887,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         {
             ThrowIfDisposed();
             tab = tabRegistry.AddRestored(configuration);
+            InitializeSessionLifetimeLocked(tab.SessionId);
+            CancelPendingPasteLocked();
             if (restoredShell is not null)
             {
                 tabShells.Add(tab.SessionId, restoredShell);
@@ -764,6 +974,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
     private void OnOutputReceived(SessionEntry expectedEntry, string data)
     {
+        TerminalNewOutputStateSnapshot? outputSnapshot = null;
         lock (stateLock)
         {
             if (sessions.TryGetValue(expectedEntry.SessionId, out var currentEntry) == false ||
@@ -771,9 +982,20 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             {
                 return;
             }
+
+            if (data.Length > 0 && tabRegistry.ActiveSessionId != expectedEntry.SessionId &&
+                newOutputStates[expectedEntry.SessionId] == false)
+            {
+                newOutputStates[expectedEntry.SessionId] = true;
+                outputSnapshot = CreateNewOutputSnapshotLocked();
+            }
         }
 
         OutputReceived?.Invoke(new TerminalSessionOutput(expectedEntry.SessionId, data));
+        if (outputSnapshot is not null)
+        {
+            NewOutputStateChanged?.Invoke(outputSnapshot);
+        }
     }
 
     private void OnExited(SessionEntry expectedEntry, uint exitCode)
@@ -794,6 +1016,92 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
         WorkspaceChanged?.Invoke(snapshot);
         SessionExited?.Invoke(new TerminalSessionExit(expectedEntry.SessionId, exitCode));
+    }
+
+    private TerminalConfirmationToken CreateConfirmationTokenLocked(TerminalSessionId sessionId)
+    {
+        if (sessionGenerations.TryGetValue(sessionId, out var generation) == false)
+        {
+            throw new InvalidOperationException("The terminal session lifetime is unavailable.");
+        }
+
+        var requestId = confirmationRequestIdFactory();
+        var session = new TerminalSessionReference(sessionId.Value, generation);
+        return new TerminalConfirmationToken(requestId, session);
+    }
+
+    private bool TryConsumeConfirmationLocked(TerminalConfirmationResponse response, ConfirmationKind expectedKind,
+                                              out string? clipboardText)
+    {
+        clipboardText = null;
+        if (pendingConfirmation is null || pendingConfirmation.Kind != expectedKind)
+        {
+            return false;
+        }
+
+        var sessionId = new TerminalSessionId(response.Token.Session.SessionId);
+        if (sessionGenerations.TryGetValue(sessionId, out var generation) == false)
+        {
+            return false;
+        }
+
+        var currentSession = new TerminalSessionReference(sessionId.Value, generation);
+        if (response.CanApplyTo(pendingConfirmation.Token, currentSession) == false)
+        {
+            return false;
+        }
+
+        if (expectedKind == ConfirmationKind.Paste && tabRegistry.ActiveSessionId != sessionId)
+        {
+            pendingConfirmation = null;
+            return false;
+        }
+
+        clipboardText = pendingConfirmation.ClipboardText;
+        pendingConfirmation = null;
+        return true;
+    }
+
+    private void InitializeSessionLifetimeLocked(TerminalSessionId sessionId)
+    {
+        sessionGenerations.Add(sessionId, 1);
+        newOutputStates.Add(sessionId, false);
+    }
+
+    private void AdvanceSessionLifetimeLocked(TerminalSessionId sessionId)
+    {
+        if (sessionGenerations.TryGetValue(sessionId, out var generation) == false)
+        {
+            throw new InvalidOperationException("The terminal session lifetime is unavailable.");
+        }
+
+        sessionGenerations[sessionId] = checked(generation + 1);
+        newOutputStates[sessionId] = false;
+        CancelPendingConfirmationForSessionLocked(sessionId);
+    }
+
+    private void CancelPendingConfirmationForSessionLocked(TerminalSessionId sessionId)
+    {
+        if (pendingConfirmation?.Token.Session.SessionId == sessionId.Value)
+        {
+            pendingConfirmation = null;
+        }
+    }
+
+    private void CancelPendingPasteLocked()
+    {
+        if (pendingConfirmation?.Kind == ConfirmationKind.Paste)
+        {
+            pendingConfirmation = null;
+        }
+    }
+
+    private TerminalNewOutputStateSnapshot CreateNewOutputSnapshotLocked()
+    {
+        var states = sessionGenerations.Select(pair =>
+            new TerminalSessionNewOutputState(new TerminalSessionReference(pair.Key.Value, pair.Value),
+                                              newOutputStates[pair.Key]));
+        return new TerminalNewOutputStateSnapshot(states);
     }
 
     private async Task DisposeSessionAsync(SessionEntry? entry, TimeSpan timeout, string operation)
@@ -913,4 +1221,13 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
         internal Action<uint>? ExitHandler { get; set; }
     }
+
+    private enum ConfirmationKind
+    {
+        Close,
+        Paste,
+    }
+
+    private sealed record PendingConfirmation(TerminalConfirmationToken Token, ConfirmationKind Kind,
+                                              string? ClipboardText);
 }
