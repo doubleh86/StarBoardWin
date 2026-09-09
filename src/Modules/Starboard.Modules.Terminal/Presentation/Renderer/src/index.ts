@@ -26,6 +26,7 @@ type SessionRendererMessageType =
   | "rename-session"
   | "move-session"
   | "set-starting-directory"
+  | "confirmation-response"
   | "session-error";
 
 type RendererMessage =
@@ -54,7 +55,10 @@ type SessionHostMessageType =
   | "paste"
   | "reset"
   | "remove-session"
-  | "session-error";
+  | "session-error"
+  | "confirmation-request"
+  | "confirmation-cancel"
+  | "new-output-state";
 
 type HostMessage =
   | {
@@ -107,6 +111,32 @@ type SessionPayload = {
   homeDirectory: string;
 };
 
+type ConfirmationKind = "close" | "paste";
+
+type ConfirmationRequestPayload = {
+  requestId: string;
+  sessionGeneration: number;
+  kind: ConfirmationKind;
+  sessionName: string;
+  clipboardText?: string;
+};
+
+type ConfirmationCancelPayload = {
+  requestId: string;
+  sessionGeneration: number;
+};
+
+type NewOutputStatePayload = {
+  sessionGeneration: number;
+  hasNewOutput: boolean;
+};
+
+type PendingConfirmation = ConfirmationRequestPayload & {
+  sessionId: string;
+  dialog: HTMLDialogElement;
+  preview?: HTMLElement;
+};
+
 type SessionEntry = {
   id: string;
   name: string;
@@ -129,7 +159,9 @@ type SessionEntry = {
   tabRenameInput: HTMLInputElement;
   tabLabel: HTMLElement;
   tabStatus: HTMLElement;
+  newOutputIndicator: HTMLElement;
   closeButton: HTMLButtonElement;
+  hasNewOutput: boolean;
   errorMessage?: string;
   lastColumns: number;
   lastRows: number;
@@ -172,6 +204,8 @@ let requestedTerminalFocusSessionId: string | undefined;
 let requestedTabFocusSessionId: string | undefined;
 let focusTerminalOnNextActivation = false;
 let contextMenu: HTMLElement | undefined;
+let pendingConfirmation: PendingConfirmation | undefined;
+const suppressedConfirmationKeys = new Set<string>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && Array.isArray(value) === false;
@@ -210,7 +244,10 @@ function isSessionHostMessageType(value: string): value is SessionHostMessageTyp
     value === "paste" ||
     value === "reset" ||
     value === "remove-session" ||
-    value === "session-error"
+    value === "session-error" ||
+    value === "confirmation-request" ||
+    value === "confirmation-cancel" ||
+    value === "new-output-state"
   );
 }
 
@@ -429,9 +466,15 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
   tabStatus.className = "tab-status";
   tabStatus.setAttribute("aria-hidden", "true");
 
+  const newOutputIndicator = document.createElement("span");
+  newOutputIndicator.className = "tab-new-output";
+  newOutputIndicator.setAttribute("role", "img");
+  newOutputIndicator.setAttribute("aria-label", "새 출력 있음");
+  newOutputIndicator.setAttribute("aria-hidden", "true");
+
   const tabLabel = document.createElement("span");
   tabLabel.className = "tab-label";
-  tabButton.append(tabStatus, tabLabel);
+  tabButton.append(tabStatus, tabLabel, newOutputIndicator);
 
   const closeButton = document.createElement("button");
   closeButton.className = "tab-close";
@@ -528,7 +571,9 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
     tabRenameInput,
     tabLabel,
     tabStatus,
+    newOutputIndicator,
     closeButton,
+    hasNewOutput: false,
     lastColumns: 0,
     lastRows: 0,
     fitErrorReported: false,
@@ -775,12 +820,263 @@ function dismissTabMenu(): void {
   contextMenu = undefined;
 }
 
+function isRequestIdentifier(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    SessionIdPattern.test(value) === true &&
+    value.toLowerCase() !== EmptySessionId
+  );
+}
+
+function isSessionGeneration(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) === true && value >= 1;
+}
+
+function parseConfirmationRequest(
+  payload: Record<string, unknown>,
+): ConfirmationRequestPayload | undefined {
+  if (
+    isRequestIdentifier(payload.requestId) === false ||
+    isSessionGeneration(payload.sessionGeneration) === false ||
+    (payload.kind !== "close" && payload.kind !== "paste") ||
+    typeof payload.sessionName !== "string" ||
+    payload.sessionName.trim().length === 0
+  ) {
+    return undefined;
+  }
+
+  if (
+    payload.kind === "paste" &&
+    (typeof payload.clipboardText !== "string" ||
+      (payload.clipboardText.includes("\r") === false &&
+        payload.clipboardText.includes("\n") === false))
+  ) {
+    return undefined;
+  }
+
+  return {
+    requestId: payload.requestId.toLowerCase(),
+    sessionGeneration: payload.sessionGeneration,
+    kind: payload.kind,
+    sessionName: payload.sessionName,
+    clipboardText: payload.kind === "paste" ? payload.clipboardText : undefined,
+  };
+}
+
+function parseConfirmationCancel(
+  payload: Record<string, unknown>,
+): ConfirmationCancelPayload | undefined {
+  if (
+    isRequestIdentifier(payload.requestId) === false ||
+    isSessionGeneration(payload.sessionGeneration) === false
+  ) {
+    return undefined;
+  }
+
+  return {
+    requestId: payload.requestId.toLowerCase(),
+    sessionGeneration: payload.sessionGeneration,
+  };
+}
+
+function isNewOutputStatePayload(
+  payload: Record<string, unknown>,
+): payload is Record<string, unknown> & NewOutputStatePayload {
+  return (
+    isSessionGeneration(payload.sessionGeneration) === true &&
+    typeof payload.hasNewOutput === "boolean"
+  );
+}
+
+function formatPastePreview(text: string): { text: string; lineBreakCount: number } {
+  let lineBreakCount = 0;
+  const visibleText = text.replace(/\r\n|\r|\n/g, () => {
+    lineBreakCount += 1;
+    return "↵\n";
+  });
+  return { text: visibleText, lineBreakCount };
+}
+
+function restoreTerminalFocus(sessionId: string): void {
+  const entry = sessions.get(sessionId);
+  if (
+    entry !== undefined &&
+    activeSessionId === sessionId &&
+    document.hasFocus() === true
+  ) {
+    entry.terminal.focus();
+  }
+}
+
+function dismissConfirmation(restoreFocus: boolean): void {
+  const pending = pendingConfirmation;
+  if (pending === undefined) {
+    return;
+  }
+
+  pendingConfirmation = undefined;
+  if (pending.preview !== undefined) {
+    pending.preview.textContent = "";
+  }
+  pending.dialog.close();
+  pending.dialog.remove();
+  if (restoreFocus === true) {
+    restoreTerminalFocus(pending.sessionId);
+  }
+}
+
+function completeConfirmation(
+  result: "confirmed" | "cancelled",
+  keyboardCode?: string,
+): void {
+  const pending = pendingConfirmation;
+  if (pending === undefined) {
+    return;
+  }
+
+  if (keyboardCode !== undefined) {
+    suppressedConfirmationKeys.add(keyboardCode);
+  }
+  postSession("confirmation-response", pending.sessionId, {
+    requestId: pending.requestId,
+    sessionGeneration: pending.sessionGeneration,
+    result,
+  });
+  dismissConfirmation(true);
+}
+
+function showConfirmation(sessionId: string, request: ConfirmationRequestPayload): void {
+  if (sessions.has(sessionId) === false) {
+    return;
+  }
+
+  if (pendingConfirmation !== undefined) {
+    const isDuplicate =
+      pendingConfirmation.sessionId === sessionId &&
+      pendingConfirmation.requestId === request.requestId &&
+      pendingConfirmation.sessionGeneration === request.sessionGeneration;
+    if (isDuplicate === true) {
+      return;
+    }
+    completeConfirmation("cancelled");
+  }
+
+  dismissTabMenu();
+  const dialog = document.createElement("dialog");
+  dialog.className = "confirmation-dialog";
+  dialog.dataset.kind = request.kind;
+
+  const title = document.createElement("h2");
+  title.id = `confirmation-title-${request.requestId}`;
+  title.textContent = request.kind === "close" ? `${request.sessionName} 탭 닫기` : "여러 줄 붙여넣기";
+  dialog.setAttribute("aria-labelledby", title.id);
+
+  const guidance = document.createElement("p");
+  guidance.className = "confirmation-guidance";
+  guidance.textContent =
+    request.kind === "close"
+      ? "이 탭의 터미널과 실행 중인 작업이 종료됩니다."
+      : `${request.sessionName} 탭에 여러 줄을 붙여넣으면 명령이 바로 실행될 수 있습니다. 내용을 확인하세요.`;
+
+  let preview: HTMLElement | undefined;
+  let previewSummary: HTMLElement | undefined;
+  if (request.kind === "paste" && request.clipboardText !== undefined) {
+    const formatted = formatPastePreview(request.clipboardText);
+    previewSummary = document.createElement("p");
+    previewSummary.className = "confirmation-preview-summary";
+    previewSummary.textContent = `줄바꿈 ${formatted.lineBreakCount}개 · ${request.clipboardText.length}자`;
+
+    preview = document.createElement("pre");
+    preview.className = "confirmation-preview";
+    preview.tabIndex = 0;
+    preview.setAttribute("role", "textbox");
+    preview.setAttribute("aria-readonly", "true");
+    preview.setAttribute("aria-label", "붙여넣을 내용, 읽기 전용. 줄바꿈은 ↵로 표시됩니다.");
+    preview.textContent = formatted.text;
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "confirmation-actions";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.autofocus = true;
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", () => completeConfirmation("cancelled"));
+  const confirmButton = document.createElement("button");
+  confirmButton.type = "button";
+  confirmButton.className = "confirmation-primary";
+  confirmButton.textContent = request.kind === "close" ? "탭 닫기" : "붙여넣기";
+  confirmButton.addEventListener("click", () => completeConfirmation("confirmed"));
+  actions.append(cancelButton, confirmButton);
+
+  dialog.append(title, guidance);
+  if (previewSummary !== undefined && preview !== undefined) {
+    dialog.append(previewSummary, preview);
+  }
+  dialog.append(actions);
+
+  let isComposing = false;
+  dialog.addEventListener("compositionstart", () => {
+    isComposing = true;
+  }, true);
+  dialog.addEventListener("compositionend", () => {
+    isComposing = false;
+  }, true);
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== "Escape") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.isComposing === true || isComposing === true || event.repeat === true) {
+      return;
+    }
+
+    if (event.key === "Escape") {
+      completeConfirmation("cancelled", event.code);
+      return;
+    }
+
+    const result = document.activeElement === confirmButton ? "confirmed" : "cancelled";
+    completeConfirmation(result, event.code);
+  }, true);
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    completeConfirmation("cancelled", "Escape");
+  });
+  dialog.addEventListener("close", () => {
+    if (pendingConfirmation?.dialog === dialog) {
+      completeConfirmation("cancelled");
+    }
+  });
+
+  pendingConfirmation = {
+    ...request,
+    sessionId,
+    dialog,
+    preview,
+  };
+  document.body.append(dialog);
+  dialog.showModal();
+  cancelButton.focus();
+}
+
+function setNewOutputState(entry: SessionEntry, hasNewOutput: boolean): void {
+  entry.hasNewOutput = hasNewOutput;
+  renderTab(entry);
+}
+
 function renderTab(entry: SessionEntry): void {
   const label = stateLabel(entry);
   const isActive = entry.id === activeSessionId;
   entry.tabItem.dataset.state = entry.state;
+  entry.tabItem.dataset.selected = isActive.toString();
   entry.tabButton.setAttribute("aria-selected", isActive.toString());
-  entry.tabButton.setAttribute("aria-label", `${entry.name}, ${label}`);
+  entry.tabButton.setAttribute(
+    "aria-label",
+    `${entry.name}, ${label}${entry.hasNewOutput === true ? ", 새 출력 있음" : ""}`,
+  );
   entry.tabButton.setAttribute(
     "aria-busy",
     (entry.state === "starting" || entry.state === "restarting").toString(),
@@ -788,6 +1084,9 @@ function renderTab(entry: SessionEntry): void {
   entry.tabButton.tabIndex = isActive ? 0 : -1;
   entry.tabButton.title = entry.name;
   entry.tabLabel.textContent = entry.name;
+  entry.newOutputIndicator.dataset.visible = entry.hasNewOutput.toString();
+  entry.newOutputIndicator.setAttribute("aria-hidden", (!entry.hasNewOutput).toString());
+  entry.newOutputIndicator.title = entry.hasNewOutput === true ? "새 출력 있음" : "";
   entry.closeButton.setAttribute("aria-label", `${entry.name} 탭 닫기`);
   entry.restartButton.setAttribute("aria-label", `${entry.name} shell 다시 시작`);
   entry.changeDirectoryButton.setAttribute("aria-label", `${entry.name} 시작 폴더 변경`);
@@ -866,10 +1165,16 @@ function activateSession(sessionId: string): void {
     return;
   }
 
+  if (pendingConfirmation !== undefined && pendingConfirmation.sessionId !== sessionId) {
+    completeConfirmation("cancelled");
+  }
+
   activeSessionId = sessionId;
+  setNewOutputState(nextEntry, false);
   for (const entry of sessions.values()) {
     const isActive = entry.id === sessionId;
     entry.pane.hidden = isActive === false;
+    entry.tabItem.dataset.selected = isActive.toString();
     entry.tabButton.setAttribute("aria-selected", isActive.toString());
     entry.tabButton.tabIndex = isActive ? 0 : -1;
   }
@@ -905,6 +1210,9 @@ function removeSession(sessionId: string): void {
   }
 
   sessions.delete(sessionId);
+  if (pendingConfirmation?.sessionId === sessionId) {
+    dismissConfirmation(false);
+  }
   if (contextMenu?.getAttribute("aria-label") === `${entry.name} 탭 메뉴`) {
     dismissTabMenu();
   }
@@ -1074,8 +1382,39 @@ function handleHostMessage(value: unknown): void {
     return;
   }
 
+  if (message.type === "confirmation-request") {
+    const request = parseConfirmationRequest(payload);
+    if (request !== undefined) {
+      showConfirmation(sessionId, request);
+    }
+    return;
+  }
+
+  if (message.type === "confirmation-cancel") {
+    const cancellation = parseConfirmationCancel(payload);
+    if (
+      cancellation !== undefined &&
+      pendingConfirmation?.sessionId === sessionId &&
+      pendingConfirmation.requestId === cancellation.requestId &&
+      pendingConfirmation.sessionGeneration === cancellation.sessionGeneration
+    ) {
+      dismissConfirmation(true);
+    }
+    return;
+  }
+
+  if (message.type === "new-output-state") {
+    if (isNewOutputStatePayload(payload) === true) {
+      setNewOutputState(entry, activeSessionId === sessionId ? false : payload.hasNewOutput);
+    }
+    return;
+  }
+
   if (message.type === "output" && typeof payload.data === "string") {
     entry.terminal.write(payload.data);
+    if (payload.data.length > 0 && activeSessionId !== sessionId) {
+      setNewOutputState(entry, true);
+    }
     return;
   }
 
@@ -1085,7 +1424,11 @@ function handleHostMessage(value: unknown): void {
   }
 
   if (message.type === "reset") {
+    if (pendingConfirmation?.sessionId === sessionId) {
+      completeConfirmation("cancelled");
+    }
     entry.terminal.reset();
+    setNewOutputState(entry, false);
     entry.errorMessage = undefined;
     updateSessionStatus(entry);
     return;
@@ -1097,6 +1440,12 @@ function handleHostMessage(value: unknown): void {
 }
 
 function handleApplicationShortcut(event: KeyboardEvent): void {
+  if (pendingConfirmation !== undefined && event.ctrlKey === true) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+
   if (
     event.type !== "keydown" ||
     event.ctrlKey === false ||
@@ -1147,6 +1496,15 @@ reducedMotion.addEventListener("change", (event) => {
 });
 
 document.addEventListener("keydown", handleApplicationShortcut, true);
+document.addEventListener("keydown", (event) => {
+  if (suppressedConfirmationKeys.has(event.code) === true) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}, true);
+document.addEventListener("keyup", (event) => {
+  suppressedConfirmationKeys.delete(event.code);
+}, true);
 document.addEventListener("pointerdown", (event) => {
   if (contextMenu !== undefined && contextMenu.contains(event.target as Node) === false) {
     dismissTabMenu();
