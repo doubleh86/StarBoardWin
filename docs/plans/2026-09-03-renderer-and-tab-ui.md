@@ -44,8 +44,9 @@ view에 끝까지 연결한다.
 - 인수 기준: 100/125/150/200% geometry 자동 검증, 실제 화면에서 외부 틈·작업표시줄
   겹침 없음, 입력 줄·커서 표시, 작은 높이·확장/축소·auto-hide 회귀와 PID 유지 확인.
   실제 장비 결과와 브라우저/mock 결과는 구분한다.
-- 상태: 기획만 반영, 구현 대기. [기존 6 DIP 외부 간격](2026-09-09-panel-taskbar-gap.md)은
-  현재 배포 동작이며 위 내용은 이를 대체할 후속안이다. 코드·배포본은 변경하지 않는다.
+- 상태: 구현 완료. 축소된 하단 panel은 외부 간격 0으로 taskbar 안쪽 경계에 붙고,
+  renderer가 같은 배경색 6 DIP 하단 padding을 확보한다. fit/ConPTY resize는 남은 본문
+  높이로 계산한다. 실제 화면의 gap·cursor·DPI 확인은 수동 검증으로 남긴다.
 
 ### 2026-09-09 새 탭 버튼 위치 후속
 
@@ -69,8 +70,8 @@ view에 끝까지 연결한다.
   활성·비활성 탭의 닫기 영역, `+`와 `×`의 서로 겹치지 않는 클릭 영역, tooltip·
   접근성 이름, 4개 테마에서의 선택 구분과 키보드 focus를 확인한다.
   바탕화면 배포·앱 재실행은 이번 수정에 포함하지 않는다.
-- 상태: 기획만 반영, 구현 대기. 사용자 요청 정정에 따라 시도한 CSS·배포 asset
-  변경은 모두 원복했다. 바탕화면 앱은 변경하지 않았다.
+- 상태: 구현 완료. 탭 목록은 남은 폭을 독점하지 않고 `+`는 마지막 탭 뒤의 독립
+  control로 남으며 `×`는 각 tab item 안에 포함된다. overflow는 탭 목록만 가로 스크롤한다.
 - 후속 [작업공간 기획](2026-09-09-workspace-convenience.md)의 W2-C에서 함께 처리한다.
   실제 WebView2 수동 검증과 브라우저 검증은 구분한다.
 
@@ -222,8 +223,7 @@ protocol v2는 global/session message scope를 분리하고 session message의 �
 focus ring을 제거하되 tab/button focus-visible은 유지했다. collapsed 기본 높이는
 schema 4의 200 DIP로 올렸고 schema 3 이하의 148 DIP 기본값만 migration한다.
 
-자동 검증은 renderer build와 strict TypeScript 검사, Terminal/Preferences/
-DesktopIntegration 집중 test, 전체 solution build 및 후속 기준 총 86개 test를
-통과했다. 실제 WebView2/monitor에서의 tab overflow, IME·clipboard·focus-visible,
-노란 focus ring 제거 상태와 약 8행 geometry는 `docs/test-plan.md`의 수동 항목으로
-남겼다.
+최종 자동 검증은 renderer build와 전체 Debug solution restore/build, filter/skip 없는
+301개 test를 통과했다. renderer source/dist offline 계약, 탭 action 분리, 안전 확인과
+새 출력 runtime도 자동 검사한다. 실제 WebView2/monitor에서의 tab overflow, IME·clipboard,
+focus-visible, 새 출력 점과 panel gap/약 8행 geometry는 `docs/test-plan.md`의 수동 항목으로 남겼다.

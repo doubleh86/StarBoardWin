@@ -10,7 +10,7 @@ Windows 10 1809 이상은 best-effort 대상이다.
 
 ## 현재 동작
 
-- taskbar monitor의 work area 하단에 borderless/tool-window panel 배치
+- 축소된 하단 panel은 작업표시줄 안쪽 경계에 외부 간격 없이 밀착하고, terminal 본문 안쪽의 6 DIP 하단 여백으로 입력 줄을 보호
 - `pwsh.exe` → `powershell.exe` → `cmd.exe` 순서의 shell 탐색
 - Windows ConPTY를 통한 실제 양방향 persistent session
 - bundled xterm.js와 local-only WebView2 renderer
@@ -18,11 +18,14 @@ Windows 10 1809 이상은 best-effort 대상이다.
 - 최대 8개 탭, 탭별 독립 ConPTY process·working directory·interactive state와 이름·순서 변경
 - terminal resize를 ConPTY cell size로 전달
 - shell/renderer 오류 surface와 shell restart
+- 실행 중인 탭 닫기는 기본적으로 확인하며, 여러 줄 clipboard 붙여넣기는 확인한 동일 미리보기만 전달
+- 비활성 탭의 non-empty output은 조용한 `새 출력` 점으로만 표시
 - `Ctrl+Alt+E` global hotkey로 work area 전체 확장/축소
 - `Ctrl+Alt+S`로 가려졌거나 숨겨진 panel 호출, 활성 panel 숨김
 - 32 DIP 탭 바 아래 terminal 본문 약 8행이 보이는 200 DIP 기본 높이
 - notification area icon 왼쪽 클릭으로 panel 표시·활성화
 - tray menu의 `터미널 표시/숨기기`와 `종료`
+- tray의 `단축키 안내`에서 현재 적용·등록된 전역 키와 terminal 입력 규칙 확인
 - 평소에는 다른 앱을 덮어두지 않는 normal z-order, tray 표시 요청 때만 활성화
 - selection-aware `Ctrl+C`, `Ctrl+Shift+C` 복사와 `Ctrl+V`, `Ctrl+Shift+V` 붙여넣기
 - single instance와 1초 taskbar geometry reconciliation
@@ -136,14 +139,20 @@ renderer는 runtime CDN, 외부 font, remote script를 사용하지 않는다.
 | `Ctrl+V`, `Ctrl+Shift+V` | Windows clipboard text 붙여넣기 |
 | `Ctrl+Shift+T` | 새 terminal 탭 열기 |
 | `Ctrl+Tab`, `Ctrl+Shift+Tab` | 다음/이전 terminal 탭 선택 |
-| `Ctrl+Shift+W` | 현재 terminal 탭 닫기 |
+| `Ctrl+Shift+W` | 현재 terminal 탭 닫기 요청; 살아 있는 session은 확인 뒤 종료 |
 | `Ctrl+W` | shell에 그대로 전달 |
 | `Ctrl+Alt+E` | collapsed/expanded geometry 전환 |
 | `Ctrl+Alt+S` | 숨김·비활성 panel 호출, 활성 panel 숨김 |
 
 `Ctrl+Alt+E` 또는 `Ctrl+Alt+S`가 다른 프로그램에 이미 등록돼 있으면 앱은 계속
 실행되지만 해당 global shortcut은 사용할 수 없다. 충돌은 로컬 진단 로그에
-기록한다.
+기록한다. tray의 `단축키 안내`는 설정 문자열이 아니라 실제 적용·등록 상태를
+표시한다.
+
+여러 줄 붙여넣기는 CR 또는 LF를 포함한 경우에만 확인 창을 열며, 취소·Escape·창
+닫기는 아무 입력도 전달하지 않는다. 확인 뒤에는 clipboard를 다시 읽지 않고 사용자가
+확인한 snapshot만 한 번 전달한다. 새 출력 점은 완료·성공 알림이 아니며, 해당 탭을
+선택하면 사라진다.
 
 ## 로컬 데이터와 개인정보
 
@@ -162,8 +171,10 @@ Starboard에는 analytics, telemetry, crash upload, remote configuration이 없�
 작업공간 파일은 최대 64 KiB의 일반 로컬 JSON이며 암호화되지 않는다. 여기에는 탭
 구성 ID, 이름, 순서, 시작 폴더, shell 종류와 활성 탭만 들어간다. terminal command,
 output, clipboard 내용, environment 값, runtime PID/session ID는 로그나 작업공간
-파일에 남기지 않는다. 로그는 subsystem, operation, 복구 가능성에 필요한 오류
-종류만 기록한다. portable ZIP에는 이 사용자 데이터, backup, temporary 파일이 포함되지 않는다.
+파일에 남기지 않는다. 닫기 확인 token, 여러 줄 붙여넣기 미리보기와 새 출력 표시는
+메모리의 현재 session 세대에만 묶이며 disk·log·package에 저장하지 않는다. 로그는
+subsystem, operation, 복구 가능성에 필요한 오류 종류만 기록한다. portable ZIP에는
+이 사용자 데이터, backup, temporary 파일이 포함되지 않는다.
 
 ## 구조
 

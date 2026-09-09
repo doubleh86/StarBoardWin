@@ -6,7 +6,9 @@
 외부 간격을 없애고 terminal 내부 여백으로 입력 줄을 보호하는 PANEL-UX-02를
 [작업공간 기획](2026-09-09-workspace-convenience.md)과
 [탭·패널 UI 계획](2026-09-03-renderer-and-tab-ui.md)에 추가했다.
-후속안은 아직 미구현이며 이 문서의 배포·검증 이력을 소급해 변경하지 않는다.
+후속안은 이후 구현됐으며, 축소 하단 panel은 외부 간격 0으로 taskbar에 밀착하고 renderer
+내부 6 DIP padding으로 입력 줄 여유를 제공한다. 이 문서의 이전 배포 hash와 당시 검증
+이력은 historical record로 유지한다.
 
 ## 목표와 범위
 

@@ -202,7 +202,7 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
 - [x] 2026-09-09: S0 집중 테스트(Terminal 140, DesktopIntegration 74), architecture
   tests 6개, Debug solution build와 전체 automated tests 285개가 통과했다. 실제 확인 UI,
   clipboard, renderer 복구와 Windows 단축키 충돌 시나리오는 S1~S3 구현·manual 검증 대상이다.
-- [ ] S1~S3 구현·검증.
+- [x] S1~S3 구현·검증.
 - [x] 2026-09-09: SAFE-01 통합 뒤 `GuiHostKeepsConPtyTabsIndependentThroughExitRestartAndClose`가
   살아 있는 재시작 세션을 이전의 직접 `CloseAsync` 경로로 닫아 새 안전 계약과 불일치하는
   회귀를 안정화한다. GUI test host는 재시작 세대의 확인 token으로 닫기를 승인하고, terminal
@@ -217,5 +217,10 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
   테스트 시작 전 기존 MSBuild 정체가 재현되어 중단했고 build-server 비활성·단일 node로
   검증했다.
 
-초기 기획 작성 단계의 테스트 항목은 실행 결과가 아니며, 위 진행 기록에서 명시적으로
-완료한 S0 automated 검증만 현재 결과다. 바탕화면 배포와 manual UI 검증은 수행하지 않았다.
+- [x] 2026-09-09: SAFE-01/02, NOTICE-01과 HELP-01을 통합했다. 살아 있는 탭은
+  generation-bound confirmation 없이는 닫히지 않고, CR/LF clipboard는 one-shot snapshot
+  preview 뒤에만 전달된다. 비활성 탭 output은 새 출력 점으로만 표시하며 tray 도움말은
+  effective global shortcut 상태와 terminal 규칙을 보여 준다.
+- [x] 2026-09-09: 최종 Debug restore/build와 filter/skip 없는 전체 301개 test, renderer
+  offline rebuild, `git diff --check`를 통과했다. 실제 WebView2 dialog, clipboard, IME,
+  focus와 DPI/hardware 시나리오는 `docs/test-plan.md`의 `Not run` 수동 항목으로 남겼다.

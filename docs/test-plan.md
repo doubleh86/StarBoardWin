@@ -36,6 +36,19 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-09 (안전 기능·패널/탭 UI 최종 검증)
+- 지정 SDK의 Debug restore와 build는 경고·오류 0개로 통과했다. filter/skip 없는 전체
+  test는 `--blame-hang-timeout 3m`으로 Architecture 7, Preferences 31, Terminal 153,
+  DesktopIntegration 75, Integration 35, 총 301개를 통과했고 실제 종료까지 약 19초였다.
+- `npm --prefix src/Modules/Starboard.Modules.Terminal/Presentation/Renderer run build`로
+  renderer source에서 offline dist를 재생성했다. sandbox에서는 esbuild child process가
+  `EPERM`으로 차단됐으나 승인된 동일 로컬 build에서는 성공했고, rebuild 뒤 source/dist
+  변경은 없었다. RendererDistributionTests가 CSP, local asset, confirmation/new-output,
+  panel bottom padding 계약을 자동 검사한다.
+- 이 결과는 unit/contract, Windows ConPTY GUI-host integration 및 simulation 범위다.
+  실제 WebView2 화면, clipboard, Korean IME, focus와 multi-monitor/DPI hardware 검증은
+  수행하지 않았으므로 아래 MAN 항목은 `Not run`으로 유지한다.
+
 - 실행일: 2026-09-09 (ConPTY GUI-host 수명주기 회귀 안정화)
 - 원인은 제품의 session 정리 결함이 아니라 SAFE-01 뒤에도 GUI test host가 살아 있는
   재시작 session을 확인 token 없이 `CloseAsync`로 닫던 테스트 계약 불일치였다. 제품은
@@ -271,6 +284,9 @@ npm run build
 | TRM-019 | workspace corrupt/future schema recovery | 손상 primary는 valid backup으로, 미래 schema는 보존·중단함 | Passed |
 | TRM-020 | workspace partial restore failure | 한 tab의 shell/folder 실패가 다른 tab 복원을 막지 않음 | Passed |
 | TRM-021 | workspace opt-out/delete | 기본 꺼짐, 옵션 해제 뒤 파일 삭제와 기본 tab 시작 | Passed |
+| TRM-022 | close confirmation | 같은 session generation의 승인만 tab close에 적용하고 취소/늦은 응답은 무시 | Passed |
+| TRM-023 | multiline paste confirmation | CR/LF snapshot만 확인 뒤 한 번 전달하고 cancel·restart·late response는 전달하지 않음 | Passed |
+| TRM-024 | inactive-tab new output | 비활성 non-empty output만 표시하고 selection/restart/remove에서 초기화 | Passed |
 
 ### Preferences와 theme
 
@@ -334,6 +350,7 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-028 | restored workspace process identity | 저장 구성마다 새 PID를 시작하고 runtime session ID/command/output은 재사용하지 않음 | Passed |
 | INT-029 | renderer source/dist offline contract | committed bundle이 source와 동기화되고 CDN·remote font/script 없이 local asset만 사용 | Passed |
 | INT-030 | portable user-data exclusion | publish/ZIP/추출본에 workspace JSON, `.bak`, `.tmp`, log와 WebView2 data가 없음을 package 검사로 거부 | Passed (automated package) |
+| INT-031 | ConPTY GUI-host close synchronization | restart generation confirmation, tab removal과 shell PID exit를 timeout/cancellation 안에서 관찰 | Passed |
 
 ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan child process를 남기지
 않는다. GUI host는 재시작 close의 session ID·generation, tab 제거와 process 종료 상태를
@@ -392,11 +409,13 @@ build hash를 함께 기록한다.
 | MAN-027 | WSL/custom shell | 선택한 경우 argument/resize/exit 검증 | Not run |
 | MAN-028 | 한글 IME composition | 조합 중복·누락·caret 이탈 없음 | Not run |
 | MAN-029 | clipboard shortcuts | selection copy, paste와 Ctrl+C interrupt 구분 | Not run |
+| MAN-029a | safety confirmation UI | 살아 있는 tab close 취소/승인, multiline paste preview·Escape·clipboard 변경 뒤 승인 확인 | Not run |
 | MAN-030 | WebView2 Runtime missing simulation | local error와 설치 안내 | Not run |
 | MAN-031 | login startup | 일반 user 권한으로 한 instance만 실행 | Not run |
 | MAN-032 | Release folder offline | renderer가 network 없이 로드 | Not run |
 | MAN-033 | multi-tab renderer | 비활성 탭 output/scrollback/state 유지, 대상 session routing | Not run |
 | MAN-034 | tab 접근성·overflow·shortcut | 상태/이름/focus-visible, 8개 overflow, 탭 단축키와 Ctrl+W 전달 | Not run |
+| MAN-034a | inactive-tab new output | 비활성 tab의 점, 접근성 이름, 선택 시 해제와 자동 activation 없음 | Not run |
 | MAN-035 | schema 4 collapsed height | 200 DIP에서 tab strip 아래 약 8행, 사용자 높이 보존 | Not run |
 | MAN-036 | terminal focus surface | terminal click 후 노란 외곽선 없이 caret과 입력 동작 유지 | Not run |
 | MAN-037 | tray 설정 창 수명·focus | 연속 요청 시 한 창, 닫은 뒤 이전 foreground를 강제 변경하지 않음 | Not run |
@@ -424,7 +443,8 @@ launch focus 보존과 terminal click activation은 서로 다른 요구사항�
 
 1. Microsoft Korean IME를 활성화한다.
 2. 한글 syllable, 자모 수정, backspace와 space 확정을 입력한다.
-3. multiline paste와 emoji/CJK text를 확인한다.
+3. CR/LF가 있는 paste에서 읽기 전용 preview와 취소 기본 focus가 보이고, clipboard를 바꾼 뒤
+   승인해도 처음 preview snapshot만 전달되는지 확인한다. emoji/CJK text도 확인한다.
 4. selection이 없을 때 `Ctrl+C`가 interrupt를 보내는지 확인한다.
 5. selection이 있을 때 copy shortcut과 interrupt 정책이 문서와 일치하는지
    확인한다.
@@ -449,6 +469,7 @@ launch focus 보존과 terminal click activation은 서로 다른 요구사항�
 - ZIP SHA-256 일치와 추출 smoke 성공
 - runtime network request 없음
 - workspace JSON, `.bak`, `.tmp`, command 또는 terminal output이 publish/ZIP/추출본에 없음
+- confirmation token/paste preview/new-output runtime state가 log, workspace, publish/ZIP/추출본에 없음
 - automated/integration 결과가 이 문서에 갱신됨
 - 실제로 실행한 manual case만 `Passed`로 표시
 - 미실행 DPI, multi-monitor, fullscreen과 IME case가 숨김없이 남아 있음

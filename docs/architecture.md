@@ -221,6 +221,19 @@ runtime을 사용하므로 장시간 실행 앱의 update 안내는 후속 배�
 - bridge log에는 payload text, command 또는 terminal output을 기록하지 않는다.
 - oversized/malformed message는 session을 종료하지 않고 거부한다.
 
+### 안전 확인과 새 출력 상태
+
+살아 있는 tab의 `close-session` 요청은 coordinator가 발급한 request ID, session ID,
+generation을 포함한 확인 요청으로 바꾼다. renderer가 같은 세대의 `confirmed` 응답을
+돌려줄 때만 transport를 닫는다. 취소·Escape·dialog close, renderer reconnect, tab
+제거·restart와 늦은 응답은 취소로 처리하므로 다른 tab 또는 새 session을 닫을 수 없다.
+
+clipboard text에 CR 또는 LF가 있으면 host는 한 번 읽은 snapshot만 같은 확인 경계에
+넣는다. 승인 후 clipboard를 다시 읽지 않고 기존 xterm paste path로 한 번 전달하며,
+preview와 token은 log, settings, workspace 또는 package에 쓰지 않는다. 비활성 tab의
+non-empty output은 session generation별 in-memory `new output` state로 표시한다. 이는
+command completion 판단이나 activation 요청이 아니며, tab 선택·restart·remove에서 지운다.
+
 ## ConPTY 설계
 
 Windows 10 1809부터 제공되는 documented API만 쓴다.
@@ -327,6 +340,14 @@ SafeHandle이 handle 소유권을 표현하며 같은 native handle을 두 객�
 session은 late completion의 예외를 계속 관찰하되 다른 tab 정리나 앱 종료를 막지
 않는다.
 
+Windows ConPTY integration은 별도 `Starboard.ConPtyTestHost` GUI-host executable에서
+실행한다. 이 host는 제품 UI/WebView2를 띄우지 않으며 실제 ConPTY와 coordinator 수명만
+검증한다. SAFE-01 뒤 발생한 tab test 실패는 제품 deadlock이 아니라, 재시작된 session을
+확인 없이 직접 `CloseAsync`로 닫던 오래된 test 계약 때문이었다. host는 이제 같은
+generation의 confirmation을 적용하고 tab 제거 event와 shell PID 종료를 각각 bounded
+cancellation 안에서 기다린다. 결과 파일에는 host path/PID, session ID·generation,
+tab removal 및 process-exit boolean만 기록하고 command/output은 남기지 않는다.
+
 ## Taskbar와 monitor
 
 ### Snapshot
@@ -385,14 +406,14 @@ left   = workArea.left
 right  = workArea.right
 inner  = clamp(taskbarRect.top, workArea.top, workArea.bottom)
 height = clamp(round(settings.heightDip * dpiY / 96), 1, inner - workArea.top)
-gap    = min(round(6 * dpiY / 96), inner - workArea.top - height)
-bottom = inner - gap
+bottom = inner
 top    = bottom - height
 ```
 
-축소 하단 패널은 입력 줄과 작업표시줄 사이에 6 DIP 간격을 둔다. 높이를 유지할 공간이
-부족하면 간격만 줄이고 work area를 넘지 않는다. 반올림은 midpoint away from zero다.
-작업표시줄 bounds가 없으면 기존 work-area edge fallback을 사용한다.
+축소 하단 패널은 작업표시줄의 안쪽 경계에 외부 간격 0으로 붙인다. 입력 줄 보호는
+renderer의 같은 배경색 6 DIP 하단 padding이 담당하며 fit/ConPTY resize는 이 padding을
+제외한 실제 본문 높이로 계산한다. 작업표시줄 bounds가 없으면 기존 work-area edge
+fallback을 사용한다.
 
 top/left/right taskbar도 edge별로 work area 안쪽에 붙인다. 사용자가 지정한 높이는
 taskbar에 평행한 panel의 두께 의미로 사용한다.
@@ -522,6 +543,8 @@ WebView2 transparent composition 위험 때문에 glassmorphism과 blur를 쓰�
 - subsystem, operation, native error code, recoverability만 기록한다.
 - command, terminal output, clipboard, environment value와 full custom arguments는
   기록하지 않는다.
+- 닫기 확인 correlation token, 여러 줄 paste preview와 새 출력 badge도 disk 또는 log에
+  기록하지 않으며 현재 session generation이 바뀌면 폐기한다.
 - opt-in workspace JSON은 탭 이름·순서·시작 폴더처럼 사용자가 선택한 구성만 담으며,
   command, output, clipboard, environment, runtime session ID와 PID는 담지 않는다.
 - analytics, crash upload, remote config와 runtime asset fetch를 사용하지 않는다.
