@@ -6,8 +6,14 @@
 작업을 시작할 수 있게 한다. 기존의 얇은 패널과 최대 8개 탭을 유지한다.
 
 이 문서는 [이전 실사용 개선 기획](2026-09-05-orchestrator-product-roadmap.md)의 후속
-후보인 탭 이름·순서 변경과 구성 복원을 구체화한 제안이다. 이번 요청은 **기획서 작성만**
-대상이며 구현·에이전트 실행·Git 작업·배포를 시작하지 않는다.
+후보인 탭 이름·순서 변경과 구성 복원을 구체화한 제안으로 시작했다. 최초 기획 작성은
+구현·에이전트 실행·Git 작업·배포를 시작하지 않는 범위였고, 이후 아래 W1~W6 실행 기록에
+따라 이 문서의 작업공간 범위를 구현·검증했다.
+
+추가 후보는 [실수 방지·사용 편의 기획](2026-09-09-terminal-safety-and-discoverability.md)에
+별도로 정리한다. 탭 닫기 확인·여러 줄 paste 경고·새 출력 표시·단축키 도움말을 다루며,
+이 문서의 완료 범위를 소급해 늘리지 않는다. 겹치는 renderer·coordinator 작업은 소유권을
+조정한 뒤 진행하고 두 계획에서 같은 파일을 병렬 편집하지 않는다.
 
 핵심 완료 조건은 다음과 같다.
 
@@ -17,9 +23,10 @@
 - 재실행은 저장된 구성으로 **새 shell**을 만든다. 이전 명령·프로세스·출력은 복원하지 않는다.
 - 한 탭의 복원 실패가 다른 탭이나 앱 전체의 실행을 막지 않는다.
 
-## 현재 상태와 근거
+## 구현 전 기준선과 근거
 
-2026-09-09 로컬 `main`, 기반 HEAD `a0607c5`와 미커밋 작업 트리를 확인했다.
+다음은 2026-09-09 로컬 `main`, 기반 HEAD `a0607c5`와 미커밋 작업 트리를 확인한
+최초 기획 시점의 기준선이다. 현재 상태는 아래 진행 기록과 인수인계를 따른다.
 코드 스타일 동기화와 하단 간격 변경을 포함한 배포본은 Release 193개 테스트를
 통과했다. 실제 화면·IME·mixed-DPI 등 남은 수동 항목은
 [테스트 계획](../test-plan.md)을 따른다. 이 문서 작성 중 테스트를 재실행한 것은 아니다.
@@ -34,8 +41,17 @@
 - 탭 구성은 앱 재시작 후 복원되지 않는다. renderer만 재생성되는 복구와 앱을
   종료했다 켜는 구성 복원은 서로 다른 경로다.
 
-현재 미커밋 변경과 `.ai-orchestrator/` 데이터는 보존한다. 구현 착수 시 최신 HEAD와
-필요한 변경의 포함 여부를 다시 확인하며, HEAD만으로 현재 배포본과 같다고 가정하지 않는다.
+당시 미커밋 변경과 `.ai-orchestrator/` 데이터는 보존 대상으로 두었다. 구현 착수 시에는
+최신 HEAD와 필요한 변경의 포함 여부를 다시 확인하고, HEAD만으로 현재 배포본과 같다고
+가정하지 않는 것을 원칙으로 삼았다.
+
+## 현재 통합 상태
+
+작업공간 기능의 W1~W6은 완료됐으며, 탭 이름·순서·시작 폴더, opt-in 구성 저장·복원과
+설정·수명 주기 통합을 제공한다. 복원은 새 shell/session을 만들고 command, output 또는
+runtime session ID를 복원하지 않는다. TAB-UX-01과 PANEL-UX-02는 위 기능의 완료 상태를
+바꾸지 않는 별도 미구현 후속 후보이며, 실제 UI/hardware 수동 검증은 `Not run` 상태를
+유지한다.
 
 ## 사용자 경험
 
@@ -44,6 +60,23 @@
 서버 실행 명령은 사용자가 직접 입력한다.
 
 ### 1. 탭 정리
+
+다음 탭 버튼 배치 보강은 작업공간 구현 범위와 별개의 후속 후보다. 아래 W2 완료 기록은
+이 후보가 아니라 이름·순서·시작 폴더 기능을 가리킨다.
+
+- **TAB-UX-01 — 새 탭 버튼 위치 개선:** 탭 옆 `×`를 추가 버튼으로 오인해 닫은
+  사용자 사례를 반영한다. 현재 탭 목록이 남은 폭을 채워 `+`가 화면 맨 오른쪽에
+  떨어져 있다. 사용자가 제공한 Windows Terminal 배치처럼 `×`는 각 탭 안에,
+  `+`는 마지막 탭 바로 뒤의 독립 버튼으로 배치하고 간격으로 역할을 구분한다.
+  활성 탭은 이름·닫기 영역을 하나의 배경으로 묶어 본문과 이어지게 한다.
+  비활성 탭은 배경 명도로 구분하고 상단 모서리는 가볍게 둥글린다.
+- `×`의 닫기 기능과 기존 단축키는 유지한다. 탭이 넘치면 목록만 가로 스크롤하며
+  `+`는 스크롤 영역 밖에 계속 표시한다. 최대 8개에서는 기존처럼 비활성화한다.
+  구현 시 1/3/8개 탭·좁은 폭에서 위치, 클릭 대상, 32px 높이를 검증하고, `+`가
+  새 탭만 만들며 기존 세션을 닫지 않는지 확인한다. 상세 근거는
+  [탭 UI 후속 계획](2026-09-03-renderer-and-tab-ui.md)을 따른다.
+  참고 이미지의 `∨` 셸 선택 메뉴는 별도 후보이며 이번 작업공간 범위에는 포함하지 않는다.
+  기본 셸 사용 정책, 4개 테마와 접근성·키보드 focus 표시는 유지한다.
 
 - 탭의 우클릭 메뉴에 `이름 변경`, `왼쪽으로 이동`, `오른쪽으로 이동`,
   `시작 폴더 설정`을 제공한다. 키보드 사용자는 탭에 focus를 둔 상태에서
@@ -90,6 +123,20 @@
 - 복원을 끄고 저장하면 현재 세션은 유지하되 보관된 작업 구성과 그 백업을 제거한다.
   삭제 실패는 사용자에게 알리고 저장 데이터가 남아 있음을 표시한다. 다음 시작은
   복원 옵션이 꺼진 상태를 우선해 기본 탭 하나만 생성한다.
+
+### 4. 패널은 밀착하고 입력 줄은 내부 여백으로 보호
+
+다음 패널 geometry 변경은 작업공간 구현 W1~W6과 독립된 미구현 후속 후보다. 따라서
+현재 구현의 외부 6 DIP 하단 간격 보존 기록을 이 항목으로 소급해 바꾸지 않는다.
+
+- **PANEL-UX-02:** 축소 패널과 하단 작업표시줄 사이의 기존 외부 6 DIP 간격을
+  0으로 바꾸고, terminal 본문 안쪽 아래에 6 DIP 상당의 추가 여백을 둔다.
+  패널 바깥의 바탕화면 틈을 없애면서 입력 줄이 작업표시줄에 붙어 보이지 않게 한다.
+- 기본 높이 200 DIP와 탭 바 높이는 유지한다. 여백을 제외한 영역으로 xterm fit과
+  ConPTY rows를 계산하며, 글자·커서를 가리는 방식으로 여백을 만들지 않는다.
+- 하단 작업표시줄의 축소 상태만 변경한다. 확장·상단·좌우 배치와 auto-hide의
+  안전 경계, 작업 영역 비예약·focus·세션 유지 정책은 보존한다. 드래그 자석 기능은 제외한다.
+  UI 세부 기준은 [탭·패널 UI 계획](2026-09-03-renderer-and-tab-ui.md)을 따른다.
 
 ## 저장과 실패 정책
 
@@ -143,10 +190,35 @@ SharedKernel이나 Preferences로 이동하지 않는다. DesktopIntegration geo
 | W5 설정 통합 | W4 | 기본 꺼짐, 켜기·취소·끄기·삭제 실패 처리, 기존 apply 회귀 없음 |
 | W6 최종 검증 | W5 | 전체 build/test, renderer dist, package 개인정보 검사와 수동 결과 인수인계 |
 
-기본 실행 순서는 직렬이다. 후속으로 병렬 작업을 요청받으면 W1 통합 후 Preferences
-옵션 편집과 Terminal 내부 작업처럼 쓰기 범위가 분리되는 부분만 나눈다. host·공용 문서·
-renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/push와 바탕화면
-재배포는 해당 실행 요청의 승인 범위를 별도로 따른다.
+기본 실행 순서는 직렬이다. 아래 병렬화 기획은 당시의 파일 소유권과 통합 기준을
+보존한다. 실제 실행은 W1~W6의 직렬 의존성으로 완료했으며, 병렬 작업을 재개한다면
+공통 계약을 먼저 통합하고 host·공용 문서·renderer source/dist는 각각 담당자 한 명이
+소유한다. branch/commit/push와 바탕화면 재배포는 해당 실행 요청의 승인 범위를 별도로 따른다.
+
+### 병렬화 기획 보존 기록
+
+```text
+W0 기준선 → W1 공통 계약 확정
+                ├─ W2-A 탭·시작 폴더 로직 ─┐
+                ├─ W2-B 구성 저장소 ──────┤
+                ├─ W2-C 탭·패널 화면 ─────┼→ W3 통합·복원 연결 → W4 최종 검증
+                ├─ W2-D 설정 편집 ────────┤
+                └─ W2-E 패널 밀착 geometry ┘
+```
+
+W2-A~E는 W1에서 합의한 계약과 테스트 대역으로 독립 구현하고, 실제 module 연결과
+end-to-end 검증은 모든 결과를 받은 뒤 수행한다. 이 분해에서 W2-A는 Terminal 탭·시작
+폴더 로직, W2-B는 Terminal 구성 저장소, W2-C는 renderer와 TAB-UX-01/PANEL-UX-02,
+W2-D는 Preferences editor, W2-E는 DesktopIntegration geometry를 각각 소유한다.
+W3는 `TerminalModule`, view/host composition, integration·architecture tests 및 공용
+문서를 통합하고, W4는 package·renderer·전체 검증과 수동 결과 인수인계를 소유한다.
+
+공통 계약은 구성 ID와 session ID 분리, 저장소 read/save/delete/flush 결과, C#/TS protocol,
+Preferences 옵션 전환 및 PANEL-UX-02의 DPI·fit 전달 순서를 확정한 뒤 동결한다. 변경이
+필요하면 통합 담당이 계획·계약을 갱신하고 영향을 받는 작업을 같은 기준으로 맞춘다.
+worker는 자신의 코드와 직접 테스트를 함께 완결하며, 공용 fixture·host·공용 문서 변경은
+통합 담당에게 인계한다. 실제 UI·입력·focus 회귀는 최종 배포 검증으로 넘기지 않고,
+장비 제약 때문에 남은 항목은 근거와 절차를 기록해 완료와 구분한다.
 
 ## 검증 방법
 
@@ -182,7 +254,8 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
 ## 진행 기록과 인수인계
 
 - [x] 2026-09-09: 기존 후속 후보와 실제 코드 경계를 확인하고 기획 초안 작성.
-- [ ] W0 기준선: 기존 수동 입력·focus 항목은 후속 UI 통합에서 수행한다.
+- [ ] W0 기준선: 기존 수동 입력·focus 및 실제 hardware 항목은 자동 검증으로 대체하지
+  않았으며, MAN-041~043과 기존 수동 matrix에서 `Not run`으로 남긴다.
 - [x] W1 계약: Terminal 공개 구성은 configuration ID, 이름, 순서, 시작 폴더와 제한된 shell kind만
   표현하고 runtime session ID는 renderer/실행 수명 내부에만 남긴다. Preferences schema 6은
   `restoreWorkspaceOnLaunch`를 기본 `false`로 추가하며 schema 5와 부분 JSON은 이 값이 꺼진
@@ -197,7 +270,6 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
   수 없으면 해당 탭만 failed 상태로 두고 폴더 변경과 홈 폴더 재시도 동작을 표시한다.
   renderer build, Terminal tests 93개, Integration tests 29개와 Debug solution tests 228개를
   통과했다. 실제 picker 조작과 접근 권한이 제한된 폴더 시나리오는 수동 검증 pending이다.
-- [x] W4 저장·복원 구현·검증. W5~W6 host 설정 통합과 최종 수동 검증은 후속 범위다.
 - [x] W4 저장·복원: Terminal 내부 `workspace.json` 저장소는 64 KiB 제한과
   strict JSON DTO 검증을 먼저 수행하고, primary가 손상됐을 때만 마지막 정상
   `.bak`을 사용한다. primary에서 미래 schema를 발견하면 두 파일을 모두 보존하고
@@ -224,9 +296,6 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
   restore/build/test(전체 262개), `git diff --check`를 다시 검증했다. 실제 workspace 재시작 UI, 한글 IME,
   권한 제한 폴더, multi-monitor/DPI는 MAN-041~043 및 기존 MAN 항목에서 `Not run`으로 남긴다.
 
-W1은 저장소 구현이나 실제 복원 실행을 시작하지 않는다. renderer protocol은 이후 UI가 이름 변경,
-순서 이동, 시작 폴더 변경과 workspace 저장 상태를 명시적으로 교환할 수 있도록만 확장한다.
-
 ### W1 완료 요약
 
 - Terminal 구성 DTO와 shell kind는 Terminal module의 공개 Contracts에만 두고, runtime session ID는
@@ -234,10 +303,9 @@ W1은 저장소 구현이나 실제 복원 실행을 시작하지 않는다. ren
 - Preferences schema 6은 기존 schema 5와 부분 JSON을 `restoreWorkspaceOnLaunch: false`로
   정규화한다. apply 결과는 enabled/disabled/unchanged 전환을 계산하므로 host가 설정 저장 성공 뒤에만
   Terminal 저장·삭제를 조정할 수 있다.
-- `dotnet test tests/Starboard.Modules.Preferences.Tests/Starboard.Modules.Preferences.Tests.csproj --configuration Debug`
-  30개와 `dotnet test tests/Starboard.Modules.Terminal.Tests/Starboard.Modules.Terminal.Tests.csproj --configuration Debug`
-  70개를 통과했다. renderer bundle 재생성은 W1의 source-only protocol 변경과 배정된 경로 제한 때문에
-  후속 UI 통합 작업에서 수행한다.
+- 이 단계에서는 Preferences 30개와 Terminal 70개 테스트를 통과했다. renderer bundle 재생성은
+  당시 source-only protocol 변경의 후속 UI 통합에서 수행하도록 인계했고, 이후 W2와 W6에서
+  renderer build와 source/dist 동기화를 완료했다.
 
 ### W4 완료 요약
 
