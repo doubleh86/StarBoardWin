@@ -70,6 +70,26 @@ public sealed class TerminalSessionCoordinatorTests
     }
 
     [TestMethod]
+    public async Task RenameAndMoveDoNotRecreateExistingSessions()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var second = await coordinator.AddAsync(CancellationToken.None);
+
+        Assert.IsTrue(coordinator.Rename(first.SessionId, "서버"));
+        Assert.IsTrue(coordinator.MoveRight(first.SessionId));
+
+        var snapshot = coordinator.Snapshot;
+        Assert.AreEqual(2, factory.Sessions.Count);
+        Assert.AreEqual(0, factory.Sessions[0].DisposeCount);
+        Assert.AreEqual(0, factory.Sessions[1].DisposeCount);
+        Assert.AreEqual(first.SessionId, snapshot.Tabs[1].SessionId);
+        Assert.AreEqual("서버", snapshot.Tabs[1].Name);
+        Assert.AreEqual(second.SessionId, snapshot.ActiveSessionId);
+    }
+
+    [TestMethod]
     public async Task ResizeWithSessionIdentifierRoutesOnlyToRequestedSession()
     {
         var factory = new FakeTerminalSessionFactory();

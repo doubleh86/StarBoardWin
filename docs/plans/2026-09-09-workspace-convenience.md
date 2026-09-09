@@ -188,7 +188,8 @@ renderer source/dist는 각각 담당자 한 명이 소유한다. branch/commit/
   `restoreWorkspaceOnLaunch`를 기본 `false`로 추가하며 schema 5와 부분 JSON은 이 값이 꺼진
   상태로 migration한다. 설정 apply 결과는 옵션 전환을 계산할 수 있게 하고, Terminal의
   저장·삭제·종료 flush 실패는 별도 결과 계약으로 host가 표시·재시도할 수 있게 한다.
-- [ ] W2~W6 구현·검증.
+- [x] W2 탭 정리: 이름 변경과 좌우 이동은 renderer의 우클릭/Shift+F10 메뉴와 IME 안전 인라인 편집으로 연결했다. 변경은 runtime session ID를 유지한 채 registry 순서와 이름만 바꾼다. `npm ci`, `npm run build`, Terminal module tests 77개를 통과했다.
+- [ ] W3~W6 구현·검증.
 
 W1은 저장소 구현이나 실제 복원 실행을 시작하지 않는다. renderer protocol은 이후 UI가 이름 변경,
 순서 이동, 시작 폴더 변경과 workspace 저장 상태를 명시적으로 교환할 수 있도록만 확장한다.

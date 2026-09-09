@@ -333,6 +333,22 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                     _ = RestartSessionAsync(restartSessionId);
                 }
                 break;
+            case RendererMessageType.RenameSession:
+                if (message.SessionId is { } renameSessionId)
+                {
+                    RenameSession(renameSessionId, message.Data);
+                }
+                break;
+            case RendererMessageType.MoveSession:
+                if (message.SessionId is { } moveSessionId)
+                {
+                    MoveSession(moveSessionId, message.Data);
+                }
+                break;
+            case RendererMessageType.SetStartingDirectory:
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "StartingDirectory",
+                                    "Starting-directory changes are not available in this terminal view.");
+                break;
             case RendererMessageType.SessionError:
                 if (message.SessionId is { } failedSessionId && ContainsSession(failedSessionId) == true)
                 {
@@ -352,6 +368,31 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private bool ContainsSession(TerminalSessionId sessionId)
     {
         return sessionCoordinator.Snapshot.Tabs.Any(tab => tab.SessionId == sessionId);
+    }
+
+    private void RenameSession(TerminalSessionId sessionId, string? name)
+    {
+        if (sessionCoordinator.Rename(sessionId, name) == false)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RenameSession",
+                                "A terminal tab rename request was rejected.");
+        }
+    }
+
+    private void MoveSession(TerminalSessionId sessionId, string? direction)
+    {
+        var moved = direction switch
+        {
+            "left" => sessionCoordinator.MoveLeft(sessionId),
+            "right" => sessionCoordinator.MoveRight(sessionId),
+            _ => false,
+        };
+
+        if (moved == false && (direction == "left" || direction == "right"))
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "MoveSession",
+                                "A terminal tab move request was rejected.");
+        }
     }
 
     private void Core_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs eventArgs)

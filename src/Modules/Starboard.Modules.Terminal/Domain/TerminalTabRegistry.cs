@@ -1,4 +1,5 @@
 using Starboard.Modules.Terminal.Contracts;
+using System.Globalization;
 
 namespace Starboard.Modules.Terminal.Domain;
 
@@ -90,6 +91,34 @@ internal sealed class TerminalTabRegistry
         return SelectOffset(-1);
     }
 
+    internal bool Rename(TerminalSessionId sessionId, string? name)
+    {
+        if (TryNormalizeName(name, out var normalizedName) == false)
+        {
+            return false;
+        }
+
+        var index = tabs.FindIndex(tab => tab.SessionId == sessionId);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        tabs[index] = tabs[index] with { Name = normalizedName };
+
+        return true;
+    }
+
+    internal bool MoveLeft(TerminalSessionId sessionId)
+    {
+        return Move(sessionId, -1);
+    }
+
+    internal bool MoveRight(TerminalSessionId sessionId)
+    {
+        return Move(sessionId, 1);
+    }
+
     internal TerminalTabCloseResult? Close(TerminalSessionId sessionId)
     {
         var closedIndex = tabs.FindIndex(tab => tab.SessionId == sessionId);
@@ -163,6 +192,44 @@ internal sealed class TerminalTabRegistry
         var selectedIndex = (activeIndex + offset + tabs.Count) % tabs.Count;
         ActiveSessionId = tabs[selectedIndex].SessionId;
 
+        return true;
+    }
+
+    private bool Move(TerminalSessionId sessionId, int offset)
+    {
+        var currentIndex = tabs.FindIndex(tab => tab.SessionId == sessionId);
+        var destinationIndex = currentIndex + offset;
+        if (currentIndex < 0 || destinationIndex < 0 || destinationIndex >= tabs.Count)
+        {
+            return false;
+        }
+
+        (tabs[currentIndex], tabs[destinationIndex]) = (tabs[destinationIndex], tabs[currentIndex]);
+
+        return true;
+    }
+
+    private static bool TryNormalizeName(string? name, out string normalizedName)
+    {
+        normalizedName = string.Empty;
+        if (name is null)
+        {
+            return false;
+        }
+
+        var trimmedName = name.Trim();
+        if (trimmedName.Length == 0 || trimmedName.Any(char.IsControl) == true)
+        {
+            return false;
+        }
+
+        var textElementCount = StringInfo.ParseCombiningCharacters(trimmedName).Length;
+        if (textElementCount < 1 || textElementCount > 32)
+        {
+            return false;
+        }
+
+        normalizedName = trimmedName;
         return true;
     }
 }

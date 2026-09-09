@@ -120,6 +120,7 @@ type SessionEntry = {
   restartButton: HTMLButtonElement;
   tabItem: HTMLElement;
   tabButton: HTMLButtonElement;
+  tabRenameInput: HTMLInputElement;
   tabLabel: HTMLElement;
   tabStatus: HTMLElement;
   closeButton: HTMLButtonElement;
@@ -164,6 +165,7 @@ let canAddSession = true;
 let requestedTerminalFocusSessionId: string | undefined;
 let requestedTabFocusSessionId: string | undefined;
 let focusTerminalOnNextActivation = false;
+let contextMenu: HTMLElement | undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && Array.isArray(value) === false;
@@ -396,6 +398,8 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
   tabButton.setAttribute("aria-controls", pane.id);
   tabButton.addEventListener("click", () => requestSelection(sessionId));
   tabButton.addEventListener("keydown", (event) => handleTabKeyDown(event, sessionId));
+  tabButton.addEventListener("contextmenu", (event) => showTabMenu(event, sessionId));
+  tabButton.addEventListener("dblclick", () => startRename(sessionId));
 
   const tabStatus = document.createElement("span");
   tabStatus.className = "tab-status";
@@ -413,7 +417,35 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
     focusTerminalOnNextActivation = true;
     postSession("close-session", sessionId);
   });
-  tabItem.append(tabButton, closeButton);
+
+  const tabRenameInput = document.createElement("input");
+  tabRenameInput.className = "tab-rename-input";
+  tabRenameInput.type = "text";
+  tabRenameInput.maxLength = 128;
+  tabRenameInput.hidden = true;
+  tabRenameInput.setAttribute("aria-label", "탭 이름 변경");
+  let isComposing = false;
+  tabRenameInput.addEventListener("compositionstart", () => {
+    isComposing = true;
+  });
+  tabRenameInput.addEventListener("compositionend", () => {
+    isComposing = false;
+  });
+  tabRenameInput.addEventListener("keydown", (event) => {
+    if (event.isComposing === true || isComposing === true) {
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finishRename(sessionId, true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      finishRename(sessionId, false);
+    }
+  });
+  tabRenameInput.addEventListener("blur", () => finishRename(sessionId, false));
+  tabItem.append(tabButton, tabRenameInput, closeButton);
 
   const terminal = createTerminal();
   const fitAddon = new FitAddon();
@@ -465,6 +497,7 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
     restartButton,
     tabItem,
     tabButton,
+    tabRenameInput,
     tabLabel,
     tabStatus,
     closeButton,
@@ -516,6 +549,15 @@ function orderedSessions(): SessionEntry[] {
 }
 
 function handleTabKeyDown(event: KeyboardEvent, sessionId: string): void {
+  if (event.key === "F10" && event.shiftKey === true) {
+    event.preventDefault();
+    const tabButton = sessions.get(sessionId)?.tabButton;
+    if (tabButton !== undefined) {
+      showTabMenuAt(tabButton.getBoundingClientRect(), sessionId);
+    }
+    return;
+  }
+
   const entries = orderedSessions();
   const currentIndex = entries.findIndex((entry) => entry.id === sessionId);
   if (currentIndex < 0) {
@@ -541,6 +583,84 @@ function handleTabKeyDown(event: KeyboardEvent, sessionId: string): void {
   requestSelection(entries[nextIndex].id, true);
 }
 
+function startRename(sessionId: string): void {
+  const entry = sessions.get(sessionId);
+  if (entry === undefined) {
+    return;
+  }
+
+  dismissTabMenu();
+  entry.tabRenameInput.value = entry.name;
+  entry.tabButton.hidden = true;
+  entry.tabRenameInput.hidden = false;
+  entry.tabRenameInput.focus();
+  entry.tabRenameInput.select();
+}
+
+function finishRename(sessionId: string, commit: boolean): void {
+  const entry = sessions.get(sessionId);
+  if (entry === undefined || entry.tabRenameInput.hidden === true) {
+    return;
+  }
+
+  const name = entry.tabRenameInput.value;
+  entry.tabRenameInput.hidden = true;
+  entry.tabButton.hidden = false;
+  if (commit === true) {
+    postSession("rename-session", sessionId, { name });
+  }
+  entry.tabButton.focus();
+}
+
+function showTabMenu(event: MouseEvent, sessionId: string): void {
+  event.preventDefault();
+  showTabMenuAt({ left: event.clientX, bottom: event.clientY }, sessionId);
+}
+
+function showTabMenuAt(anchor: Pick<DOMRect, "left" | "bottom">, sessionId: string): void {
+  dismissTabMenu();
+  const entry = sessions.get(sessionId);
+  const index = orderedSessions().findIndex((item) => item.id === sessionId);
+  if (entry === undefined || index < 0) {
+    return;
+  }
+
+  const menu = document.createElement("div");
+  menu.className = "tab-context-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", `${entry.name} 탭 메뉴`);
+  menu.style.left = `${anchor.left}px`;
+  menu.style.top = `${anchor.bottom}px`;
+  const addItem = (label: string, action: () => void, disabled = false): void => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "menuitem");
+    button.textContent = label;
+    button.disabled = disabled;
+    button.addEventListener("click", () => {
+      dismissTabMenu();
+      action();
+    });
+    menu.append(button);
+  };
+
+  addItem("이름 변경", () => startRename(sessionId));
+  addItem("왼쪽으로 이동", () => postSession("move-session", sessionId, { direction: "left" }), index === 0);
+  addItem("오른쪽으로 이동", () => postSession("move-session", sessionId, { direction: "right" }), index === orderedSessions().length - 1);
+  document.body.append(menu);
+  contextMenu = menu;
+  menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+}
+
+function dismissTabMenu(): void {
+  if (contextMenu === undefined) {
+    return;
+  }
+
+  contextMenu.remove();
+  contextMenu = undefined;
+}
+
 function renderTab(entry: SessionEntry): void {
   const label = stateLabel(entry);
   const isActive = entry.id === activeSessionId;
@@ -552,6 +672,7 @@ function renderTab(entry: SessionEntry): void {
     (entry.state === "starting" || entry.state === "restarting").toString(),
   );
   entry.tabButton.tabIndex = isActive ? 0 : -1;
+  entry.tabButton.title = entry.name;
   entry.tabLabel.textContent = entry.name;
   entry.closeButton.setAttribute("aria-label", `${entry.name} 탭 닫기`);
   entry.restartButton.setAttribute("aria-label", `${entry.name} shell 다시 시작`);
@@ -664,6 +785,9 @@ function removeSession(sessionId: string): void {
   }
 
   sessions.delete(sessionId);
+  if (contextMenu?.getAttribute("aria-label") === `${entry.name} 탭 메뉴`) {
+    dismissTabMenu();
+  }
   entry.terminal.dispose();
   entry.pane.remove();
   entry.tabItem.remove();
@@ -901,6 +1025,17 @@ reducedMotion.addEventListener("change", (event) => {
 });
 
 document.addEventListener("keydown", handleApplicationShortcut, true);
+document.addEventListener("pointerdown", (event) => {
+  if (contextMenu !== undefined && contextMenu.contains(event.target as Node) === false) {
+    dismissTabMenu();
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && contextMenu !== undefined) {
+    event.preventDefault();
+    dismissTabMenu();
+  }
+});
 window.chrome?.webview?.addEventListener("message", (event) => {
   handleHostMessage(event.data);
 });

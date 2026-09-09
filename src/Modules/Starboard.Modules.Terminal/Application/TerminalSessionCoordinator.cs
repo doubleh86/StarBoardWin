@@ -146,6 +146,21 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         return SelectCore(tabRegistry.SelectPrevious);
     }
 
+    internal bool Rename(TerminalSessionId sessionId, string? name)
+    {
+        return UpdateWorkspace(() => tabRegistry.Rename(sessionId, name));
+    }
+
+    internal bool MoveLeft(TerminalSessionId sessionId)
+    {
+        return UpdateWorkspace(() => tabRegistry.MoveLeft(sessionId));
+    }
+
+    internal bool MoveRight(TerminalSessionId sessionId)
+    {
+        return UpdateWorkspace(() => tabRegistry.MoveRight(sessionId));
+    }
+
     internal void UpdateDefaultShell(ShellLaunchSpec shell)
     {
         ArgumentNullException.ThrowIfNull(shell);
@@ -535,6 +550,24 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         WorkspaceChanged?.Invoke(snapshot);
         ResizeEntry(selectedSession, currentColumns, currentRows);
 
+        return true;
+    }
+
+    private bool UpdateWorkspace(Func<bool> update)
+    {
+        TerminalWorkspaceSnapshot snapshot;
+        lock (stateLock)
+        {
+            ThrowIfUnavailable();
+            if (update() == false)
+            {
+                return false;
+            }
+
+            snapshot = tabRegistry.CreateSnapshot();
+        }
+
+        WorkspaceChanged?.Invoke(snapshot);
         return true;
     }
 

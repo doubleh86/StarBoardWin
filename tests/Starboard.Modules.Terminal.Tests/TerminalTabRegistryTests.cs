@@ -116,6 +116,65 @@ public sealed class TerminalTabRegistryTests
         Assert.AreNotEqual(tab.SessionId.ToString(), tab.ConfigurationId.ToString());
     }
 
+    [TestMethod]
+    public void RenameTrimsValidKoreanNameAndPreservesSessionIdentity()
+    {
+        var registry = CreateRegistry(2);
+        var tab = registry.Add();
+
+        var renamed = registry.Rename(tab.SessionId, "  서버 운영  ");
+
+        Assert.IsTrue(renamed);
+        Assert.AreEqual(tab.SessionId, registry.CreateSnapshot().Tabs[0].SessionId);
+        Assert.AreEqual("서버 운영", registry.CreateSnapshot().Tabs[0].Name);
+    }
+
+    [TestMethod]
+    [DataRow("   ")]
+    [DataRow("first\nsecond")]
+    [DataRow("first\u0001second")]
+    public void RenameWithEmptyOrControlNameRejectsAndKeepsExistingName(string name)
+    {
+        var registry = CreateRegistry(2);
+        var tab = registry.Add();
+
+        var renamed = registry.Rename(tab.SessionId, name);
+
+        Assert.IsFalse(renamed);
+        Assert.AreEqual("PowerShell 1", registry.CreateSnapshot().Tabs[0].Name);
+    }
+
+    [TestMethod]
+    public void RenameWithMoreThanThirtyTwoTextElementsRejectsName()
+    {
+        var registry = CreateRegistry(2);
+        var tab = registry.Add();
+
+        var renamed = registry.Rename(tab.SessionId, new string('가', 33));
+
+        Assert.IsFalse(renamed);
+        Assert.AreEqual("PowerShell 1", registry.CreateSnapshot().Tabs[0].Name);
+    }
+
+    [TestMethod]
+    public void MoveLeftAndRightReordersTabsWhileKeepingActiveSessionIdentifier()
+    {
+        var registry = CreateRegistry(3);
+        var first = registry.Add();
+        var second = registry.Add();
+        var third = registry.Add();
+        Assert.IsTrue(registry.Select(second.SessionId));
+
+        Assert.IsTrue(registry.MoveRight(second.SessionId));
+        Assert.IsFalse(registry.MoveRight(second.SessionId));
+        Assert.IsTrue(registry.MoveLeft(second.SessionId));
+
+        var snapshot = registry.CreateSnapshot();
+        CollectionAssert.AreEqual(new[] { first.SessionId, second.SessionId, third.SessionId },
+                                  snapshot.Tabs.Select(tab => tab.SessionId).ToArray());
+        Assert.AreEqual(second.SessionId, snapshot.ActiveSessionId);
+    }
+
     private static TerminalTabRegistry CreateRegistry(int identifierCount)
     {
         var identifiers = new Queue<TerminalSessionId>(Enumerable.Range(1, identifierCount)

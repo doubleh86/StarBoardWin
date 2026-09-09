@@ -27,6 +27,10 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(script, "select-session");
         StringAssert.Contains(script, "close-session");
         StringAssert.Contains(script, "restart-session");
+        StringAssert.Contains(script, "rename-session");
+        StringAssert.Contains(script, "move-session");
+        StringAssert.Contains(script, "compositionstart");
+        StringAssert.Contains(script, "\"F10\"");
         StringAssert.Contains(script, "apply-appearance");
         StringAssert.Contains(script, "terminal.options.fontFamily");
         StringAssert.Contains(script, "terminal.options.fontSize");
@@ -36,6 +40,7 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(script, "scrollback:1e4");
         StringAssert.Contains(styles, ".tab-list");
         StringAssert.Contains(styles, ".session-pane");
+        StringAssert.Contains(styles, ".tab-context-menu");
     }
 
     [TestMethod]
