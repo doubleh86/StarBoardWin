@@ -70,14 +70,13 @@ runtime session ID를 복원하지 않는다. TAB-UX-01과 PANEL-UX-02는 위 �
   `+`는 마지막 탭 바로 뒤의 독립 버튼으로 배치하고 간격으로 역할을 구분한다.
   활성 탭은 이름·닫기 영역을 하나의 배경으로 묶어 본문과 이어지게 한다.
   비활성 탭은 배경 명도로 구분하고 상단 모서리는 가볍게 둥글린다.
-- `×`의 닫기 기능과 기존 단축키는 유지한다. 탭이 넘치면 목록만 가로 스크롤하며
+  `×`의 닫기 기능과 기존 단축키는 유지한다. 탭이 넘치면 목록만 가로 스크롤하며
   `+`는 스크롤 영역 밖에 계속 표시한다. 최대 8개에서는 기존처럼 비활성화한다.
-  구현 시 1/3/8개 탭·좁은 폭에서 위치, 클릭 대상, 32px 높이를 검증하고, `+`가
-  새 탭만 만들며 기존 세션을 닫지 않는지 확인한다. 상세 근거는
-  [탭 UI 후속 계획](2026-09-03-renderer-and-tab-ui.md)을 따른다.
-  참고 이미지의 `∨` 셸 선택 메뉴는 별도 후보이며 이번 작업공간 범위에는 포함하지 않는다.
-  기본 셸 사용 정책, 4개 테마와 접근성·키보드 focus 표시는 유지한다.
-
+  후속 구현 시 W2-C에 해당하는 renderer 범위에서 1/3/8개 탭·좁은 폭의 위치, 클릭 대상,
+  32px 높이를 검증하고, 통합 검증에서 `+`가 새 탭만 만들며 기존 세션을 닫지 않는지 확인한다.
+  상세 근거는 [탭 UI 후속 계획](2026-09-03-renderer-and-tab-ui.md)을 따른다. 이번에는 구현하지 않았다.
+  참고 이미지의 `∨` 셸 선택 메뉴는 후속 후보이며 이번 범위에는 포함하지 않는다.
+  `+`의 기본 셸 사용 정책, 4개 테마와 접근성·키보드 focus 표시는 유지한다.
 - 탭의 우클릭 메뉴에 `이름 변경`, `왼쪽으로 이동`, `오른쪽으로 이동`,
   `시작 폴더 설정`을 제공한다. 키보드 사용자는 탭에 focus를 둔 상태에서
   `Shift+F10`으로 같은 메뉴를 연다. terminal 본문의 shell 입력과 구분한다.
@@ -136,7 +135,9 @@ runtime session ID를 복원하지 않는다. TAB-UX-01과 PANEL-UX-02는 위 �
   ConPTY rows를 계산하며, 글자·커서를 가리는 방식으로 여백을 만들지 않는다.
 - 하단 작업표시줄의 축소 상태만 변경한다. 확장·상단·좌우 배치와 auto-hide의
   안전 경계, 작업 영역 비예약·focus·세션 유지 정책은 보존한다. 드래그 자석 기능은 제외한다.
-  UI 세부 기준은 [탭·패널 UI 계획](2026-09-03-renderer-and-tab-ui.md)을 따른다.
+- 후속 구현에서는 먼저 상태 전달·DPI 변환을 확정하고, renderer의 내부 여백과
+  DesktopIntegration의 외부 geometry를 분리해 구현한 뒤 함께 연결한다. UI 세부 기준은
+  [탭·패널 UI 계획](2026-09-03-renderer-and-tab-ui.md)을 따른다. 이번에는 기획만 반영했다.
 
 ## 저장과 실패 정책
 
@@ -173,29 +174,16 @@ runtime session ID를 복원하지 않는다. TAB-UX-01과 PANEL-UX-02는 위 �
 | 검증·문서 | Terminal/Preferences/Integration/Architecture tests, `README.md`, `docs/test-plan.md`, `docs/architecture.md`, package 검증 | 회귀·개인정보·배포 검증 |
 
 모듈 경로는 `src/Modules/Starboard.Modules.<이름>/` 기준이다. Terminal 전용 구성 DTO를
-SharedKernel이나 Preferences로 이동하지 않는다. DesktopIntegration geometry·focus 정책은
-수정하지 않으며 기본 높이 200 DIP와 하단 간격 6 DIP를 보존한다.
+SharedKernel이나 Preferences로 이동하지 않는다. 기본 높이 200 DIP와 focus 정책은
+보존한다. PANEL-UX-02에 한해 DesktopIntegration의
+`Domain/PanelGeometryCalculator.cs`와 관련 geometry/settings/window tests를 변경하며,
+현재 외부 6 DIP 간격 보존 조건을 외부 간격 0·terminal 내부 여백으로 대체한다.
 
-## 구현 단계와 인수 기준
+## 병렬 구현 계획과 인수 기준
 
-아래 단계는 후속 구현 또는 오케스트레이터 전달용 분해다. 이번 문서 작성은 실행 승인이 아니다.
-
-| ID | 선행 | 산출물·완료 판단 |
-|---|---|---|
-| W0 기준선 | 없음 | 실제 작업 트리 확인, 기존 탭/입력/focus smoke, 미수행 수동 항목 기록 |
-| W1 계약 | W0 | 구성 schema, session/config ID 구분, protocol, 옵션 전환·오류 결과·종료 순서 확정 |
-| W2 탭 정리 | W1 | 이름·이동 UI와 상태 변경, 기존 PID·입력·scrollback 보존 |
-| W3 시작 폴더 | W2 | 명시적 폴더 설정, 안전한 process 전달, 삭제·접근 실패 복구 |
-| W4 저장·복원 | W3 | 원자적 저장, 새 session 복원, 손상/미래 schema/부분 실행 실패 검증 |
-| W5 설정 통합 | W4 | 기본 꺼짐, 켜기·취소·끄기·삭제 실패 처리, 기존 apply 회귀 없음 |
-| W6 최종 검증 | W5 | 전체 build/test, renderer dist, package 개인정보 검사와 수동 결과 인수인계 |
-
-기본 실행 순서는 직렬이다. 아래 병렬화 기획은 당시의 파일 소유권과 통합 기준을
-보존한다. 실제 실행은 W1~W6의 직렬 의존성으로 완료했으며, 병렬 작업을 재개한다면
-공통 계약을 먼저 통합하고 host·공용 문서·renderer source/dist는 각각 담당자 한 명이
-소유한다. branch/commit/push와 바탕화면 재배포는 해당 실행 요청의 승인 범위를 별도로 따른다.
-
-### 병렬화 기획 보존 기록
+아래 단계는 후속 구현 또는 오케스트레이터 전달용 분해다. 이번 요청에서는 병렬 실행이
+가능하도록 기획만 수정한다. 실제 구현·worker 실행·branch 생성·배포는 시작하지 않는다.
+기존 직렬 W2~W6는 착수 전이므로 아래 작업 ID와 의존성으로 대체한다.
 
 ```text
 W0 기준선 → W1 공통 계약 확정
@@ -206,19 +194,78 @@ W0 기준선 → W1 공통 계약 확정
                 └─ W2-E 패널 밀착 geometry ┘
 ```
 
-W2-A~E는 W1에서 합의한 계약과 테스트 대역으로 독립 구현하고, 실제 module 연결과
-end-to-end 검증은 모든 결과를 받은 뒤 수행한다. 이 분해에서 W2-A는 Terminal 탭·시작
-폴더 로직, W2-B는 Terminal 구성 저장소, W2-C는 renderer와 TAB-UX-01/PANEL-UX-02,
-W2-D는 Preferences editor, W2-E는 DesktopIntegration geometry를 각각 소유한다.
-W3는 `TerminalModule`, view/host composition, integration·architecture tests 및 공용
-문서를 통합하고, W4는 package·renderer·전체 검증과 수동 결과 인수인계를 소유한다.
+기본 실행 순서는 직렬이다. 아래 병렬화 기획은 당시의 파일 소유권과 통합 기준을
+보존한다. 실제 실행은 W1~W6의 직렬 의존성으로 완료했으며, 병렬 작업을 재개한다면
+공통 계약을 먼저 통합하고 host·공용 문서·renderer source/dist는 각각 담당자 한 명이
+소유한다. branch/commit/push와 바탕화면 재배포는 해당 실행 요청의 승인 범위를 별도로 따른다.
 
-공통 계약은 구성 ID와 session ID 분리, 저장소 read/save/delete/flush 결과, C#/TS protocol,
-Preferences 옵션 전환 및 PANEL-UX-02의 DPI·fit 전달 순서를 확정한 뒤 동결한다. 변경이
-필요하면 통합 담당이 계획·계약을 갱신하고 영향을 받는 작업을 같은 기준으로 맞춘다.
-worker는 자신의 코드와 직접 테스트를 함께 완결하며, 공용 fixture·host·공용 문서 변경은
-통합 담당에게 인계한다. 실제 UI·입력·focus 회귀는 최종 배포 검증으로 넘기지 않고,
-장비 제약 때문에 남은 항목은 근거와 절차를 기록해 완료와 구분한다.
+W2-A~E 사이에는 선행 의존성을 두지 않는다. W1에서 합의한 계약과 테스트 대역으로
+각자 구현하며, 실제 module 연결과 end-to-end 검증은 다섯 결과가 모두 준비된 뒤 W3에서 한다.
+실행 환경의 worker 한도를 넘기지 않는다. 예를 들어 통합 담당 1명과 worker 3명까지
+가능하면 A/B/C를 먼저 시작하고 빈 자리가 생기는 대로 D/E를 시작한다.
+
+### 작업별 소유권과 완료 조건
+
+아래 경로는 앞 절의 module 경로를 기준으로 한다. W1에서 신규 파일의 실제 이름과
+공유 테스트 fixture 담당까지 확정해 기록한다. 폴더가 같아도 같은 파일의 동시 편집은 금지한다.
+
+| ID | 선행 | 독점 쓰기 범위 | 산출물·통과 기준 |
+|---|---|---|---|
+| W0 기준선 | 없음 | 통합 담당: 이 기획서·검증 기록 | 최신 HEAD/dirty 상태, 기존 탭·입력·focus 기준선과 미수행 환경 기록 |
+| W1 공통 계약 | W0 | 통합 담당: Terminal 계약·구성 schema·저장소 경계, C#/TS protocol, Preferences 옵션 선언, 공통 fixture·architecture 허용 목록 | 아래 계약 gate 통과, build 가능한 공통 기준 확정 |
+| W2-A 탭·시작 폴더 로직 | W1 | Terminal의 기존 `TerminalTab*`, `TerminalSessionCoordinator.cs`, `ShellResolver.cs`와 해당 로직 tests; W1의 확정 타입 제외 | 이름·순서·시작 폴더 변경과 새 세션 복원 로직; 저장소 대역으로 부분 실패·PID 보존 검증 |
+| W2-B 구성 저장소 | W1 | Terminal 신규 구성 저장소 구현·저장 큐 파일과 전용 tests; coordinator·기존 ConPTY 파일 제외 | 원자적 저장, debounce·flush·삭제, 손상/미래 schema/쓰기 실패 검증; 실제 사용자 파일은 사용하지 않음 |
+| W2-C 탭·패널 화면 | W1 | Terminal `Presentation/Renderer/src/` 및 `dist/`, renderer 전용 검증 파일 | 이름·순서·폴더 편집, TAB-UX-01 버튼 배치, PANEL-UX-02 내부 여백·fit, protocol fixture 검증과 source/dist 일치; 실제 셸 연결은 W3에 인계 |
+| W2-D 설정 편집 | W1 | Preferences validation·migration·editor 구현과 해당 tests; 확정 계약 선언 제외 | 기본 꺼짐, 이전 설정 migration, 편집·취소 및 저장/삭제 결과 표시를 callback 대역으로 검증 |
+| W2-E 패널 밀착 geometry | W1 | DesktopIntegration `Domain/PanelGeometryCalculator.cs`, 두 geometry test 파일과 `DesktopSettingsApplyTests.cs`; host/integration tests 제외 | 축소 하단 외부 간격 0, DPI·공간 부족·확장/복원 회귀 검증; 내부 여백과의 실제 연결은 W3에 인계 |
+| W3 통합·복원 연결 | W2-A, W2-B, W2-C, W2-D, W2-E | 통합 담당: `TerminalModule.cs`, `TerminalView.xaml.cs`, 필요한 Desktop module 연결, host composition, integration/architecture tests, 공용 문서 | 저장소·coordinator·renderer와 패널 상태 연결, 시작·옵션 전환·종료 순서, 세션 복원·실패 경로·외부 밀착/내부 여백 통합 |
+| W4 최종 검증 | W3 | 통합 담당: package 검증, 공용 문서와 필요한 회귀 수정 | 전체 build/test, renderer/package 검사, 실제 UI 결과와 미수행 항목 인수인계 |
+
+### W1 계약 gate
+
+worker가 서로의 미완성 구현을 기다리지 않도록 다음을 먼저 확정한다.
+
+- 저장 schema와 불변 snapshot: 구성 ID/session ID 구분, 순서·이름·폴더·셸·선택 필드,
+  validation 규칙과 오류 코드. 파일 DTO는 Terminal 내부에 유지한다.
+- 탭 이름·이동·폴더 변경·복원 요청과 결과: 새 API의 signature, 취소·실패·중복 요청 정책,
+  기존 session 유지 조건. runtime 상태 변경과 저장 대상 구성 변경 event를 구분한다.
+- 저장소 경계: 읽기·저장·삭제·flush 결과, 미래 schema·백업 복구·부분 삭제 실패 의미,
+  debounce 및 종료 cancellation 소유자. W2-A가 사용할 대역을 준비한다.
+- C#/TS protocol: message type, target ID, payload, success/error 응답과 버전 처리.
+  W2-C가 backend 없이 실행할 요청/응답 fixture와 host 연결 인수 항목을 제공한다.
+- Preferences 복원 옵션의 schema/default, host의 옵션 적용 결과 계약,
+  일반 설정 성공과 구성 저장·삭제 실패의 구분, 재시도 순서.
+- PANEL-UX-02의 하단/축소 표시 상태와 내부 여백 전달: 기존 계약으로 가능한지 먼저
+  확인하고 필요한 최소 계약만 확장한다. host가 조정하며 module끼리 직접 참조하지 않는다.
+  WPF DIP와 renderer CSS pixel 변환·fit 적용 순서를 확정해 C/E가 독립 검증할 수 있게 한다.
+- 공통 타입·fixture는 모든 worker가 build할 수 있는 상태로 통합한다. 아직 없는 구현을
+  호출해 build를 깨뜨리거나, 가짜 성공을 반환하는 runtime placeholder를 만들지 않는다.
+
+gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 worker는 직접 고치지 않고
+통합 담당에게 이유·영향을 전달한다. 통합 담당이 계획과 계약을 갱신·검증한 뒤 영향을
+받는 worker를 같은 새 기준으로 맞춘다. 계약 변경에 의존하지 않는 작업은 계속할 수 있다.
+
+### 실행·통합 규칙
+
+- 구현 실행 범위에서 허용된 branch/worktree만 사용한다. 모든 W2 작업은 W1이 통합된
+  동일 기준 커밋에서 출발하고, 각자 격리된 checkout과 build 출력 경로를 사용한다.
+  기존 dirty 변경을 stash/reset하거나 worker 전제로 암묵적으로 가져오지 않는다.
+- worker는 자기 코드와 직접 tests를 함께 완결한다. host, 공용 문서, project 설정,
+  공통 fixture 변경은 통합 담당에게 요청한다. 병렬화를 위해 새 production module이나
+  불필요한 public API를 만들지 않는다.
+- renderer source와 dist는 W2-C 한 명이 함께 소유한다. 같은 checkout에서 npm build와
+  asset 편집을 동시에 실행하지 않는다. 공유 package staging의 동시 실행도 금지한다.
+- 각 worker는 작업 ID, 기준 커밋, 변경 파일, 계약 변경 여부, 검증 명령·결과,
+  미수행 항목과 W3 연결 지점을 인계한다. mock 통과를 실제 UI 통과로 보고하지 않는다.
+- W3에서는 결과를 A → B → C → D → E 순으로 적용하고 단계별 관련 build/test를 확인한다.
+  이 순서는 통합 순서이며 W2 실행 의존성은 아니다. 충돌은 통합 담당이 의미를 확인해
+  해결한다. worker 종료만으로 gate를 통과시키지 않는다.
+- W3 중 재작업을 위임하면 수정 대상 파일 소유권을 일시적으로 돌려주고 해당 파일의
+  통합 편집을 멈춘다. 다시 인수한 후 전체 연결 검증을 계속한다.
+- 핵심 입력·focus·기존 세션 유지 회귀가 있으면 W4 배포 검증으로 넘기지 않는다.
+  실제 장비가 없어 남은 시나리오는 근거와 절차를 기록하고 release 완료와 구분한다.
+- 원격 push, main 반영, 바탕화면 앱 교체·종료는 병렬화 계획만으로 승인되지 않는다.
+  해당 실행 요청의 권한 범위를 따른다.
 
 ## 검증 방법
 
@@ -232,7 +279,7 @@ worker는 자신의 코드와 직접 테스트를 함께 완결하며, 공용 fi
   IME Enter/Escape, 우클릭/Shift+F10, tab overflow와 screen reader 접근성 이름 확인.
 - 복원 수동: 복원을 켠 뒤 정상 종료·재실행 → 이름·순서·폴더·선택 확인 → 이전 명령이
   자동으로 실행되지 않음 확인 → 옵션 끄기 후 기본 탭 하나와 저장 구성 삭제 확인.
-- 회귀: 호출/숨김·확장/축소·6 DIP 하단 간격, 100/125/150/200% geometry,
+- 회귀: 호출/숨김·확장/축소·하단 외부 간격 0과 내부 여백, 100/125/150/200% geometry,
   shell/renderer failure, settings 저장/rollback. 실제 장비 항목은 자동 검사와 구분한다.
 - `AGENTS.md`의 solution restore/build/test와 renderer 변경 시 `npm ci`, `npm run build`를
   수행한다. package에 workspace 파일·백업·임시 파일이 들어가면 검증을 실패시킨다.
@@ -242,7 +289,8 @@ worker는 자신의 코드와 직접 테스트를 함께 완결하며, 공용 fi
 
 ## 제외 범위와 위험
 
-- Git worktree 생성·삭제·branch checkout은 하지 않는다. 여기서 작업공간은 탭 구성이다.
+- 제품 기능으로 Git worktree 생성·삭제·branch checkout을 제공하지 않는다.
+  여기서 작업공간은 탭 구성이다. 개발용 격리 worktree는 위 실행 규칙과 별개다.
 - 여러 개의 저장 workspace preset, 분할 화면, 탭 드래그, 명령 launcher는 제외한다.
 - 현재 경로 자동 추적, shell integration script/OSC 경로 수집, 프로세스 재연결은 제외한다.
 - always-on-top, 전역 단축키 추가, 온라인 동기화·자동 업데이트, 새 renderer는 제외한다.
@@ -254,6 +302,12 @@ worker는 자신의 코드와 직접 테스트를 함께 완결하며, 공용 fi
 ## 진행 기록과 인수인계
 
 - [x] 2026-09-09: 기존 후속 후보와 실제 코드 경계를 확인하고 기획 초안 작성.
+- [x] 2026-09-09: 병렬 가능한 기획 요청에 따라 W1 계약 선행, W2-A~D 독립 작업,
+  W3 직렬 통합·W4 최종 검증으로 재구성. 파일 소유권과 계약 변경·인수인계 규칙 추가.
+- [x] 2026-09-09: TAB-UX-01 새 탭 버튼 위치 개선을 W2-C 요구사항으로 추가.
+  사용자 요청에 따라 기획만 유지하고 시도한 제품 코드 변경은 원복했다.
+- [x] 2026-09-09: PANEL-UX-02 외부 밀착·내부 여백을 추가하고 기존 외부 6 DIP
+  보존 조건을 후속안으로 제안. 이후 W1~W6 구현 범위와 분리된 미구현 후보로 유지했다.
 - [ ] W0 기준선: 기존 수동 입력·focus 및 실제 hardware 항목은 자동 검증으로 대체하지
   않았으며, MAN-041~043과 기존 수동 matrix에서 `Not run`으로 남긴다.
 - [x] W1 계약: Terminal 공개 구성은 configuration ID, 이름, 순서, 시작 폴더와 제한된 shell kind만
