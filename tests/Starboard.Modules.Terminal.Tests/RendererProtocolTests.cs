@@ -7,8 +7,7 @@ namespace Starboard.Modules.Terminal.Tests;
 [TestClass]
 public sealed class RendererProtocolTests
 {
-    private static readonly TerminalSessionId SessionId = new(
-        Guid.Parse("10000000-0000-0000-0000-000000000001"));
+    private static readonly TerminalSessionId SessionId = new(Guid.Parse("10000000-0000-0000-0000-000000000001"));
 
     [TestMethod]
     public void TryParseWithValidResizeReturnsDimensions()
@@ -44,14 +43,13 @@ public sealed class RendererProtocolTests
     public void TryParseWithOversizedInputRejectsMessage()
     {
         var data = new string('x', RendererProtocol.MaximumMessageLength + 1);
-        var json = JsonSerializer.Serialize(
-            new
-            {
-                version = RendererProtocol.CurrentVersion,
-                sessionId = SessionId.ToString(),
-                type = "input",
-                payload = new { data },
-            });
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = RendererProtocol.CurrentVersion,
+                                                sessionId = SessionId.ToString(),
+                                                type = "input",
+                                                payload = new { data },
+                                            });
 
         var parsed = RendererProtocol.TryParse(json, out var message);
 
@@ -75,18 +73,15 @@ public sealed class RendererProtocolTests
     [TestMethod]
     [DataRow("input", "Input")]
     [DataRow("copy", "Copy")]
-    public void TryParseDataMessageReturnsTargetSessionAndData(
-        string type,
-        string expectedType)
+    public void TryParseDataMessageReturnsTargetSessionAndData(string type, string expectedType)
     {
-        var json = JsonSerializer.Serialize(
-            new
-            {
-                version = 2,
-                type,
-                sessionId = SessionId.ToString(),
-                payload = new { data = "한글 input" },
-            });
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = 2,
+                                                type,
+                                                sessionId = SessionId.ToString(),
+                                                payload = new { data = "한글 input" },
+                                            });
 
         var parsed = RendererProtocol.TryParse(json, out var message);
 
@@ -106,9 +101,7 @@ public sealed class RendererProtocolTests
     [DataRow("close-session", "{}")]
     [DataRow("restart-session", "{}")]
     [DataRow("session-error", "{}")]
-    public void TryParseSessionMessageWithoutIdentifierRejectsMessage(
-        string type,
-        string payload)
+    public void TryParseSessionMessageWithoutIdentifierRejectsMessage(string type, string payload)
     {
         var json = $"{{\"version\":2,\"type\":\"{type}\",\"payload\":{payload}}}";
 
@@ -125,14 +118,13 @@ public sealed class RendererProtocolTests
     [DataRow("10000000-0000-0000-0000-000000000001")]
     public void TryParseSessionMessageWithInvalidIdentifierRejectsMessage(string sessionId)
     {
-        var json = JsonSerializer.Serialize(
-            new
-            {
-                version = 2,
-                type = "paste-request",
-                sessionId,
-                payload = new { },
-            });
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = 2,
+                                                type = "paste-request",
+                                                sessionId,
+                                                payload = new { },
+                                            });
 
         var parsed = RendererProtocol.TryParse(json, out var message);
 
@@ -159,18 +151,15 @@ public sealed class RendererProtocolTests
     [DataRow("close-session", "CloseSession")]
     [DataRow("restart-session", "RestartSession")]
     [DataRow("session-error", "SessionError")]
-    public void TryParseSessionCommandReturnsItsIdentifier(
-        string type,
-        string expectedType)
+    public void TryParseSessionCommandReturnsItsIdentifier(string type, string expectedType)
     {
-        var json = JsonSerializer.Serialize(
-            new
-            {
-                version = 2,
-                type,
-                sessionId = SessionId.ToString(),
-                payload = new { },
-            });
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = 2,
+                                                type,
+                                                sessionId = SessionId.ToString(),
+                                                payload = new { },
+                                            });
 
         var parsed = RendererProtocol.TryParse(json, out var message);
 
@@ -196,10 +185,7 @@ public sealed class RendererProtocolTests
     [TestMethod]
     public void SerializeSessionMessageIncludesProtocolVersionAndIdentifier()
     {
-        var json = RendererProtocol.SerializeSessionMessage(
-            "output",
-            SessionId,
-            new { data = "hello" });
+        var json = RendererProtocol.SerializeSessionMessage("output", SessionId, new { data = "hello" });
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
 
@@ -223,50 +209,32 @@ public sealed class RendererProtocolTests
     [TestMethod]
     public void SerializeAppearanceMessageUsesGlobalScope()
     {
-        var json = RendererProtocol.SerializeGlobalMessage(
-            "apply-appearance",
-            new { fontFamily = "Cascadia Mono", fontSize = 15 });
+        var json = RendererProtocol.SerializeGlobalMessage("apply-appearance",
+                                                           new { fontFamily = "Cascadia Mono", fontSize = 15 });
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
 
         Assert.AreEqual("apply-appearance", root.GetProperty("type").GetString());
         Assert.IsFalse(root.TryGetProperty("sessionId", out _));
-        Assert.AreEqual(
-            "Cascadia Mono",
-            root.GetProperty("payload").GetProperty("fontFamily").GetString());
+        Assert.AreEqual("Cascadia Mono", root.GetProperty("payload").GetProperty("fontFamily").GetString());
     }
 
     [TestMethod]
     public void SerializeSessionMessageWithEmptyIdentifierThrows()
     {
-        Assert.ThrowsExactly<ArgumentException>(
-            () => RendererProtocol.SerializeSessionMessage(
-                "output",
-                default,
-                new { data = "hello" }));
+        Assert.ThrowsExactly<ArgumentException>(() => RendererProtocol.SerializeSessionMessage("output", default, new { data = "hello" }));
     }
 
     [TestMethod]
     public void SerializeGlobalMessageWithSessionTargetTypeThrows()
     {
-        Assert.ThrowsExactly<ArgumentException>(
-            () => RendererProtocol.SerializeGlobalMessage(
-                "output",
-                new { data = "hello" }));
+        Assert.ThrowsExactly<ArgumentException>(() => RendererProtocol.SerializeGlobalMessage("output", new { data = "hello" }));
     }
 
     [TestMethod]
     public void SerializeSessionMessageWithGlobalTypeThrows()
     {
-        Assert.ThrowsExactly<ArgumentException>(
-            () => RendererProtocol.SerializeSessionMessage(
-                "initialize",
-                SessionId,
-                new { }));
-        Assert.ThrowsExactly<ArgumentException>(
-            () => RendererProtocol.SerializeSessionMessage(
-                "apply-appearance",
-                SessionId,
-                new { }));
+        Assert.ThrowsExactly<ArgumentException>(() => RendererProtocol.SerializeSessionMessage("initialize", SessionId, new { }));
+        Assert.ThrowsExactly<ArgumentException>(() => RendererProtocol.SerializeSessionMessage("apply-appearance", SessionId, new { }));
     }
 }

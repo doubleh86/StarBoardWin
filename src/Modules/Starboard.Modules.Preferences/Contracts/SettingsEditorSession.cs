@@ -10,10 +10,7 @@ public sealed class SettingsEditorSession
 {
     private readonly Action cancel;
 
-    internal SettingsEditorSession(
-        FrameworkElement content,
-        Task<SettingsEditorOutcome> completion,
-        Action cancel)
+    internal SettingsEditorSession(FrameworkElement content, Task<SettingsEditorOutcome> completion, Action cancel)
     {
         Content = content;
         Completion = completion;

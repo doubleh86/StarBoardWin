@@ -43,20 +43,10 @@ public sealed class TerminalAppearanceStateTests
         Assert.AreSame(reconnectUpdate, reconnectDelivery);
     }
 
-    private static TerminalAppearanceSettings CreateAppearance(
-        string fontFamily,
-        double fontSize,
-        string canvas)
+    private static TerminalAppearanceSettings CreateAppearance(string fontFamily, double fontSize, string canvas)
     {
         var palette = Enumerable.Repeat("#808080", 16).ToArray();
-        var theme = new TerminalTheme(
-            canvas,
-            "#eeeeee",
-            "#999999",
-            "#00aaff",
-            "#eeeeee",
-            "#444444",
-            palette);
+        var theme = new TerminalTheme(canvas, "#eeeeee", "#999999", "#00aaff", "#eeeeee", "#444444", palette);
 
         return new TerminalAppearanceSettings(fontFamily, fontSize, theme);
     }

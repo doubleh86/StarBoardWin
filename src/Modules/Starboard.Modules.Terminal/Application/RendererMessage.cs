@@ -19,9 +19,5 @@ internal enum RendererMessageType
     RendererError,
 }
 
-internal sealed record RendererMessage(
-    RendererMessageType Type,
-    TerminalSessionId? SessionId = null,
-    string? Data = null,
-    int Columns = 0,
-    int Rows = 0);
+internal sealed record RendererMessage(RendererMessageType Type, TerminalSessionId? SessionId = null,
+                                       string? Data = null, int Columns = 0, int Rows = 0);

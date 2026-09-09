@@ -7,6 +7,4 @@ namespace Starboard.Modules.DesktopIntegration.Contracts;
 /// Replacement must either preserve the previous registrations or report their restored or
 /// incomplete effective state through DesktopSettingsApplyResult.
 /// </remarks>
-public sealed record HotkeySettings(
-    string ExpandShortcut,
-    string ActivationShortcut);
+public sealed record HotkeySettings(string ExpandShortcut, string ActivationShortcut);

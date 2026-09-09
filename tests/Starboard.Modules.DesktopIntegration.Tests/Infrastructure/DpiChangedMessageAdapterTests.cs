@@ -16,21 +16,15 @@ public sealed class DpiChangedMessageAdapterTests
 
         try
         {
-            Marshal.StructureToPtr(
-                new NativeRect
-                {
-                    Left = -1600,
-                    Top = 100,
-                    Right = 0,
-                    Bottom = 1000,
-                },
-                rectanglePointer,
-                false);
-            var message = new WindowMessage(
-                new nint(51),
-                0x02e0,
-                (nuint)((192u << 16) | 120u),
-                rectanglePointer);
+            Marshal.StructureToPtr(new NativeRect
+                                   {
+                                       Left = -1600,
+                                       Top = 100,
+                                       Right = 0,
+                                       Bottom = 1000,
+                                   },
+                                   rectanglePointer, false);
+            var message = new WindowMessage(new nint(51), 0x02e0, (nuint)((192u << 16) | 120u), rectanglePointer);
 
             result = DpiChangedMessageAdapter.Capture(message);
         }

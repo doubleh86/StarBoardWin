@@ -1,11 +1,8 @@
 namespace Starboard.Modules.DesktopIntegration.Contracts;
 
-public sealed record DesktopSettings(
-    double CollapsedHeightDip,
-    double Opacity,
-    PreferredMonitorBehavior PreferredMonitorBehavior,
-    HotkeySettings Hotkeys,
-    StartupSettings Startup);
+public sealed record DesktopSettings(double CollapsedHeightDip, double Opacity,
+                                     PreferredMonitorBehavior PreferredMonitorBehavior, HotkeySettings Hotkeys,
+                                     StartupSettings Startup);
 
 public enum PreferredMonitorBehavior
 {
@@ -15,12 +12,9 @@ public enum PreferredMonitorBehavior
 /// <summary>
 /// Reports the effective desktop snapshot after apply and any attempted rollback.
 /// </summary>
-public sealed record DesktopSettingsApplyResult(
-    DesktopSettings RequestedSettings,
-    DesktopSettings PreviousSettings,
-    DesktopSettings EffectiveSettings,
-    DesktopSettingsApplyStatus Status,
-    IReadOnlyList<DesktopSettingsOperationResult> Operations);
+public sealed record DesktopSettingsApplyResult(DesktopSettings RequestedSettings, DesktopSettings PreviousSettings,
+                                                DesktopSettings EffectiveSettings, DesktopSettingsApplyStatus Status,
+                                                IReadOnlyList<DesktopSettingsOperationResult> Operations);
 
 public enum DesktopSettingsApplyStatus
 {
@@ -30,10 +24,8 @@ public enum DesktopSettingsApplyStatus
     FailedAndRestoreIncomplete,
 }
 
-public sealed record DesktopSettingsOperationResult(
-    DesktopSettingsOperation Operation,
-    DesktopSettingsOperationStatus Status,
-    string? FailureMessage);
+public sealed record DesktopSettingsOperationResult(DesktopSettingsOperation Operation,
+                                                    DesktopSettingsOperationStatus Status, string? FailureMessage);
 
 public enum DesktopSettingsOperation
 {

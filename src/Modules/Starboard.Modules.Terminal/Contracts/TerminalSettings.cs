@@ -9,16 +9,11 @@ namespace Starboard.Modules.Terminal.Contracts;
 /// the shell captured when they were created, including when that tab is restarted.
 /// A null default selects the module's normal shell discovery order.
 /// </remarks>
-public sealed record TerminalSettings(
-    TerminalAppearanceSettings Appearance,
-    string? DefaultShellExecutable);
+public sealed record TerminalSettings(TerminalAppearanceSettings Appearance, string? DefaultShellExecutable);
 
-public sealed record TerminalSettingsApplyResult(
-    TerminalSettings RequestedSettings,
-    TerminalSettings PreviousSettings,
-    TerminalSettings EffectiveSettings,
-    TerminalSettingsApplyStatus Status,
-    string? FailureMessage);
+public sealed record TerminalSettingsApplyResult(TerminalSettings RequestedSettings, TerminalSettings PreviousSettings,
+                                                 TerminalSettings EffectiveSettings, TerminalSettingsApplyStatus Status,
+                                                 string? FailureMessage);
 
 public enum TerminalSettingsApplyStatus
 {

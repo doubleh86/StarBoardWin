@@ -51,15 +51,12 @@ public partial class MainWindow : Window
         windowSource = HwndSource.FromHwnd(helper.Handle)
             ?? throw new InvalidOperationException("The Starboard window source is unavailable.");
         windowSource.AddHook(WindowProcedure);
+
         return helper.Handle;
     }
 
-    private nint WindowProcedure(
-        nint windowHandle,
-        int message,
-        nint wordParameter,
-        nint longParameter,
-        ref bool handled)
+    private nint WindowProcedure(nint windowHandle, int message, nint wordParameter, nint longParameter,
+                                 ref bool handled)
     {
         var module = desktopIntegration;
         if (module is null)
@@ -67,11 +64,7 @@ public partial class MainWindow : Window
             return 0;
         }
 
-        var windowMessage = new WindowMessage(
-            windowHandle,
-            message,
-            unchecked((nuint)wordParameter),
-            longParameter);
+        var windowMessage = new WindowMessage(windowHandle, message, unchecked((nuint)wordParameter), longParameter);
         if (module.HandleWindowMessage(windowMessage) == true)
         {
             handled = true;
@@ -127,6 +120,7 @@ public partial class MainWindow : Window
 
         var brush = new SolidColorBrush(parsedColor);
         brush.Freeze();
+
         return brush;
     }
 }

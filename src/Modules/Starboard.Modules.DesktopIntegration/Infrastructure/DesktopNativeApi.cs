@@ -5,17 +5,10 @@ using Starboard.Modules.DesktopIntegration.Infrastructure.Interop;
 
 namespace Starboard.Modules.DesktopIntegration.Infrastructure;
 
-internal readonly record struct NativeMonitorSnapshot(
-    nint Handle,
-    PixelRect Bounds,
-    PixelRect WorkArea,
-    bool IsPrimary);
+internal readonly record struct NativeMonitorSnapshot(nint Handle, PixelRect Bounds, PixelRect WorkArea, bool IsPrimary);
 
-internal readonly record struct NativeTaskbarSnapshot(
-    TaskbarEdge Edge,
-    PixelRect Bounds,
-    bool IsAutoHideEnabled,
-    PixelRect? CurrentWindowBounds = null);
+internal readonly record struct NativeTaskbarSnapshot(TaskbarEdge Edge, PixelRect Bounds, bool IsAutoHideEnabled,
+                                                      PixelRect? CurrentWindowBounds = null);
 
 internal interface IDesktopNativeApi
 {
@@ -63,11 +56,10 @@ internal sealed class DesktopNativeApi : IDesktopNativeApi
                 return false;
             }
 
-            monitors.Add(new NativeMonitorSnapshot(
-                monitor,
-                ToPixelRect(monitorInfo.Monitor),
-                ToPixelRect(monitorInfo.WorkArea),
-                (monitorInfo.Flags & NativeMethods.MonitorInfoPrimary) != 0));
+            monitors.Add(new NativeMonitorSnapshot(monitor, ToPixelRect(monitorInfo.Monitor),
+                                                   ToPixelRect(monitorInfo.WorkArea),
+                                                   (monitorInfo.Flags & NativeMethods.MonitorInfoPrimary) != 0));
+
             return true;
         };
 
@@ -86,48 +78,35 @@ internal sealed class DesktopNativeApi : IDesktopNativeApi
             Size = Marshal.SizeOf<AppBarData>(),
         };
 
-        if (NativeMethods.SHAppBarMessage(
-            NativeMethods.AppBarGetTaskbarPosition,
-            ref positionData) == 0)
+        if (NativeMethods.SHAppBarMessage(NativeMethods.AppBarGetTaskbarPosition, ref positionData) == 0)
         {
-            throw new InvalidOperationException(
-                "Windows did not return the current system taskbar position.");
+            throw new InvalidOperationException("Windows did not return the current system taskbar position.");
         }
 
         var stateData = new AppBarData
         {
             Size = Marshal.SizeOf<AppBarData>(),
         };
-        var state = NativeMethods.SHAppBarMessage(
-            NativeMethods.AppBarGetState,
-            ref stateData);
+        var state = NativeMethods.SHAppBarMessage(NativeMethods.AppBarGetState, ref stateData);
         var isAutoHideEnabled = (state & NativeMethods.AppBarStateAutoHide) != 0;
         var currentWindowBounds = isAutoHideEnabled == true
             ? TryGetAutoHideTaskbarWindowBounds(positionData.Edge)
             : null;
 
-        return new NativeTaskbarSnapshot(
-            ToTaskbarEdge(positionData.Edge),
-            ToPixelRect(positionData.Rectangle),
-            isAutoHideEnabled,
-            currentWindowBounds);
+        return new NativeTaskbarSnapshot(ToTaskbarEdge(positionData.Edge), ToPixelRect(positionData.Rectangle),
+                                         isAutoHideEnabled, currentWindowBounds);
     }
 
     public nint GetMonitorForRectangle(PixelRect rectangle)
     {
         var nativeRectangle = ToNativeRect(rectangle);
-        return NativeMethods.MonitorFromRect(
-            in nativeRectangle,
-            NativeMethods.MonitorDefaultToNull);
+        return NativeMethods.MonitorFromRect(in nativeRectangle, NativeMethods.MonitorDefaultToNull);
     }
 
     public DisplayDpi GetMonitorDpi(nint monitorHandle)
     {
-        var result = NativeMethods.GetDpiForMonitor(
-            monitorHandle,
-            NativeMethods.DpiTypeEffective,
-            out var dpiX,
-            out var dpiY);
+        var result = NativeMethods.GetDpiForMonitor(monitorHandle, NativeMethods.DpiTypeEffective, out var dpiX,
+                                                    out var dpiY);
         if (result < 0)
         {
             Marshal.ThrowExceptionForHR(result);
@@ -163,11 +142,8 @@ internal sealed class DesktopNativeApi : IDesktopNativeApi
 
     public bool IsWindowCloaked(nint windowHandle)
     {
-        var result = NativeMethods.DwmGetWindowAttributeUInt32(
-            windowHandle,
-            NativeMethods.DwmWindowAttributeCloaked,
-            out var cloaked,
-            sizeof(uint));
+        var result = NativeMethods.DwmGetWindowAttributeUInt32(windowHandle, NativeMethods.DwmWindowAttributeCloaked,
+                                                               out var cloaked, sizeof(uint));
         if (result < 0)
         {
             Marshal.ThrowExceptionForHR(result);
@@ -178,11 +154,9 @@ internal sealed class DesktopNativeApi : IDesktopNativeApi
 
     public PixelRect GetWindowBounds(nint windowHandle)
     {
-        var result = NativeMethods.DwmGetWindowAttributeRectangle(
-            windowHandle,
-            NativeMethods.DwmWindowAttributeExtendedFrameBounds,
-            out var rectangle,
-            (uint)Marshal.SizeOf<NativeRect>());
+        var result = NativeMethods.DwmGetWindowAttributeRectangle(windowHandle,
+                                                                  NativeMethods.DwmWindowAttributeExtendedFrameBounds,
+                                                                  out var rectangle, (uint)Marshal.SizeOf<NativeRect>());
         if (result < 0)
         {
             Marshal.ThrowExceptionForHR(result);
@@ -193,9 +167,7 @@ internal sealed class DesktopNativeApi : IDesktopNativeApi
 
     public nint GetMonitorForWindow(nint windowHandle)
     {
-        return NativeMethods.MonitorFromWindow(
-            windowHandle,
-            NativeMethods.MonitorDefaultToNull);
+        return NativeMethods.MonitorFromWindow(windowHandle, NativeMethods.MonitorDefaultToNull);
     }
 
     private static TaskbarEdge ToTaskbarEdge(uint edge)
@@ -216,9 +188,8 @@ internal sealed class DesktopNativeApi : IDesktopNativeApi
             Size = Marshal.SizeOf<AppBarData>(),
             Edge = edge,
         };
-        var taskbarWindow = unchecked((nint)NativeMethods.SHAppBarMessage(
-            NativeMethods.AppBarGetAutoHideBar,
-            ref autoHideData));
+        var taskbarWindow = unchecked((nint)NativeMethods.SHAppBarMessage(NativeMethods.AppBarGetAutoHideBar,
+                                                                          ref autoHideData));
         if (taskbarWindow == 0)
         {
             return null;
@@ -234,11 +205,7 @@ internal sealed class DesktopNativeApi : IDesktopNativeApi
 
     private static PixelRect ToPixelRect(NativeRect rectangle)
     {
-        return new PixelRect(
-            rectangle.Left,
-            rectangle.Top,
-            rectangle.Right,
-            rectangle.Bottom);
+        return new PixelRect(rectangle.Left, rectangle.Top, rectangle.Right, rectangle.Bottom);
     }
 
     private static NativeRect ToNativeRect(PixelRect rectangle)

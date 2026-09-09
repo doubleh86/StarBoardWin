@@ -9,32 +9,21 @@ internal static class WindowPlacementService
 {
     internal static void ConfigureToolWindow(nint windowHandle)
     {
-        var currentStyle = NativeMethods.GetWindowLongPtrW(
-            windowHandle,
-            NativeMethods.WindowLongExtendedStyle);
-        var updatedStyle = new nint(
-            currentStyle.ToInt64() | NativeMethods.ExtendedStyleToolWindow);
+        var currentStyle = NativeMethods.GetWindowLongPtrW(windowHandle, NativeMethods.WindowLongExtendedStyle);
+        var updatedStyle = new nint(currentStyle.ToInt64() | NativeMethods.ExtendedStyleToolWindow);
 
         Marshal.SetLastPInvokeError(0);
-        var previousStyle = NativeMethods.SetWindowLongPtrW(
-            windowHandle,
-            NativeMethods.WindowLongExtendedStyle,
-            updatedStyle);
+        var previousStyle = NativeMethods.SetWindowLongPtrW(windowHandle, NativeMethods.WindowLongExtendedStyle,
+                                                            updatedStyle);
         if (previousStyle == 0 && Marshal.GetLastPInvokeError() != 0)
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError());
         }
 
-        if (NativeMethods.SetWindowPos(
-            windowHandle,
-            NativeMethods.NotTopMost,
-            0,
-            0,
-            0,
-            0,
-            NativeMethods.SetWindowPositionNoSize |
-            NativeMethods.SetWindowPositionNoMove |
-            NativeMethods.SetWindowPositionNoActivate) == false)
+        if (NativeMethods.SetWindowPos(windowHandle, NativeMethods.NotTopMost, 0, 0, 0, 0,
+                                       NativeMethods.SetWindowPositionNoSize |
+                                       NativeMethods.SetWindowPositionNoMove |
+                                       NativeMethods.SetWindowPositionNoActivate) == false)
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }
@@ -42,16 +31,11 @@ internal static class WindowPlacementService
 
     internal static void PlaceWithoutActivation(nint windowHandle, PixelRect rectangle)
     {
-        if (NativeMethods.SetWindowPos(
-            windowHandle,
-            0,
-            rectangle.Left,
-            rectangle.Top,
-            rectangle.Width,
-            rectangle.Height,
-            NativeMethods.SetWindowPositionNoZOrder |
-            NativeMethods.SetWindowPositionNoActivate |
-            NativeMethods.SetWindowPositionShowWindow) == false)
+        if (NativeMethods.SetWindowPos(windowHandle, 0, rectangle.Left, rectangle.Top, rectangle.Width,
+                                       rectangle.Height,
+                                       NativeMethods.SetWindowPositionNoZOrder |
+                                       NativeMethods.SetWindowPositionNoActivate |
+                                       NativeMethods.SetWindowPositionShowWindow) == false)
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }
@@ -66,23 +50,14 @@ internal static class WindowPlacementService
             : NativeMethods.GetWindowThreadProcessId(foregroundWindow, out _);
         var inputQueuesAttached = foregroundThreadIdentifier != 0 &&
             foregroundThreadIdentifier != currentThreadIdentifier &&
-            NativeMethods.AttachThreadInput(
-                currentThreadIdentifier,
-                foregroundThreadIdentifier,
-                true);
+            NativeMethods.AttachThreadInput(currentThreadIdentifier, foregroundThreadIdentifier, true);
 
         try
         {
-            if (NativeMethods.SetWindowPos(
-                windowHandle,
-                NativeMethods.Top,
-                0,
-                0,
-                0,
-                0,
-                NativeMethods.SetWindowPositionNoSize |
-                NativeMethods.SetWindowPositionNoMove |
-                NativeMethods.SetWindowPositionShowWindow) == false)
+            if (NativeMethods.SetWindowPos(windowHandle, NativeMethods.Top, 0, 0, 0, 0,
+                                           NativeMethods.SetWindowPositionNoSize |
+                                           NativeMethods.SetWindowPositionNoMove |
+                                           NativeMethods.SetWindowPositionShowWindow) == false)
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
@@ -93,10 +68,7 @@ internal static class WindowPlacementService
         {
             if (inputQueuesAttached == true)
             {
-                _ = NativeMethods.AttachThreadInput(
-                    currentThreadIdentifier,
-                    foregroundThreadIdentifier,
-                    false);
+                _ = NativeMethods.AttachThreadInput(currentThreadIdentifier, foregroundThreadIdentifier, false);
             }
         }
     }

@@ -30,37 +30,35 @@ public sealed class SettingsApplicationServiceTests
         var previous = new AppSettings();
         var requested = CreateRequestedSettings();
         var operations = new List<string>();
-        using var service = CreateService(
-            previous,
-            settings =>
-            {
-                operations.Add("terminal");
-                return TerminalApplied(settings, previous);
-            },
-            settings =>
-            {
-                operations.Add("desktop");
-                return DesktopApplied(settings, previous);
-            },
-            (settings, cancellationToken) =>
-            {
-                _ = settings;
-                _ = cancellationToken;
-                operations.Add("persistence");
-                return Task.CompletedTask;
-            },
-            settings =>
-            {
-                _ = settings;
-                operations.Add("host");
-            });
+        using var service = CreateService(previous,
+                                          settings =>
+                                          {
+                                              operations.Add("terminal");
+                                              return TerminalApplied(settings, previous);
+                                          },
+                                          settings =>
+                                          {
+                                              operations.Add("desktop");
+                                              return DesktopApplied(settings, previous);
+                                          },
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+                                              operations.Add("persistence");
+
+                                              return Task.CompletedTask;
+                                          },
+                                          settings =>
+                                          {
+                                              _ = settings;
+                                              operations.Add("host");
+                                          });
 
         var result = await service.ApplyValidatedAsync(requested, CancellationToken.None);
 
         Assert.AreEqual(PreferenceApplyStatus.Applied, result.Status);
-        CollectionAssert.AreEqual(
-            SuccessfulApplyOperations,
-            operations);
+        CollectionAssert.AreEqual(SuccessfulApplyOperations, operations);
         Assert.AreEqual(requested, service.PersistedSettings);
         Assert.AreEqual(requested, service.EffectiveSettings);
     }
@@ -71,22 +69,19 @@ public sealed class SettingsApplicationServiceTests
         var previous = new AppSettings();
         var terminalCalls = 0;
         var desktopCalls = 0;
-        using var service = CreateService(
-            previous,
-            settings =>
-            {
-                terminalCalls++;
-                return TerminalApplied(settings, previous);
-            },
-            settings =>
-            {
-                desktopCalls++;
-                return DesktopApplied(settings, previous);
-            });
+        using var service = CreateService(previous,
+                                          settings =>
+                                          {
+                                              terminalCalls++;
+                                              return TerminalApplied(settings, previous);
+                                          },
+                                          settings =>
+                                          {
+                                              desktopCalls++;
+                                              return DesktopApplied(settings, previous);
+                                          });
 
-        var result = await service.ApplyValidatedAsync(
-            previous with { Theme = "Unknown" },
-            CancellationToken.None);
+        var result = await service.ApplyValidatedAsync(previous with { Theme = "Unknown" }, CancellationToken.None);
 
         Assert.AreEqual(PreferenceApplyStatus.Rejected, result.Status);
         Assert.AreEqual(0, terminalCalls);
@@ -101,26 +96,25 @@ public sealed class SettingsApplicationServiceTests
         var requested = CreateRequestedSettings();
         var desktopCalls = 0;
         var persistenceCalls = 0;
-        using var service = CreateService(
-            previous,
-            settings => new TerminalSettingsApplyResult(
-                settings,
-                SettingsApplicationService.ToTerminalSettings(previous),
-                SettingsApplicationService.ToTerminalSettings(previous),
-                TerminalSettingsApplyStatus.FailedAndRestored,
-                "Renderer rejected appearance."),
-            settings =>
-            {
-                desktopCalls++;
-                return DesktopApplied(settings, previous);
-            },
-            (settings, cancellationToken) =>
-            {
-                _ = settings;
-                _ = cancellationToken;
-                persistenceCalls++;
-                return Task.CompletedTask;
-            });
+        using var service = CreateService(previous,
+                                          settings => new TerminalSettingsApplyResult(settings,
+                                                                                      SettingsApplicationService.ToTerminalSettings(previous),
+                                                                                      SettingsApplicationService.ToTerminalSettings(previous),
+                                                                                      TerminalSettingsApplyStatus.FailedAndRestored,
+                                                                                      "Renderer rejected appearance."),
+                                          settings =>
+                                          {
+                                              desktopCalls++;
+                                              return DesktopApplied(settings, previous);
+                                          },
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+                                              persistenceCalls++;
+
+                                              return Task.CompletedTask;
+                                          });
 
         var result = await service.ApplyValidatedAsync(requested, CancellationToken.None);
 
@@ -137,32 +131,27 @@ public sealed class SettingsApplicationServiceTests
         var previous = new AppSettings();
         var requested = CreateRequestedSettings();
         var terminalRequests = new List<TerminalSettings>();
-        using var service = CreateService(
-            previous,
-            settings =>
-            {
-                terminalRequests.Add(settings);
-                return TerminalApplied(settings, previous);
-            },
-            settings => new DesktopSettingsApplyResult(
-                settings,
-                SettingsApplicationService.ToDesktopSettings(previous),
-                SettingsApplicationService.ToDesktopSettings(previous),
-                DesktopSettingsApplyStatus.FailedAndRestored,
-                [
-                    new DesktopSettingsOperationResult(
-                        DesktopSettingsOperation.Hotkeys,
-                        DesktopSettingsOperationStatus.Restored,
-                        "Shortcut is already registered."),
-                ]));
+        using var service = CreateService(previous,
+                                          settings =>
+                                          {
+                                              terminalRequests.Add(settings);
+                                              return TerminalApplied(settings, previous);
+                                          },
+                                          settings => new DesktopSettingsApplyResult(settings,
+                                                                                     SettingsApplicationService.ToDesktopSettings(previous),
+                                                                                     SettingsApplicationService.ToDesktopSettings(previous),
+                                                                                     DesktopSettingsApplyStatus.FailedAndRestored,
+                                                                                     [
+                                                                                         new DesktopSettingsOperationResult(DesktopSettingsOperation.Hotkeys,
+                                                                                                                            DesktopSettingsOperationStatus.Restored,
+                                                                                                                            "Shortcut is already registered."),
+                                                                                     ]));
 
         var result = await service.ApplyValidatedAsync(requested, CancellationToken.None);
 
         Assert.AreEqual(PreferenceApplyStatus.FailedAndRestored, result.Status);
         Assert.AreEqual(2, terminalRequests.Count);
-        Assert.AreEqual(
-            previous.ShellExecutable,
-            terminalRequests[1].DefaultShellExecutable);
+        Assert.AreEqual(previous.ShellExecutable, terminalRequests[1].DefaultShellExecutable);
         Assert.AreEqual(previous, result.PersistedSettings);
         Assert.AreEqual(previous, result.EffectiveSettings);
     }
@@ -174,31 +163,29 @@ public sealed class SettingsApplicationServiceTests
         var requested = CreateRequestedSettings() with { StartWithWindows = true };
         var persistenceCalls = 0;
         var terminalCalls = 0;
-        using var service = CreateService(
-            previous,
-            settings =>
-            {
-                terminalCalls++;
-                return TerminalApplied(settings, previous);
-            },
-            settings => new DesktopSettingsApplyResult(
-                settings,
-                SettingsApplicationService.ToDesktopSettings(previous),
-                SettingsApplicationService.ToDesktopSettings(previous),
-                DesktopSettingsApplyStatus.FailedAndRestored,
-                [
-                    new DesktopSettingsOperationResult(
-                        DesktopSettingsOperation.Startup,
-                        DesktopSettingsOperationStatus.Restored,
-                        "Per-user startup registration failed."),
-                ]),
-            (settings, cancellationToken) =>
-            {
-                _ = settings;
-                _ = cancellationToken;
-                persistenceCalls++;
-                return Task.CompletedTask;
-            });
+        using var service = CreateService(previous,
+                                          settings =>
+                                          {
+                                              terminalCalls++;
+                                              return TerminalApplied(settings, previous);
+                                          },
+                                          settings => new DesktopSettingsApplyResult(settings,
+                                                                                     SettingsApplicationService.ToDesktopSettings(previous),
+                                                                                     SettingsApplicationService.ToDesktopSettings(previous),
+                                                                                     DesktopSettingsApplyStatus.FailedAndRestored,
+                                                                                     [
+                                                                                         new DesktopSettingsOperationResult(DesktopSettingsOperation.Startup,
+                                                                                                                            DesktopSettingsOperationStatus.Restored,
+                                                                                                                            "Per-user startup registration failed."),
+                                                                                     ]),
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+                                              persistenceCalls++;
+
+                                              return Task.CompletedTask;
+                                          });
 
         var result = await service.ApplyValidatedAsync(requested, CancellationToken.None);
 
@@ -214,10 +201,8 @@ public sealed class SettingsApplicationServiceTests
         var previous = new AppSettings();
         var requested = CreateRequestedSettings();
         var terminal = new SessionPreservingTerminalRuntime(previous);
-        using var service = CreateService(
-            previous,
-            terminal.ApplySettings,
-            settings => DesktopApplied(settings, previous));
+        using var service = CreateService(previous, terminal.ApplySettings,
+                                          settings => DesktopApplied(settings, previous));
         var originalSessions = terminal.Sessions.ToArray();
 
         var result = await service.ApplyValidatedAsync(requested, CancellationToken.None);
@@ -240,38 +225,38 @@ public sealed class SettingsApplicationServiceTests
         var operations = new List<string>();
         var terminalCall = 0;
         var desktopCall = 0;
-        using var service = CreateService(
-            previous,
-            settings =>
-            {
-                terminalCall++;
-                operations.Add(terminalCall == 1 ? "terminal-apply" : "terminal-rollback");
-                return TerminalApplied(settings, previous);
-            },
-            settings =>
-            {
-                desktopCall++;
-                operations.Add(desktopCall == 1 ? "desktop-apply" : "desktop-rollback");
-                return DesktopApplied(settings, previous);
-            },
-            (settings, cancellationToken) =>
-            {
-                _ = settings;
-                _ = cancellationToken;
-                operations.Add("persistence");
-                throw new IOException("Atomic replace failed.");
-            },
-            settings =>
-            {
-                operations.Add(settings == requested ? "host-apply" : "host-rollback");
-            });
+        using var service = CreateService(previous,
+                                          settings =>
+                                          {
+                                              terminalCall++;
+                                              operations.Add(terminalCall == 1 ? "terminal-apply" : "terminal-rollback");
+
+                                              return TerminalApplied(settings, previous);
+                                          },
+                                          settings =>
+                                          {
+                                              desktopCall++;
+                                              operations.Add(desktopCall == 1 ? "desktop-apply" : "desktop-rollback");
+
+                                              return DesktopApplied(settings, previous);
+                                          },
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+                                              operations.Add("persistence");
+
+                                              throw new IOException("Atomic replace failed.");
+                                          },
+                                          settings =>
+                                          {
+                                              operations.Add(settings == requested ? "host-apply" : "host-rollback");
+                                          });
 
         var result = await service.ApplyValidatedAsync(requested, CancellationToken.None);
 
         Assert.AreEqual(PreferenceApplyStatus.FailedAndRestored, result.Status);
-        CollectionAssert.AreEqual(
-            PersistenceFailureOperations,
-            operations);
+        CollectionAssert.AreEqual(PersistenceFailureOperations, operations);
         Assert.AreEqual(previous, result.EffectiveSettings);
         Assert.AreEqual(previous, result.PersistedSettings);
     }
@@ -284,58 +269,53 @@ public sealed class SettingsApplicationServiceTests
         var terminalCall = 0;
         var desktopCall = 0;
         var persistenceCall = 0;
-        using var service = CreateService(
-            previous,
-            settings =>
-            {
-                terminalCall++;
-                if (terminalCall == 1 || terminalCall == 3)
-                {
-                    return TerminalApplied(settings, previous);
-                }
+        using var service = CreateService(previous,
+                                          settings =>
+                                          {
+                                              terminalCall++;
+                                              if (terminalCall == 1 || terminalCall == 3)
+                                              {
+                                                  return TerminalApplied(settings, previous);
+                                              }
 
-                return new TerminalSettingsApplyResult(
-                    settings,
-                    SettingsApplicationService.ToTerminalSettings(requested),
-                    SettingsApplicationService.ToTerminalSettings(requested),
-                    TerminalSettingsApplyStatus.FailedAndRestoreIncomplete,
-                    "Renderer rollback failed.");
-            },
-            settings =>
-            {
-                desktopCall++;
-                if (desktopCall == 1 || desktopCall == 3)
-                {
-                    return DesktopApplied(settings, previous);
-                }
+                                              return new TerminalSettingsApplyResult(settings,
+                                                                                     SettingsApplicationService.ToTerminalSettings(requested),
+                                                                                     SettingsApplicationService.ToTerminalSettings(requested),
+                                                                                     TerminalSettingsApplyStatus.FailedAndRestoreIncomplete,
+                                                                                     "Renderer rollback failed.");
+                                          },
+                                          settings =>
+                                          {
+                                              desktopCall++;
+                                              if (desktopCall == 1 || desktopCall == 3)
+                                              {
+                                                  return DesktopApplied(settings, previous);
+                                              }
 
-                return new DesktopSettingsApplyResult(
-                    settings,
-                    SettingsApplicationService.ToDesktopSettings(requested),
-                    SettingsApplicationService.ToDesktopSettings(requested),
-                    DesktopSettingsApplyStatus.FailedAndRestoreIncomplete,
-                    [
-                        new DesktopSettingsOperationResult(
-                            DesktopSettingsOperation.Hotkeys,
-                            DesktopSettingsOperationStatus.RestoreFailed,
-                            "Shortcut rollback failed."),
-                    ]);
-            },
-            (settings, cancellationToken) =>
-            {
-                _ = settings;
-                _ = cancellationToken;
-                persistenceCall++;
-                if (persistenceCall == 1)
-                {
-                    throw new IOException("Save failed.");
-                }
+                                              return new DesktopSettingsApplyResult(settings,
+                                                                                    SettingsApplicationService.ToDesktopSettings(requested),
+                                                                                    SettingsApplicationService.ToDesktopSettings(requested),
+                                                                                    DesktopSettingsApplyStatus.FailedAndRestoreIncomplete,
+                                                                                    [
+                                                                                        new DesktopSettingsOperationResult(DesktopSettingsOperation.Hotkeys,
+                                                                                                                           DesktopSettingsOperationStatus.RestoreFailed,
+                                                                                                                           "Shortcut rollback failed."),
+                                                                                    ]);
+                                          },
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+                                              persistenceCall++;
+                                              if (persistenceCall == 1)
+                                              {
+                                                  throw new IOException("Save failed.");
+                                              }
 
-                return Task.CompletedTask;
-            });
+                                              return Task.CompletedTask;
+                                          });
 
-        await Assert.ThrowsExactlyAsync<SettingsApplicationException>(
-            () => service.SaveAsync(requested, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<SettingsApplicationException>(() => service.SaveAsync(requested, CancellationToken.None));
 
         Assert.AreEqual(PreferenceApplyStatus.FailedAndRestoreIncomplete, service.LastResult!.Status);
         Assert.AreEqual(previous, service.PersistedSettings);
@@ -354,49 +334,42 @@ public sealed class SettingsApplicationServiceTests
     {
         var previous = new AppSettings();
         var applyCalls = 0;
-        using var service = CreateService(
-            previous,
-            settings =>
-            {
-                applyCalls++;
-                return TerminalApplied(settings, previous);
-            },
-            settings =>
-            {
-                applyCalls++;
-                return DesktopApplied(settings, previous);
-            });
+        using var service = CreateService(previous,
+                                          settings =>
+                                          {
+                                              applyCalls++;
+                                              return TerminalApplied(settings, previous);
+                                          },
+                                          settings =>
+                                          {
+                                              applyCalls++;
+                                              return DesktopApplied(settings, previous);
+                                          });
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(
-            () => service.ApplyValidatedAsync(CreateRequestedSettings(), cancellation.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => service.ApplyValidatedAsync(CreateRequestedSettings(), cancellation.Token));
 
         Assert.AreEqual(0, applyCalls);
         Assert.AreEqual(previous, service.PersistedSettings);
         Assert.AreEqual(previous, service.EffectiveSettings);
     }
 
-    private static SettingsApplicationService CreateService(
-        AppSettings previous,
-        Func<TerminalSettings, TerminalSettingsApplyResult> applyTerminal,
-        Func<DesktopSettings, DesktopSettingsApplyResult> applyDesktop,
-        Func<AppSettings, CancellationToken, Task>? persist = null,
-        Action<AppSettings>? applyHost = null)
+    private static SettingsApplicationService CreateService(AppSettings previous,
+                                                            Func<TerminalSettings, TerminalSettingsApplyResult> applyTerminal,
+                                                            Func<DesktopSettings, DesktopSettingsApplyResult> applyDesktop,
+                                                            Func<AppSettings, CancellationToken, Task>? persist = null,
+                                                            Action<AppSettings>? applyHost = null)
     {
-        return new SettingsApplicationService(
-            applyTerminal,
-            applyDesktop,
-            persist ?? ((settings, cancellationToken) =>
-            {
-                _ = settings;
-                _ = cancellationToken;
-                return Task.CompletedTask;
-            }),
-            previous,
-            previous,
-            applyHost ?? (_ => { }),
-            new NullDiagnosticLog());
+        return new SettingsApplicationService(applyTerminal, applyDesktop,
+                                              persist ?? ((settings, cancellationToken) =>
+                                              {
+                                                  _ = settings;
+                                                  _ = cancellationToken;
+
+                                                  return Task.CompletedTask;
+                                              }),
+                                              previous, previous, applyHost ?? (_ => { }), new NullDiagnosticLog());
     }
 
     private static AppSettings CreateRequestedSettings()
@@ -416,38 +389,22 @@ public sealed class SettingsApplicationServiceTests
         };
     }
 
-    private static TerminalSettingsApplyResult TerminalApplied(
-        TerminalSettings settings,
-        AppSettings previous)
+    private static TerminalSettingsApplyResult TerminalApplied(TerminalSettings settings, AppSettings previous)
     {
-        return new TerminalSettingsApplyResult(
-            settings,
-            SettingsApplicationService.ToTerminalSettings(previous),
-            settings,
-            TerminalSettingsApplyStatus.Applied,
-            null);
+        return new TerminalSettingsApplyResult(settings, SettingsApplicationService.ToTerminalSettings(previous),
+                                               settings, TerminalSettingsApplyStatus.Applied, null);
     }
 
-    private static DesktopSettingsApplyResult DesktopApplied(
-        DesktopSettings settings,
-        AppSettings previous)
+    private static DesktopSettingsApplyResult DesktopApplied(DesktopSettings settings, AppSettings previous)
     {
-        return new DesktopSettingsApplyResult(
-            settings,
-            SettingsApplicationService.ToDesktopSettings(previous),
-            settings,
-            DesktopSettingsApplyStatus.Applied,
-            []);
+        return new DesktopSettingsApplyResult(settings, SettingsApplicationService.ToDesktopSettings(previous),
+                                              settings, DesktopSettingsApplyStatus.Applied, []);
     }
 
     private sealed class NullDiagnosticLog : IDiagnosticLog
     {
-        public void Write(
-            DiagnosticLevel level,
-            string subsystem,
-            string operation,
-            string message,
-            Exception? exception = null)
+        public void Write(DiagnosticLevel level, string subsystem, string operation, string message,
+                          Exception? exception = null)
         {
             _ = level;
             _ = subsystem;
@@ -477,27 +434,19 @@ public sealed class SettingsApplicationServiceTests
         {
             var previous = currentSettings;
             currentSettings = settings;
-            return new TerminalSettingsApplyResult(
-                settings,
-                previous,
-                settings,
-                TerminalSettingsApplyStatus.Applied,
-                null);
+
+            return new TerminalSettingsApplyResult(settings, previous, settings, TerminalSettingsApplyStatus.Applied,
+                                                   null);
         }
 
         internal FakeSession CreateSession(int processId, string workingDirectory)
         {
-            var session = new FakeSession(
-                processId,
-                workingDirectory,
-                currentSettings.DefaultShellExecutable);
+            var session = new FakeSession(processId, workingDirectory, currentSettings.DefaultShellExecutable);
             Sessions.Add(session);
+
             return session;
         }
     }
 
-    private sealed record FakeSession(
-        int ProcessId,
-        string WorkingDirectory,
-        string? ShellExecutable);
+    private sealed record FakeSession(int ProcessId, string WorkingDirectory, string? ShellExecutable);
 }

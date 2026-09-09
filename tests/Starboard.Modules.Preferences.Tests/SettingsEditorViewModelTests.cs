@@ -10,13 +10,12 @@ public sealed class SettingsEditorViewModelTests
     public void RestoreDefaultsEditsDraftWithoutCallingSaveHandler()
     {
         var saveHandler = new RecordingSaveHandler();
-        var viewModel = new SettingsEditorViewModel(
-            new AppSettings
-            {
-                Theme = "Dark",
-                FontSize = 16,
-            },
-            saveHandler);
+        var viewModel = new SettingsEditorViewModel(new AppSettings
+                                                    {
+                                                        Theme = "Dark",
+                                                        FontSize = 16,
+                                                    },
+                                                    saveHandler);
 
         viewModel.RestoreDefaults();
 

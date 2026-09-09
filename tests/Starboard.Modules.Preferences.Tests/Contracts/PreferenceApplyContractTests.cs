@@ -9,27 +9,25 @@ public sealed class PreferenceApplyContractTests
     [TestMethod]
     public void ApplyOrderPersistsOnlyAfterLiveSubsystemsApply()
     {
-        CollectionAssert.AreEqual(
-            new[]
-            {
-                PreferenceApplyStep.Validation,
-                PreferenceApplyStep.TerminalSettings,
-                PreferenceApplyStep.DesktopSettings,
-                PreferenceApplyStep.Persistence,
-            },
-            SettingsApplyPlan.ApplyOrder.ToArray());
+        CollectionAssert.AreEqual(new[]
+                                  {
+                                      PreferenceApplyStep.Validation,
+                                      PreferenceApplyStep.TerminalSettings,
+                                      PreferenceApplyStep.DesktopSettings,
+                                      PreferenceApplyStep.Persistence,
+                                  },
+                                  SettingsApplyPlan.ApplyOrder.ToArray());
     }
 
     [TestMethod]
     public void RollbackOrderReversesLiveSubsystemsToPreviousSnapshot()
     {
-        CollectionAssert.AreEqual(
-            new[]
-            {
-                PreferenceApplyStep.DesktopSettings,
-                PreferenceApplyStep.TerminalSettings,
-            },
-            SettingsApplyPlan.RollbackOrder.ToArray());
+        CollectionAssert.AreEqual(new[]
+                                  {
+                                      PreferenceApplyStep.DesktopSettings,
+                                      PreferenceApplyStep.TerminalSettings,
+                                  },
+                                  SettingsApplyPlan.RollbackOrder.ToArray());
     }
 
     [TestMethod]
@@ -45,16 +43,11 @@ public sealed class PreferenceApplyContractTests
         {
             Theme = "Dark",
         };
-        var failure = new PreferenceApplyFailure(
-            PreferenceApplyStep.DesktopSettings,
-            PreferenceApplyFailureStage.Rollback,
-            "Startup rollback failed.");
-        var result = new PreferenceApplyResult(
-            new PreferenceApplyRequest(previous, requested),
-            PreferenceApplyStatus.FailedAndRestoreIncomplete,
-            effective,
-            previous,
-            [failure]);
+        var failure = new PreferenceApplyFailure(PreferenceApplyStep.DesktopSettings,
+                                                 PreferenceApplyFailureStage.Rollback, "Startup rollback failed.");
+        var result = new PreferenceApplyResult(new PreferenceApplyRequest(previous, requested),
+                                               PreferenceApplyStatus.FailedAndRestoreIncomplete, effective, previous,
+                                               [failure]);
 
         Assert.IsFalse(result.Succeeded);
         Assert.IsFalse(result.PreviousSnapshotRestored);
@@ -73,17 +66,13 @@ public sealed class PreferenceApplyContractTests
         {
             ExpandShortcut = "Ctrl+Shift+E",
         };
-        var result = new PreferenceApplyResult(
-            new PreferenceApplyRequest(previous, requested),
-            PreferenceApplyStatus.FailedAndRestored,
-            previous,
-            previous,
-            [
-                new PreferenceApplyFailure(
-                    PreferenceApplyStep.DesktopSettings,
-                    PreferenceApplyFailureStage.Apply,
-                    "Shortcut is already registered."),
-            ]);
+        var result = new PreferenceApplyResult(new PreferenceApplyRequest(previous, requested),
+                                               PreferenceApplyStatus.FailedAndRestored, previous, previous,
+                                               [
+                                                   new PreferenceApplyFailure(PreferenceApplyStep.DesktopSettings,
+                                                                              PreferenceApplyFailureStage.Apply,
+                                                                              "Shortcut is already registered."),
+                                               ]);
 
         Assert.IsFalse(result.Succeeded);
         Assert.IsTrue(result.PreviousSnapshotRestored);

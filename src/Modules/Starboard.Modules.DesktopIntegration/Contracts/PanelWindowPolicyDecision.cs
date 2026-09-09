@@ -1,12 +1,9 @@
 namespace Starboard.Modules.DesktopIntegration.Contracts;
 
-public sealed record PanelWindowPolicyDecision(
-    PanelWindowPolicyPriority AppliedPriority,
-    PanelWindowPresentation Presentation,
-    PanelWindowGeometryAction GeometryAction,
-    PixelRect? TargetBounds,
-    PanelWindowActivation Activation,
-    PanelWindowZOrder ZOrder);
+public sealed record PanelWindowPolicyDecision(PanelWindowPolicyPriority AppliedPriority,
+                                               PanelWindowPresentation Presentation,
+                                               PanelWindowGeometryAction GeometryAction, PixelRect? TargetBounds,
+                                               PanelWindowActivation Activation, PanelWindowZOrder ZOrder);
 
 public enum PanelWindowPresentation
 {

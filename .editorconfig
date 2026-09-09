@@ -19,6 +19,8 @@ indent_size = 2
 trim_trailing_whitespace = false
 
 [*.cs]
+# Recommended reading margin, not a mandatory wrapping limit.
+max_line_length = 120
 csharp_new_line_before_open_brace = all
 csharp_prefer_braces = true:error
 csharp_style_namespace_declarations = file_scoped:warning
@@ -31,7 +33,9 @@ dotnet_style_prefer_auto_properties = true:suggestion
 dotnet_style_prefer_collection_expression = when_types_loosely_match:suggestion
 dotnet_style_prefer_simplified_boolean_expressions = false:silent
 dotnet_diagnostic.IDE0011.severity = error
-dotnet_diagnostic.IDE0055.severity = warning
+# Roslyn's default initializer indentation conflicts with TRK's new-column alignment.
+# Check the repository convention with scripts/Test-CSharpAlignment.ps1 instead.
+dotnet_diagnostic.IDE0055.severity = none
 
 [*.xaml]
 indent_size = 4

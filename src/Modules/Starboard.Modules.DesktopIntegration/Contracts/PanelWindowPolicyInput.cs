@@ -1,14 +1,9 @@
 namespace Starboard.Modules.DesktopIntegration.Contracts;
 
-public sealed record PanelWindowPolicyInput(
-    PanelUserVisibility UserVisibility,
-    PanelFullscreenState FullscreenState,
-    PanelMode Mode,
-    PanelEngagement Engagement,
-    TaskbarPresence TaskbarPresence,
-    DisplayTrackingState TrackingState,
-    MonitorSnapshot Monitor,
-    PixelRect? LastSafeCollapsedBounds);
+public sealed record PanelWindowPolicyInput(PanelUserVisibility UserVisibility, PanelFullscreenState FullscreenState,
+                                            PanelMode Mode, PanelEngagement Engagement, TaskbarPresence TaskbarPresence,
+                                            DisplayTrackingState TrackingState, MonitorSnapshot Monitor,
+                                            PixelRect? LastSafeCollapsedBounds);
 
 public enum PanelUserVisibility
 {

@@ -11,10 +11,9 @@ namespace Starboard.Windows.Composition;
 
 internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, IDisposable
 {
-    private static readonly Regex ShortcutPattern = new(
-        "^(?:(?:Ctrl|Alt|Shift)\\+)+(?:[A-Za-z0-9]|F(?:[1-9]|1[0-9]|2[0-4]))$",
-        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
-        TimeSpan.FromMilliseconds(100));
+    private static readonly Regex ShortcutPattern = new("^(?:(?:Ctrl|Alt|Shift)\\+)+(?:[A-Za-z0-9]|F(?:[1-9]|1[0-9]|2[0-4]))$",
+                                                        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+                                                        TimeSpan.FromMilliseconds(100));
 
     private readonly Func<TerminalSettings, TerminalSettingsApplyResult> applyTerminalSettings;
     private readonly Func<DesktopSettings, DesktopSettingsApplyResult> applyDesktopSettings;
@@ -26,33 +25,20 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
     private AppSettings effectiveSettings;
     private bool isDisposed;
 
-    internal SettingsApplicationService(
-        PreferencesModule preferencesModule,
-        TerminalModule terminalModule,
-        DesktopIntegrationModule desktopIntegrationModule,
-        AppSettings persistedSettings,
-        AppSettings effectiveSettings,
-        Action<AppSettings> applyHostAppearance,
-        IDiagnosticLog diagnosticLog)
-        : this(
-            terminalModule.ApplySettings,
-            desktopIntegrationModule.ApplySettings,
-            preferencesModule.SaveAsync,
-            persistedSettings,
-            effectiveSettings,
-            applyHostAppearance,
-            diagnosticLog)
+    internal SettingsApplicationService(PreferencesModule preferencesModule, TerminalModule terminalModule,
+                                        DesktopIntegrationModule desktopIntegrationModule,
+                                        AppSettings persistedSettings, AppSettings effectiveSettings,
+                                        Action<AppSettings> applyHostAppearance, IDiagnosticLog diagnosticLog)
+        : this(terminalModule.ApplySettings, desktopIntegrationModule.ApplySettings, preferencesModule.SaveAsync,
+               persistedSettings, effectiveSettings, applyHostAppearance, diagnosticLog)
     {
     }
 
-    internal SettingsApplicationService(
-        Func<TerminalSettings, TerminalSettingsApplyResult> applyTerminalSettings,
-        Func<DesktopSettings, DesktopSettingsApplyResult> applyDesktopSettings,
-        Func<AppSettings, CancellationToken, Task> persistSettingsAsync,
-        AppSettings persistedSettings,
-        AppSettings effectiveSettings,
-        Action<AppSettings> applyHostAppearance,
-        IDiagnosticLog diagnosticLog)
+    internal SettingsApplicationService(Func<TerminalSettings, TerminalSettingsApplyResult> applyTerminalSettings,
+                                        Func<DesktopSettings, DesktopSettingsApplyResult> applyDesktopSettings,
+                                        Func<AppSettings, CancellationToken, Task> persistSettingsAsync,
+                                        AppSettings persistedSettings, AppSettings effectiveSettings,
+                                        Action<AppSettings> applyHostAppearance, IDiagnosticLog diagnosticLog)
     {
         ArgumentNullException.ThrowIfNull(applyTerminalSettings);
         ArgumentNullException.ThrowIfNull(applyDesktopSettings);
@@ -90,9 +76,8 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         }
     }
 
-    internal async Task<PreferenceApplyResult> ApplyValidatedAsync(
-        AppSettings requestedSettings,
-        CancellationToken cancellationToken)
+    internal async Task<PreferenceApplyResult> ApplyValidatedAsync(AppSettings requestedSettings,
+                                                                   CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
         ArgumentNullException.ThrowIfNull(requestedSettings);
@@ -121,21 +106,11 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
     internal static TerminalSettings ToTerminalSettings(AppSettings settings)
     {
         var theme = PreferencesModule.GetTheme(settings.Theme);
-        var terminalTheme = new TerminalTheme(
-            theme.Canvas,
-            theme.Foreground,
-            theme.Muted,
-            theme.Accent,
-            theme.Cursor,
-            theme.Selection,
-            theme.AnsiPalette);
+        var terminalTheme = new TerminalTheme(theme.Canvas, theme.Foreground, theme.Muted, theme.Accent, theme.Cursor,
+                                              theme.Selection, theme.AnsiPalette);
 
-        return new TerminalSettings(
-            new TerminalAppearanceSettings(
-                settings.FontFamily,
-                settings.FontSize,
-                terminalTheme),
-            settings.ShellExecutable);
+        return new TerminalSettings(new TerminalAppearanceSettings(settings.FontFamily, settings.FontSize, terminalTheme),
+                                    settings.ShellExecutable);
     }
 
     internal static DesktopSettings ToDesktopSettings(AppSettings settings)
@@ -143,24 +118,15 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         var monitorBehavior = settings.PreferredMonitor switch
         {
             "Taskbar" => PreferredMonitorBehavior.TaskbarMonitor,
-            _ => throw new ArgumentException(
-                "The preferred monitor behavior is unsupported.",
-                nameof(settings)),
+            _ => throw new ArgumentException("The preferred monitor behavior is unsupported.", nameof(settings)),
         };
 
-        return new DesktopSettings(
-            settings.CollapsedHeightDip,
-            settings.Opacity,
-            monitorBehavior,
-            new HotkeySettings(
-                settings.ExpandShortcut,
-                settings.ActivationShortcut),
-            new StartupSettings(settings.StartWithWindows));
+        return new DesktopSettings(settings.CollapsedHeightDip, settings.Opacity, monitorBehavior,
+                                   new HotkeySettings(settings.ExpandShortcut, settings.ActivationShortcut),
+                                   new StartupSettings(settings.StartWithWindows));
     }
 
-    internal static AppSettings WithDesktopSettings(
-        AppSettings settings,
-        DesktopSettings desktopSettings)
+    internal static AppSettings WithDesktopSettings(AppSettings settings, DesktopSettings desktopSettings)
     {
         return settings with
         {
@@ -177,25 +143,16 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         };
     }
 
-    private async Task<PreferenceApplyResult> ApplyCoreAsync(
-        AppSettings requestedSettings,
-        CancellationToken cancellationToken)
+    private async Task<PreferenceApplyResult> ApplyCoreAsync(AppSettings requestedSettings,
+                                                             CancellationToken cancellationToken)
     {
-        var request = new PreferenceApplyRequest(
-            persistedSettings,
-            requestedSettings);
+        var request = new PreferenceApplyRequest(persistedSettings, requestedSettings);
         var failures = new List<PreferenceApplyFailure>();
         if (TryValidateRequest(requestedSettings, out var validationFailure) == false)
         {
-            failures.Add(CreateFailure(
-                PreferenceApplyStep.Validation,
-                PreferenceApplyFailureStage.Validation,
-                validationFailure!));
-            return Complete(
-                request,
-                PreferenceApplyStatus.Rejected,
-                effectiveSettings,
-                failures);
+            failures.Add(CreateFailure(PreferenceApplyStep.Validation, PreferenceApplyFailureStage.Validation,
+                                       validationFailure!));
+            return Complete(request, PreferenceApplyStatus.Rejected, effectiveSettings, failures);
         }
 
         TerminalSettings requestedTerminalSettings;
@@ -207,47 +164,34 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
         {
-            failures.Add(CreateFailure(
-                PreferenceApplyStep.Validation,
-                PreferenceApplyFailureStage.Validation,
-                exception.Message));
-            return Complete(
-                request,
-                PreferenceApplyStatus.Rejected,
-                effectiveSettings,
-                failures);
+            failures.Add(CreateFailure(PreferenceApplyStep.Validation, PreferenceApplyFailureStage.Validation,
+                                       exception.Message));
+            return Complete(request, PreferenceApplyStatus.Rejected, effectiveSettings, failures);
         }
 
-        var terminalResult = ApplyTerminal(
-            requestedTerminalSettings,
-            failures,
-            PreferenceApplyFailureStage.Apply);
+        var terminalResult = ApplyTerminal(requestedTerminalSettings, failures, PreferenceApplyFailureStage.Apply);
         effectiveSettings = WithTerminalSettings(effectiveSettings, terminalResult.EffectiveSettings);
         if (terminalResult.Status != TerminalSettingsApplyStatus.Applied)
         {
             return CompleteFailure(request, failures);
         }
 
-        var desktopResult = ApplyDesktop(
-            requestedDesktopSettings,
-            failures,
-            PreferenceApplyFailureStage.Apply);
+        var desktopResult = ApplyDesktop(requestedDesktopSettings, failures, PreferenceApplyFailureStage.Apply);
         effectiveSettings = WithDesktopSettings(effectiveSettings, desktopResult.EffectiveSettings);
         if (desktopResult.Status != DesktopSettingsApplyStatus.Applied)
         {
             RollbackTerminal(failures);
             TryApplyHostAppearance(persistedSettings, failures, PreferenceApplyFailureStage.Rollback);
+
             return CompleteFailure(request, failures);
         }
 
-        if (TryApplyHostAppearance(
-                requestedSettings,
-                failures,
-                PreferenceApplyFailureStage.Apply) == false)
+        if (TryApplyHostAppearance(requestedSettings, failures, PreferenceApplyFailureStage.Apply) == false)
         {
             RollbackDesktop(failures);
             RollbackTerminal(failures);
             TryApplyHostAppearance(persistedSettings, failures, PreferenceApplyFailureStage.Rollback);
+
             return CompleteFailure(request, failures);
         }
 
@@ -258,46 +202,37 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         }
         catch (Exception exception)
         {
-            failures.Add(CreateFailure(
-                PreferenceApplyStep.Persistence,
-                PreferenceApplyFailureStage.Apply,
-                exception.Message));
+            failures.Add(CreateFailure(PreferenceApplyStep.Persistence, PreferenceApplyFailureStage.Apply,
+                                       exception.Message));
             RollbackDesktop(failures);
             TryApplyHostAppearance(persistedSettings, failures, PreferenceApplyFailureStage.Rollback);
             RollbackTerminal(failures);
+
             return CompleteFailure(request, failures);
         }
 
         persistedSettings = requestedSettings;
         effectiveSettings = requestedSettings;
-        return Complete(
-            request,
-            PreferenceApplyStatus.Applied,
-            effectiveSettings,
-            failures);
+
+        return Complete(request, PreferenceApplyStatus.Applied, effectiveSettings, failures);
     }
 
-    private TerminalSettingsApplyResult ApplyTerminal(
-        TerminalSettings settings,
-        List<PreferenceApplyFailure> failures,
-        PreferenceApplyFailureStage stage)
+    private TerminalSettingsApplyResult ApplyTerminal(TerminalSettings settings, List<PreferenceApplyFailure> failures,
+                                                      PreferenceApplyFailureStage stage)
     {
         try
         {
             var result = applyTerminalSettings(settings);
             if (result.Status != TerminalSettingsApplyStatus.Applied)
             {
-                failures.Add(CreateFailure(
-                    PreferenceApplyStep.TerminalSettings,
-                    stage,
-                    result.FailureMessage ?? "Terminal settings could not be applied."));
+                failures.Add(CreateFailure(PreferenceApplyStep.TerminalSettings, stage,
+                                           result.FailureMessage ?? "Terminal settings could not be applied."));
                 if (stage == PreferenceApplyFailureStage.Apply &&
                     result.Status == TerminalSettingsApplyStatus.FailedAndRestoreIncomplete)
                 {
-                    failures.Add(CreateFailure(
-                        PreferenceApplyStep.TerminalSettings,
-                        PreferenceApplyFailureStage.Rollback,
-                        "Terminal settings recovery was incomplete."));
+                    failures.Add(CreateFailure(PreferenceApplyStep.TerminalSettings,
+                                               PreferenceApplyFailureStage.Rollback,
+                                               "Terminal settings recovery was incomplete."));
                 }
             }
 
@@ -305,41 +240,29 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         }
         catch (Exception exception)
         {
-            failures.Add(CreateFailure(
-                PreferenceApplyStep.TerminalSettings,
-                stage,
-                exception.Message));
+            failures.Add(CreateFailure(PreferenceApplyStep.TerminalSettings, stage, exception.Message));
             var current = ToTerminalSettings(effectiveSettings);
-            return new TerminalSettingsApplyResult(
-                settings,
-                current,
-                current,
-                TerminalSettingsApplyStatus.FailedWithoutChange,
-                exception.Message);
+
+            return new TerminalSettingsApplyResult(settings, current, current,
+                                                   TerminalSettingsApplyStatus.FailedWithoutChange, exception.Message);
         }
     }
 
-    private DesktopSettingsApplyResult ApplyDesktop(
-        DesktopSettings settings,
-        List<PreferenceApplyFailure> failures,
-        PreferenceApplyFailureStage stage)
+    private DesktopSettingsApplyResult ApplyDesktop(DesktopSettings settings, List<PreferenceApplyFailure> failures,
+                                                    PreferenceApplyFailureStage stage)
     {
         try
         {
             var result = applyDesktopSettings(settings);
             if (result.Status != DesktopSettingsApplyStatus.Applied)
             {
-                failures.Add(CreateFailure(
-                    PreferenceApplyStep.DesktopSettings,
-                    stage,
-                    GetDesktopFailureMessage(result)));
+                failures.Add(CreateFailure(PreferenceApplyStep.DesktopSettings, stage, GetDesktopFailureMessage(result)));
                 if (stage == PreferenceApplyFailureStage.Apply &&
                     result.Status == DesktopSettingsApplyStatus.FailedAndRestoreIncomplete)
                 {
-                    failures.Add(CreateFailure(
-                        PreferenceApplyStep.DesktopSettings,
-                        PreferenceApplyFailureStage.Rollback,
-                        "Desktop settings recovery was incomplete."));
+                    failures.Add(CreateFailure(PreferenceApplyStep.DesktopSettings,
+                                               PreferenceApplyFailureStage.Rollback,
+                                               "Desktop settings recovery was incomplete."));
                 }
             }
 
@@ -347,42 +270,29 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         }
         catch (Exception exception)
         {
-            failures.Add(CreateFailure(
-                PreferenceApplyStep.DesktopSettings,
-                stage,
-                exception.Message));
+            failures.Add(CreateFailure(PreferenceApplyStep.DesktopSettings, stage, exception.Message));
             var current = ToDesktopSettings(effectiveSettings);
-            return new DesktopSettingsApplyResult(
-                settings,
-                current,
-                current,
-                DesktopSettingsApplyStatus.FailedWithoutChange,
-                []);
+
+            return new DesktopSettingsApplyResult(settings, current, current,
+                                                  DesktopSettingsApplyStatus.FailedWithoutChange, []);
         }
     }
 
     private void RollbackTerminal(List<PreferenceApplyFailure> failures)
     {
-        var result = ApplyTerminal(
-            ToTerminalSettings(persistedSettings),
-            failures,
-            PreferenceApplyFailureStage.Rollback);
+        var result = ApplyTerminal(ToTerminalSettings(persistedSettings), failures,
+                                   PreferenceApplyFailureStage.Rollback);
         effectiveSettings = WithTerminalSettings(effectiveSettings, result.EffectiveSettings);
     }
 
     private void RollbackDesktop(List<PreferenceApplyFailure> failures)
     {
-        var result = ApplyDesktop(
-            ToDesktopSettings(persistedSettings),
-            failures,
-            PreferenceApplyFailureStage.Rollback);
+        var result = ApplyDesktop(ToDesktopSettings(persistedSettings), failures, PreferenceApplyFailureStage.Rollback);
         effectiveSettings = WithDesktopSettings(effectiveSettings, result.EffectiveSettings);
     }
 
-    private bool TryApplyHostAppearance(
-        AppSettings settings,
-        List<PreferenceApplyFailure> failures,
-        PreferenceApplyFailureStage stage)
+    private bool TryApplyHostAppearance(AppSettings settings, List<PreferenceApplyFailure> failures,
+                                        PreferenceApplyFailureStage stage)
     {
         try
         {
@@ -391,62 +301,43 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         }
         catch (Exception exception)
         {
-            failures.Add(CreateFailure(
-                PreferenceApplyStep.DesktopSettings,
-                stage,
-                exception.Message));
+            failures.Add(CreateFailure(PreferenceApplyStep.DesktopSettings, stage, exception.Message));
             return false;
         }
     }
 
-    private PreferenceApplyResult CompleteFailure(
-        PreferenceApplyRequest request,
-        IReadOnlyList<PreferenceApplyFailure> failures)
+    private PreferenceApplyResult CompleteFailure(PreferenceApplyRequest request,
+                                                  IReadOnlyList<PreferenceApplyFailure> failures)
     {
         var restored = effectiveSettings == persistedSettings &&
             failures.Any(failure => failure.Stage == PreferenceApplyFailureStage.Rollback) == false;
-        return Complete(
-            request,
-            restored == true
-                ? PreferenceApplyStatus.FailedAndRestored
-                : PreferenceApplyStatus.FailedAndRestoreIncomplete,
-            effectiveSettings,
-            failures);
+        return Complete(request,
+                        restored == true
+                            ? PreferenceApplyStatus.FailedAndRestored
+                            : PreferenceApplyStatus.FailedAndRestoreIncomplete,
+                        effectiveSettings, failures);
     }
 
-    private PreferenceApplyResult Complete(
-        PreferenceApplyRequest request,
-        PreferenceApplyStatus status,
-        AppSettings actualSettings,
-        IReadOnlyList<PreferenceApplyFailure> failures)
+    private PreferenceApplyResult Complete(PreferenceApplyRequest request, PreferenceApplyStatus status,
+                                           AppSettings actualSettings, IReadOnlyList<PreferenceApplyFailure> failures)
     {
-        var result = new PreferenceApplyResult(
-            request,
-            status,
-            actualSettings,
-            persistedSettings,
-            failures);
+        var result = new PreferenceApplyResult(request, status, actualSettings, persistedSettings, failures);
         LastResult = result;
         StatusMessage = CreateStatusMessage(result);
         StatusChanged?.Invoke(this, EventArgs.Empty);
 
         if (result.Succeeded == false)
         {
-            diagnosticLog.Write(
-                result.Status == PreferenceApplyStatus.FailedAndRestoreIncomplete
-                    ? DiagnosticLevel.Error
-                    : DiagnosticLevel.Warning,
-                "Host",
-                "ApplySettings",
-                StatusMessage ?? "Settings could not be applied.");
+            diagnosticLog.Write(result.Status == PreferenceApplyStatus.FailedAndRestoreIncomplete
+                                    ? DiagnosticLevel.Error
+                                    : DiagnosticLevel.Warning,
+                                "Host", "ApplySettings", StatusMessage ?? "Settings could not be applied.");
         }
 
         return result;
     }
 
-    private static AppSettings WithTerminalSettings(
-        AppSettings settings,
-        TerminalSettings terminalSettings)
+    private static AppSettings WithTerminalSettings(AppSettings settings, TerminalSettings terminalSettings)
     {
         return settings with
         {
@@ -481,17 +372,13 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
             ?? "Desktop settings could not be applied.";
     }
 
-    private static PreferenceApplyFailure CreateFailure(
-        PreferenceApplyStep step,
-        PreferenceApplyFailureStage stage,
-        string message)
+    private static PreferenceApplyFailure CreateFailure(PreferenceApplyStep step, PreferenceApplyFailureStage stage,
+                                                        string message)
     {
         return new PreferenceApplyFailure(step, stage, message);
     }
 
-    private static bool TryValidateRequest(
-        AppSettings settings,
-        out string? failureMessage)
+    private static bool TryValidateRequest(AppSettings settings, out string? failureMessage)
     {
         failureMessage = null;
         if (settings.SchemaVersion != AppSettings.CurrentSchemaVersion)
@@ -506,8 +393,7 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
             return false;
         }
 
-        if (double.IsFinite(settings.CollapsedHeightDip) == false ||
-            settings.CollapsedHeightDip < 96 ||
+        if (double.IsFinite(settings.CollapsedHeightDip) == false || settings.CollapsedHeightDip < 96 ||
             settings.CollapsedHeightDip > 720)
         {
             failureMessage = "Collapsed height must be between 96 and 720 DIP.";
@@ -520,17 +406,13 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
             return false;
         }
 
-        if (double.IsFinite(settings.FontSize) == false ||
-            settings.FontSize < 8 ||
-            settings.FontSize > 32)
+        if (double.IsFinite(settings.FontSize) == false || settings.FontSize < 8 || settings.FontSize > 32)
         {
             failureMessage = "Font size must be between 8 and 32.";
             return false;
         }
 
-        if (double.IsFinite(settings.Opacity) == false ||
-            settings.Opacity < 0.72 ||
-            settings.Opacity > 1)
+        if (double.IsFinite(settings.Opacity) == false || settings.Opacity < 0.72 || settings.Opacity > 1)
         {
             failureMessage = "Opacity must be between 0.72 and 1.";
             return false;
@@ -562,10 +444,8 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
             return false;
         }
 
-        if (string.Equals(
-                settings.ExpandShortcut.Trim(),
-                settings.ActivationShortcut.Trim(),
-                StringComparison.OrdinalIgnoreCase) == true)
+        if (string.Equals(settings.ExpandShortcut.Trim(), settings.ActivationShortcut.Trim(),
+                          StringComparison.OrdinalIgnoreCase) == true)
         {
             failureMessage = "Expand and activation shortcuts must differ.";
             return false;

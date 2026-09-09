@@ -22,10 +22,9 @@ internal sealed class MonitorService
         return monitors;
     }
 
-    internal NativeMonitorSnapshot SelectCurrentTaskbarMonitor(
-        PixelRect taskbarBounds,
-        IReadOnlyList<NativeMonitorSnapshot> connectedMonitors,
-        out bool usedFallback)
+    internal NativeMonitorSnapshot SelectCurrentTaskbarMonitor(PixelRect taskbarBounds,
+                                                               IReadOnlyList<NativeMonitorSnapshot> connectedMonitors,
+                                                               out bool usedFallback)
     {
         var taskbarMonitorHandle = _nativeApi.GetMonitorForRectangle(taskbarBounds);
         foreach (var monitor in connectedMonitors)
@@ -38,11 +37,11 @@ internal sealed class MonitorService
         }
 
         usedFallback = true;
+
         return SelectFallbackMonitor(connectedMonitors);
     }
 
-    internal static NativeMonitorSnapshot SelectFallbackMonitor(
-        IReadOnlyList<NativeMonitorSnapshot> connectedMonitors)
+    internal static NativeMonitorSnapshot SelectFallbackMonitor(IReadOnlyList<NativeMonitorSnapshot> connectedMonitors)
     {
         foreach (var monitor in connectedMonitors)
         {
@@ -55,10 +54,8 @@ internal sealed class MonitorService
         return connectedMonitors[0];
     }
 
-    internal DisplayDpi CaptureDpi(
-        NativeMonitorSnapshot monitor,
-        nint panelWindowHandle,
-        out Exception? monitorDpiFailure)
+    internal DisplayDpi CaptureDpi(NativeMonitorSnapshot monitor, nint panelWindowHandle,
+                                   out Exception? monitorDpiFailure)
     {
         try
         {
@@ -69,8 +66,7 @@ internal sealed class MonitorService
                 return dpi;
             }
 
-            monitorDpiFailure = new InvalidOperationException(
-                "Windows returned a zero DPI for the selected monitor.");
+            monitorDpiFailure = new InvalidOperationException("Windows returned a zero DPI for the selected monitor.");
         }
         catch (Exception exception) when (exception is System.Runtime.InteropServices.ExternalException or ArgumentException or DllNotFoundException or EntryPointNotFoundException)
         {
@@ -87,10 +83,8 @@ internal sealed class MonitorService
         }
         catch (Exception exception) when (exception is System.Runtime.InteropServices.ExternalException or ArgumentException or DllNotFoundException or EntryPointNotFoundException)
         {
-            monitorDpiFailure = new AggregateException(
-                "Both monitor and window DPI queries failed.",
-                monitorDpiFailure,
-                exception);
+            monitorDpiFailure = new AggregateException("Both monitor and window DPI queries failed.", monitorDpiFailure,
+                                                       exception);
         }
 
         return new DisplayDpi(DisplayDpi.Default, DisplayDpi.Default);

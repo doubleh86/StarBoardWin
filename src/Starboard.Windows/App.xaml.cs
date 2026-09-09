@@ -29,11 +29,7 @@ public partial class App : Application, IDisposable
         }
         catch (Exception exception)
         {
-            MessageBox.Show(
-                exception.Message,
-                "Starboard를 시작할 수 없습니다",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            MessageBox.Show(exception.Message, "Starboard를 시작할 수 없습니다", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
         }
     }

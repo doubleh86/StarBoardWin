@@ -27,23 +27,17 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     private int columns = 80;
     private int rows = 24;
 
-    internal TerminalSessionCoordinator(
-        ITerminalSessionFactory sessionFactory,
-        IDiagnosticLog diagnosticLog,
-        Func<TerminalSessionId>? sessionIdFactory = null,
-        int maximumTabs = TerminalTabRegistry.DefaultMaximumTabs,
-        TimeSpan? sessionCloseTimeout = null,
-        TimeSpan? shutdownTimeout = null)
+    internal TerminalSessionCoordinator(ITerminalSessionFactory sessionFactory, IDiagnosticLog diagnosticLog,
+                                        Func<TerminalSessionId>? sessionIdFactory = null,
+                                        int maximumTabs = TerminalTabRegistry.DefaultMaximumTabs,
+                                        TimeSpan? sessionCloseTimeout = null, TimeSpan? shutdownTimeout = null)
     {
         this.sessionFactory = sessionFactory;
         this.diagnosticLog = diagnosticLog;
         tabRegistry = new TerminalTabRegistry(sessionIdFactory, maximumTabs);
-        this.sessionCloseTimeout = ValidateTimeout(
-            sessionCloseTimeout ?? DefaultSessionCloseTimeout,
-            nameof(sessionCloseTimeout));
-        this.shutdownTimeout = ValidateTimeout(
-            shutdownTimeout ?? DefaultShutdownTimeout,
-            nameof(shutdownTimeout));
+        this.sessionCloseTimeout = ValidateTimeout(sessionCloseTimeout ?? DefaultSessionCloseTimeout,
+                                                   nameof(sessionCloseTimeout));
+        this.shutdownTimeout = ValidateTimeout(shutdownTimeout ?? DefaultShutdownTimeout, nameof(shutdownTimeout));
     }
 
     internal event Action<TerminalWorkspaceSnapshot>? WorkspaceChanged;
@@ -63,11 +57,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
-    internal async Task<TerminalTab> StartAsync(
-        ShellLaunchSpec shell,
-        int columns,
-        int rows,
-        CancellationToken cancellationToken)
+    internal async Task<TerminalTab> StartAsync(ShellLaunchSpec shell, int columns, int rows,
+                                                CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(shell);
         await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -121,10 +112,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             lock (stateLock)
             {
                 tab = tabRegistry.Add();
-                tabShells.Add(
-                    tab.SessionId,
-                    defaultShell ?? throw new InvalidOperationException(
-                        "The terminal shell has not been configured."));
+                tabShells.Add(tab.SessionId,
+                              defaultShell ?? throw new InvalidOperationException("The terminal shell has not been configured."));
                 snapshot = tabRegistry.CreateSnapshot();
             }
 
@@ -167,9 +156,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
-    internal async Task<bool> CloseAsync(
-        TerminalSessionId sessionId,
-        CancellationToken cancellationToken)
+    internal async Task<bool> CloseAsync(TerminalSessionId sessionId, CancellationToken cancellationToken)
     {
         await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -191,10 +178,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 tabShells.Remove(sessionId);
                 if (closeResult.ReplacementTab is not null)
                 {
-                    tabShells.Add(
-                        closeResult.ReplacementTab.SessionId,
-                        defaultShell ?? throw new InvalidOperationException(
-                            "The terminal shell has not been configured."));
+                    tabShells.Add(closeResult.ReplacementTab.SessionId,
+                                  defaultShell ?? throw new InvalidOperationException("The terminal shell has not been configured."));
                 }
                 snapshot = tabRegistry.CreateSnapshot();
             }
@@ -216,12 +201,10 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 }
             }
 
-            await DisposeSessionAsync(
-                closedSession,
-                sessionCloseTimeout,
-                "CloseSession").ConfigureAwait(false);
+            await DisposeSessionAsync(closedSession, sessionCloseTimeout, "CloseSession").ConfigureAwait(false);
 
             replacementFailure?.Throw();
+
             return true;
         }
         finally
@@ -230,9 +213,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
-    internal async Task RestartAsync(
-        TerminalSessionId sessionId,
-        CancellationToken cancellationToken)
+    internal async Task RestartAsync(TerminalSessionId sessionId, CancellationToken cancellationToken)
     {
         await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -256,10 +237,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             Detach(previousSession);
             WorkspaceChanged?.Invoke(restartingSnapshot);
 
-            await DisposeSessionAsync(
-                previousSession,
-                sessionCloseTimeout,
-                "RestartSession").ConfigureAwait(false);
+            await DisposeSessionAsync(previousSession, sessionCloseTimeout, "RestartSession").ConfigureAwait(false);
 
             TerminalWorkspaceSnapshot startingSnapshot;
             lock (stateLock)
@@ -277,9 +255,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
-    internal async ValueTask WriteActiveAsync(
-        string data,
-        CancellationToken cancellationToken)
+    internal async ValueTask WriteActiveAsync(string data, CancellationToken cancellationToken)
     {
         TerminalSessionId activeSessionId;
         lock (stateLock)
@@ -292,17 +268,13 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         await WriteAsync(activeSessionId, data, cancellationToken).ConfigureAwait(false);
     }
 
-    internal async ValueTask WriteAsync(
-        TerminalSessionId sessionId,
-        string data,
-        CancellationToken cancellationToken)
+    internal async ValueTask WriteAsync(TerminalSessionId sessionId, string data, CancellationToken cancellationToken)
     {
         SessionEntry entry;
         lock (stateLock)
         {
             ThrowIfUnavailable();
-            if (tabRegistry.Contains(sessionId) == false ||
-                sessions.TryGetValue(sessionId, out entry!) == false)
+            if (tabRegistry.Contains(sessionId) == false || sessions.TryGetValue(sessionId, out entry!) == false)
             {
                 throw new InvalidOperationException("The terminal session is unavailable.");
             }
@@ -316,14 +288,12 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             exception is IOException or ObjectDisposedException or OperationCanceledException)
         {
             MarkFailed(entry.SessionId, entry);
+
             throw;
         }
     }
 
-    internal bool Resize(
-        TerminalSessionId sessionId,
-        int columns,
-        int rows)
+    internal bool Resize(TerminalSessionId sessionId, int columns, int rows)
     {
         ValidateSize(columns, rows);
 
@@ -342,6 +312,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
 
         ResizeEntry(entry, columns, rows);
+
         return true;
     }
 
@@ -401,18 +372,12 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
         if (operationLockAcquired == false)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "Shutdown",
-                "Terminal workspace operations exceeded the shutdown deadline; cleanup was started without waiting for the operation gate.");
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Shutdown",
+                                "Terminal workspace operations exceeded the shutdown deadline; cleanup was started without waiting for the operation gate.");
         }
 
         var cleanupTasks = ownedSessions
-            .Select(entry => DisposeSessionAsync(
-                entry,
-                sessionCloseTimeout,
-                "ShutdownSession"))
+            .Select(entry => DisposeSessionAsync(entry, sessionCloseTimeout, "ShutdownSession"))
             .ToArray();
         var cleanup = Task.WhenAll(cleanupTasks);
         var remainingTimeout = shutdownTimeout - shutdownStopwatch.Elapsed;
@@ -429,12 +394,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
         catch (TimeoutException exception)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "Shutdown",
-                "Terminal session cleanup exceeded the workspace shutdown deadline.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Shutdown",
+                                "Terminal session cleanup exceeded the workspace shutdown deadline.", exception);
             ObserveLateCleanup(cleanup, "Shutdown");
         }
     }
@@ -446,8 +407,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         {
             if (tabShells.TryGetValue(sessionId, out launchSpec!) == false)
             {
-                throw new InvalidOperationException(
-                    "The terminal tab has no captured shell configuration.");
+                throw new InvalidOperationException("The terminal tab has no captured shell configuration.");
             }
         }
 
@@ -485,8 +445,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 if (sessions.TryGetValue(sessionId, out var currentEntry) == false ||
                     ReferenceEquals(currentEntry, entry) == false)
                 {
-                    throw new InvalidOperationException(
-                        "The terminal session changed while it was starting.");
+                    throw new InvalidOperationException("The terminal session changed while it was starting.");
                 }
 
                 var tab = tabRegistry.GetRequired(sessionId);
@@ -518,10 +477,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 Detach(entry);
                 if (disposeEntry == true)
                 {
-                    await DisposeSessionAsync(
-                        entry,
-                        sessionCloseTimeout,
-                        "FailedSessionStart").ConfigureAwait(false);
+                    await DisposeSessionAsync(entry, sessionCloseTimeout, "FailedSessionStart").ConfigureAwait(false);
                 }
             }
             else if (session is not null)
@@ -544,12 +500,9 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 WorkspaceChanged?.Invoke(failedSnapshot);
             }
 
-            diagnosticLog.Write(
-                DiagnosticLevel.Error,
-                "Terminal",
-                "StartSession",
-                "A terminal session could not be started.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "StartSession",
+                                "A terminal session could not be started.", exception);
+
             throw;
         }
     }
@@ -581,6 +534,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
         WorkspaceChanged?.Invoke(snapshot);
         ResizeEntry(selectedSession, currentColumns, currentRows);
+
         return true;
     }
 
@@ -599,12 +553,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             exception is InvalidOperationException or ObjectDisposedException)
         {
             MarkFailed(entry.SessionId, entry);
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "ResizeSession",
-                "A terminal session rejected its resize request.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "ResizeSession",
+                                "A terminal session rejected its resize request.", exception);
         }
     }
 
@@ -614,8 +564,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         lock (stateLock)
         {
             if (sessions.TryGetValue(sessionId, out var currentEntry) == true &&
-                ReferenceEquals(currentEntry, expectedEntry) == true &&
-                tabRegistry.Contains(sessionId) == true)
+                ReferenceEquals(currentEntry, expectedEntry) == true && tabRegistry.Contains(sessionId) == true)
             {
                 tabRegistry.SetState(sessionId, TerminalSessionState.Failed);
                 snapshot = tabRegistry.CreateSnapshot();
@@ -654,10 +603,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 return;
             }
 
-            tabRegistry.SetState(
-                expectedEntry.SessionId,
-                TerminalSessionState.Exited,
-                exitCode);
+            tabRegistry.SetState(expectedEntry.SessionId, TerminalSessionState.Exited, exitCode);
             snapshot = tabRegistry.CreateSnapshot();
         }
 
@@ -665,10 +611,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         SessionExited?.Invoke(new TerminalSessionExit(expectedEntry.SessionId, exitCode));
     }
 
-    private async Task DisposeSessionAsync(
-        SessionEntry? entry,
-        TimeSpan timeout,
-        string operation)
+    private async Task DisposeSessionAsync(SessionEntry? entry, TimeSpan timeout, string operation)
     {
         if (entry is null)
         {
@@ -681,18 +624,11 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
     private async Task DisposeUnregisteredSessionAsync(ITerminalSession session)
     {
-        await DisposeSessionAsync(
-            session,
-            null,
-            sessionCloseTimeout,
-            "FailedSessionStart").ConfigureAwait(false);
+        await DisposeSessionAsync(session, null, sessionCloseTimeout, "FailedSessionStart").ConfigureAwait(false);
     }
 
-    private async Task DisposeSessionAsync(
-        ITerminalSession session,
-        TerminalSessionId? sessionId,
-        TimeSpan timeout,
-        string operation)
+    private async Task DisposeSessionAsync(ITerminalSession session, TerminalSessionId? sessionId, TimeSpan timeout,
+                                           string operation)
     {
         var disposeTask = session.DisposeAsync().AsTask();
         try
@@ -701,38 +637,28 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
         catch (TimeoutException exception)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                operation,
-                $"Terminal session {sessionId?.ToString() ?? "unregistered"} exceeded its cleanup deadline.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", operation,
+                                $"Terminal session {sessionId?.ToString() ?? "unregistered"} exceeded its cleanup deadline.",
+                                exception);
             ObserveLateCleanup(disposeTask, operation);
         }
         catch (Exception exception) when (
             exception is IOException or ObjectDisposedException or InvalidOperationException)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                operation,
-                $"Terminal session {sessionId?.ToString() ?? "unregistered"} cleanup failed.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", operation,
+                                $"Terminal session {sessionId?.ToString() ?? "unregistered"} cleanup failed.",
+                                exception);
         }
     }
 
     private void ObserveLateCleanup(Task cleanup, string operation)
     {
-        _ = cleanup.ContinueWith(
-            completedTask => diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                operation,
-                "A terminal session cleanup task failed after its deadline.",
-                completedTask.Exception),
-            CancellationToken.None,
-            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+        _ = cleanup.ContinueWith(completedTask => diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", operation,
+                                                                      "A terminal session cleanup task failed after its deadline.",
+                                                                      completedTask.Exception),
+                                 CancellationToken.None,
+                                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                                 TaskScheduler.Default);
     }
 
     private static void Detach(SessionEntry? entry)
@@ -778,9 +704,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
     private sealed class SessionEntry
     {
-        internal SessionEntry(
-            TerminalSessionId sessionId,
-            ITerminalSession session)
+        internal SessionEntry(TerminalSessionId sessionId, ITerminalSession session)
         {
             SessionId = sessionId;
             Session = session;

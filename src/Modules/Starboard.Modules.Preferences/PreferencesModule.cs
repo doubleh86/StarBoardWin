@@ -13,10 +13,8 @@ public sealed class PreferencesModule
 
     public PreferencesModule(IDiagnosticLog diagnosticLog, string? settingsPath = null)
     {
-        var resolvedPath = settingsPath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Starboard",
-            "settings.json");
+        var resolvedPath = settingsPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                                        "Starboard", "settings.json");
 
         settingsStore = new JsonSettingsStore(diagnosticLog, resolvedPath);
     }
@@ -31,16 +29,13 @@ public sealed class PreferencesModule
         return settingsStore.SaveAsync(settings, cancellationToken);
     }
 
-    public static SettingsEditorSession CreateSettingsEditor(
-        AppSettings currentSettings,
-        ISettingsEditorSaveHandler saveHandler)
+    public static SettingsEditorSession CreateSettingsEditor(AppSettings currentSettings,
+                                                             ISettingsEditorSaveHandler saveHandler)
     {
         ArgumentNullException.ThrowIfNull(currentSettings);
         ArgumentNullException.ThrowIfNull(saveHandler);
 
-        return SettingsEditorSessionFactory.Create(
-            SettingsValidator.Normalize(currentSettings),
-            saveHandler);
+        return SettingsEditorSessionFactory.Create(SettingsValidator.Normalize(currentSettings), saveHandler);
     }
 
     public static ThemeDefinition GetTheme(string name)

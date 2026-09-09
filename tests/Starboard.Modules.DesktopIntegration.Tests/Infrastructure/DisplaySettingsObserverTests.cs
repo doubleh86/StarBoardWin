@@ -28,8 +28,7 @@ public sealed class DisplaySettingsObserverTests
     {
         var eventSource = new FakeDisplaySettingsEventSource
         {
-            UnsubscribeException = new InvalidOperationException(
-                "The display event source is temporarily unavailable."),
+            UnsubscribeException = new InvalidOperationException("The display event source is temporarily unavailable."),
         };
         var observer = new DisplaySettingsObserver(eventSource);
 

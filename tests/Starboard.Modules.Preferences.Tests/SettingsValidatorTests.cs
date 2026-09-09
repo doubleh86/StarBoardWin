@@ -160,6 +160,7 @@ public sealed class SettingsValidatorTests
     {
         var lighter = Math.Max(RelativeLuminance(foreground), RelativeLuminance(background));
         var darker = Math.Min(RelativeLuminance(foreground), RelativeLuminance(background));
+
         return (lighter + 0.05) / (darker + 0.05);
     }
 

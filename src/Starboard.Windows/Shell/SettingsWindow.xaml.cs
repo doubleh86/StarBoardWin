@@ -11,10 +11,8 @@ internal partial class SettingsWindow : Window, ISettingsWindow
     private readonly SettingsApplicationService applicationService;
     private bool isClosed;
 
-    internal SettingsWindow(
-        SettingsEditorSession session,
-        SettingsApplicationService applicationService,
-        ProductBuildInfo buildInfo)
+    internal SettingsWindow(SettingsEditorSession session, SettingsApplicationService applicationService,
+                            ProductBuildInfo buildInfo)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(applicationService);

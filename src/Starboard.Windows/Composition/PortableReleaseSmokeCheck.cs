@@ -28,10 +28,8 @@ internal static class PortableReleaseSmokeCheck
         "cmd.exe",
     ];
 
-    internal static PortableReleaseSmokeResult? TryRun(
-        IReadOnlyList<string> arguments,
-        ProductBuildInfo buildInfo,
-        string baseDirectory)
+    internal static PortableReleaseSmokeResult? TryRun(IReadOnlyList<string> arguments, ProductBuildInfo buildInfo,
+                                                       string baseDirectory)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(buildInfo);
@@ -42,35 +40,23 @@ internal static class PortableReleaseSmokeCheck
             return null;
         }
 
-        return Validate(
-            arguments,
-            buildInfo,
-            baseDirectory,
-            File.Exists,
-            FindDefaultShell);
+        return Validate(arguments, buildInfo, baseDirectory, File.Exists, FindDefaultShell);
     }
 
-    internal static PortableReleaseSmokeResult Validate(
-        IReadOnlyList<string> arguments,
-        ProductBuildInfo buildInfo,
-        string baseDirectory,
-        Func<string, bool> fileExists,
-        Func<string?> findDefaultShell)
+    internal static PortableReleaseSmokeResult Validate(IReadOnlyList<string> arguments, ProductBuildInfo buildInfo,
+                                                        string baseDirectory, Func<string, bool> fileExists,
+                                                        Func<string?> findDefaultShell)
     {
         var expectedVersion = GetOption(arguments, _VersionOption);
         var expectedCommit = GetOption(arguments, _CommitOption);
         if (expectedVersion is null || expectedCommit is null)
         {
-            return new PortableReleaseSmokeResult(
-                2,
-                "Expected version and commit arguments are required.");
+            return new PortableReleaseSmokeResult(2, "Expected version and commit arguments are required.");
         }
 
         if (buildInfo.Matches(expectedVersion, expectedCommit) == false)
         {
-            return new PortableReleaseSmokeResult(
-                3,
-                "Assembly build metadata does not match the package metadata.");
+            return new PortableReleaseSmokeResult(3, "Assembly build metadata does not match the package metadata.");
         }
 
         foreach (var relativePath in _RequiredRelativePaths)
@@ -78,28 +64,20 @@ internal static class PortableReleaseSmokeCheck
             var path = Path.Combine(baseDirectory, relativePath);
             if (fileExists(path) == false)
             {
-                return new PortableReleaseSmokeResult(
-                    4,
-                    $"Required portable file is missing: {relativePath}");
+                return new PortableReleaseSmokeResult(4, $"Required portable file is missing: {relativePath}");
             }
         }
 
         var shellPath = findDefaultShell();
         if (string.IsNullOrWhiteSpace(shellPath) == true)
         {
-            return new PortableReleaseSmokeResult(
-                5,
-                "No supported default shell executable is available.");
+            return new PortableReleaseSmokeResult(5, "No supported default shell executable is available.");
         }
 
-        return new PortableReleaseSmokeResult(
-            0,
-            $"Portable release is ready with shell {Path.GetFileName(shellPath)}.");
+        return new PortableReleaseSmokeResult(0, $"Portable release is ready with shell {Path.GetFileName(shellPath)}.");
     }
 
-    private static string? GetOption(
-        IReadOnlyList<string> arguments,
-        string optionName)
+    private static string? GetOption(IReadOnlyList<string> arguments, string optionName)
     {
         for (var index = 0; index < arguments.Count - 1; index++)
         {
@@ -114,8 +92,7 @@ internal static class PortableReleaseSmokeCheck
 
     private static string? FindDefaultShell()
     {
-        var searchDirectories = GetShellSearchDirectories().Distinct(
-            StringComparer.OrdinalIgnoreCase);
+        var searchDirectories = GetShellSearchDirectories().Distinct(StringComparer.OrdinalIgnoreCase);
         foreach (var shellName in _DefaultShellNames)
         {
             foreach (var directory in searchDirectories)
@@ -139,16 +116,14 @@ internal static class PortableReleaseSmokeCheck
     private static IEnumerable<string> GetShellSearchDirectories()
     {
         var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-        foreach (var directory in path.Split(
-            Path.PathSeparator,
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var directory in path.Split(Path.PathSeparator,
+                                             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             yield return directory;
         }
 
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        var localApplicationData = Environment.GetFolderPath(
-            Environment.SpecialFolder.LocalApplicationData);
+        var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
 
         yield return Path.Combine(programFiles, "PowerShell", "7");

@@ -9,15 +9,9 @@ namespace Starboard.Modules.Terminal.Tests;
 [TestClass]
 public sealed class TerminalSessionCoordinatorTests
 {
-    private static readonly ShellLaunchSpec TestShell = new(
-        "pwsh.exe",
-        "-NoLogo",
-        "C:\\Test");
+    private static readonly ShellLaunchSpec TestShell = new("pwsh.exe", "-NoLogo", "C:\\Test");
 
-    private static readonly ShellLaunchSpec UpdatedShell = new(
-        "powershell.exe",
-        "-NoLogo",
-        "C:\\Updated");
+    private static readonly ShellLaunchSpec UpdatedShell = new("powershell.exe", "-NoLogo", "C:\\Updated");
 
     [TestMethod]
     public async Task StartAsyncFirstTabStartsAndActivatesDedicatedSession()
@@ -147,15 +141,14 @@ public sealed class TerminalSessionCoordinatorTests
         _ = await coordinator.AddAsync(CancellationToken.None);
         await coordinator.RestartAsync(first.SessionId, CancellationToken.None);
 
-        CollectionAssert.AreEqual(
-            new List<ShellLaunchSpec>
-            {
-                TestShell,
-                TestShell,
-                UpdatedShell,
-                TestShell,
-            },
-            factory.StartRequests.Select(request => request.Shell).ToList());
+        CollectionAssert.AreEqual(new List<ShellLaunchSpec>
+                                  {
+                                      TestShell,
+                                      TestShell,
+                                      UpdatedShell,
+                                      TestShell,
+                                  },
+                                  factory.StartRequests.Select(request => request.Shell).ToList());
         Assert.AreEqual(1, factory.Sessions[0].DisposeCount);
         Assert.AreEqual(0, factory.Sessions[1].DisposeCount);
         Assert.AreEqual(0, factory.Sessions[2].DisposeCount);
@@ -169,9 +162,8 @@ public sealed class TerminalSessionCoordinatorTests
         var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
         coordinator.UpdateDefaultShell(UpdatedShell);
 
-        Assert.IsTrue(await coordinator.CloseAsync(
-            first.SessionId,
-            CancellationToken.None));
+        var closed = await coordinator.CloseAsync(first.SessionId, CancellationToken.None);
+        Assert.IsTrue(closed);
 
         Assert.AreEqual(2, factory.StartRequests.Count);
         Assert.AreEqual(TestShell, factory.StartRequests[0].Shell);
@@ -198,10 +190,8 @@ public sealed class TerminalSessionCoordinatorTests
     [TestMethod]
     public async Task CloseAsyncLastTabStartsReplacementBeforeClosedSessionFinishesCleanup()
     {
-        var cleanupGate = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var factory = new FakeTerminalSessionFactory(index => new FakeTerminalSession(
-            index == 0 ? cleanupGate : null));
+        var cleanupGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factory = new FakeTerminalSessionFactory(index => new FakeTerminalSession(index == 0 ? cleanupGate : null));
         await using var coordinator = CreateCoordinator(factory);
         var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
 
@@ -215,7 +205,8 @@ public sealed class TerminalSessionCoordinatorTests
         Assert.AreEqual(snapshotDuringCleanup.Tabs[0].SessionId, snapshotDuringCleanup.ActiveSessionId);
 
         cleanupGate.TrySetResult();
-        Assert.IsTrue(await closeTask);
+        var closed = await closeTask;
+        Assert.IsTrue(closed);
     }
 
     [TestMethod]
@@ -228,8 +219,7 @@ public sealed class TerminalSessionCoordinatorTests
         await using var coordinator = CreateCoordinator(factory);
         var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => coordinator.AddAsync(CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => coordinator.AddAsync(CancellationToken.None));
         var snapshot = coordinator.Snapshot;
 
         Assert.AreEqual(TerminalSessionState.Running, FindTab(snapshot, first.SessionId).State);
@@ -246,8 +236,7 @@ public sealed class TerminalSessionCoordinatorTests
         var second = await coordinator.AddAsync(CancellationToken.None);
         factory.Sessions[1].WriteException = new IOException("Simulated input failure.");
 
-        await Assert.ThrowsExactlyAsync<IOException>(
-            async () => await coordinator.WriteActiveAsync("input", CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<IOException>(async () => await coordinator.WriteActiveAsync("input", CancellationToken.None));
         var snapshot = coordinator.Snapshot;
 
         Assert.AreEqual(TerminalSessionState.Running, FindTab(snapshot, first.SessionId).State);
@@ -262,8 +251,7 @@ public sealed class TerminalSessionCoordinatorTests
         await using var coordinator = CreateCoordinator(factory);
         var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
         var second = await coordinator.AddAsync(CancellationToken.None);
-        factory.Sessions[0].ResizeException = new InvalidOperationException(
-            "Simulated resize failure.");
+        factory.Sessions[0].ResizeException = new InvalidOperationException("Simulated resize failure.");
 
         coordinator.ResizeAll(120, 40);
         var snapshot = coordinator.Snapshot;
@@ -282,8 +270,7 @@ public sealed class TerminalSessionCoordinatorTests
         _ = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
         _ = await coordinator.AddAsync(CancellationToken.None);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => coordinator.AddAsync(CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => coordinator.AddAsync(CancellationToken.None));
 
         Assert.AreEqual(2, factory.StartRequests.Count);
         Assert.AreEqual(2, factory.Sessions.Count);
@@ -295,15 +282,13 @@ public sealed class TerminalSessionCoordinatorTests
         var cleanupGates = new List<TaskCompletionSource>();
         var factory = new FakeTerminalSessionFactory(_ =>
         {
-            var gate = new TaskCompletionSource(
-                TaskCreationOptions.RunContinuationsAsynchronously);
+            var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             cleanupGates.Add(gate);
+
             return new FakeTerminalSession(gate);
         });
-        var coordinator = CreateCoordinator(
-            factory,
-            sessionCloseTimeout: TimeSpan.FromMilliseconds(40),
-            shutdownTimeout: TimeSpan.FromMilliseconds(200));
+        var coordinator = CreateCoordinator(factory, sessionCloseTimeout: TimeSpan.FromMilliseconds(40),
+                                            shutdownTimeout: TimeSpan.FromMilliseconds(200));
         _ = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
         _ = await coordinator.AddAsync(CancellationToken.None);
         _ = await coordinator.AddAsync(CancellationToken.None);
@@ -324,14 +309,10 @@ public sealed class TerminalSessionCoordinatorTests
     [TestMethod]
     public async Task DisposeAsyncDuringBlockedCloseUsesOneWorkspaceDeadline()
     {
-        var cleanupGate = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var factory = new FakeTerminalSessionFactory(index => new FakeTerminalSession(
-            index == 0 ? cleanupGate : null));
-        var coordinator = CreateCoordinator(
-            factory,
-            sessionCloseTimeout: TimeSpan.FromMilliseconds(300),
-            shutdownTimeout: TimeSpan.FromMilliseconds(40));
+        var cleanupGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factory = new FakeTerminalSessionFactory(index => new FakeTerminalSession(index == 0 ? cleanupGate : null));
+        var coordinator = CreateCoordinator(factory, sessionCloseTimeout: TimeSpan.FromMilliseconds(300),
+                                            shutdownTimeout: TimeSpan.FromMilliseconds(40));
         var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
         var closeTask = coordinator.CloseAsync(first.SessionId, CancellationToken.None);
 
@@ -344,28 +325,22 @@ public sealed class TerminalSessionCoordinatorTests
         Assert.AreEqual(1, factory.Sessions[1].DisposeCount);
 
         cleanupGate.TrySetResult();
-        Assert.IsTrue(await closeTask);
+        var closed = await closeTask;
+        Assert.IsTrue(closed);
     }
 
-    private static TerminalSessionCoordinator CreateCoordinator(
-        FakeTerminalSessionFactory factory,
-        int maximumTabs = TerminalTabRegistry.DefaultMaximumTabs,
-        TimeSpan? sessionCloseTimeout = null,
-        TimeSpan? shutdownTimeout = null)
+    private static TerminalSessionCoordinator CreateCoordinator(FakeTerminalSessionFactory factory,
+                                                                int maximumTabs = TerminalTabRegistry.DefaultMaximumTabs,
+                                                                TimeSpan? sessionCloseTimeout = null,
+                                                                TimeSpan? shutdownTimeout = null)
     {
         var nextIdentifier = 0;
-        return new TerminalSessionCoordinator(
-            factory,
-            new NullDiagnosticLog(),
-            () => new TerminalSessionId(CreateGuid(++nextIdentifier)),
-            maximumTabs,
-            sessionCloseTimeout,
-            shutdownTimeout);
+        return new TerminalSessionCoordinator(factory, new NullDiagnosticLog(),
+                                              () => new TerminalSessionId(CreateGuid(++nextIdentifier)), maximumTabs,
+                                              sessionCloseTimeout, shutdownTimeout);
     }
 
-    private static TerminalTab FindTab(
-        TerminalWorkspaceSnapshot snapshot,
-        TerminalSessionId sessionId)
+    private static TerminalTab FindTab(TerminalWorkspaceSnapshot snapshot, TerminalSessionId sessionId)
     {
         return snapshot.Tabs.Single(tab => tab.SessionId == sessionId);
     }
@@ -390,10 +365,7 @@ public sealed class TerminalSessionCoordinatorTests
 
         internal List<StartRequest> StartRequests { get; } = [];
 
-        public ITerminalSession Start(
-            ShellLaunchSpec shell,
-            int columns,
-            int rows)
+        public ITerminalSession Start(ShellLaunchSpec shell, int columns, int rows)
         {
             var startNumber = StartRequests.Count + 1;
             StartRequests.Add(new StartRequest(shell, columns, rows));
@@ -404,6 +376,7 @@ public sealed class TerminalSessionCoordinatorTests
 
             var session = createSession(Sessions.Count);
             Sessions.Add(session);
+
             return session;
         }
     }
@@ -447,6 +420,7 @@ public sealed class TerminalSessionCoordinatorTests
             }
 
             Writes.Add(data);
+
             return ValueTask.CompletedTask;
         }
 
@@ -480,19 +454,12 @@ public sealed class TerminalSessionCoordinatorTests
         }
     }
 
-    private sealed record StartRequest(
-        ShellLaunchSpec Shell,
-        int Columns,
-        int Rows);
+    private sealed record StartRequest(ShellLaunchSpec Shell, int Columns, int Rows);
 
     private sealed class NullDiagnosticLog : IDiagnosticLog
     {
-        public void Write(
-            DiagnosticLevel level,
-            string subsystem,
-            string operation,
-            string message,
-            Exception? exception = null)
+        public void Write(DiagnosticLevel level, string subsystem, string operation, string message,
+                          Exception? exception = null)
         {
             _ = level;
             _ = subsystem;

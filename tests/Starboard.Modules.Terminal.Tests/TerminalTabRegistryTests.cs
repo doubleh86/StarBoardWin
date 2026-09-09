@@ -93,9 +93,7 @@ public sealed class TerminalTabRegistryTests
     public void AddAtMaximumTabCountRejectsBeforeRequestingAnotherIdentifier()
     {
         var identifiersRequested = 0;
-        var registry = new TerminalTabRegistry(
-            () => new TerminalSessionId(CreateGuid(++identifiersRequested)),
-            2);
+        var registry = new TerminalTabRegistry(() => new TerminalSessionId(CreateGuid(++identifiersRequested)), 2);
         _ = registry.Add();
         _ = registry.Add();
 
@@ -105,9 +103,8 @@ public sealed class TerminalTabRegistryTests
 
     private static TerminalTabRegistry CreateRegistry(int identifierCount)
     {
-        var identifiers = new Queue<TerminalSessionId>(
-            Enumerable.Range(1, identifierCount)
-                .Select(value => new TerminalSessionId(CreateGuid(value))));
+        var identifiers = new Queue<TerminalSessionId>(Enumerable.Range(1, identifierCount)
+                                                           .Select(value => new TerminalSessionId(CreateGuid(value))));
         return new TerminalTabRegistry(identifiers.Dequeue);
     }
 

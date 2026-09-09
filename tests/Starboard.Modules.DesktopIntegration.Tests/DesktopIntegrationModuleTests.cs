@@ -13,9 +13,8 @@ public sealed class DesktopIntegrationModuleTests
         var requestCount = 0;
         module.PanelActivationToggleRequested += (_, _) => requestCount++;
 
-        var handled = module.HandleWindowMessage(
-            DesktopIntegrationModule.WindowMessageHotKey,
-            DesktopIntegrationModule.ActivationHotKeyIdentifier);
+        var handled = module.HandleWindowMessage(DesktopIntegrationModule.WindowMessageHotKey,
+                                                 DesktopIntegrationModule.ActivationHotKeyIdentifier);
 
         Assert.IsTrue(handled);
         Assert.AreEqual(1, requestCount);
@@ -29,9 +28,7 @@ public sealed class DesktopIntegrationModuleTests
         var requestCount = 0;
         module.PanelActivationToggleRequested += (_, _) => requestCount++;
 
-        var handled = module.HandleWindowMessage(
-            DesktopIntegrationModule.WindowMessageHotKey,
-            new nint(-1));
+        var handled = module.HandleWindowMessage(DesktopIntegrationModule.WindowMessageHotKey, new nint(-1));
 
         Assert.IsFalse(handled);
         Assert.AreEqual(0, requestCount);
@@ -39,12 +36,8 @@ public sealed class DesktopIntegrationModuleTests
 
     private sealed class NullDiagnosticLog : IDiagnosticLog
     {
-        public void Write(
-            DiagnosticLevel level,
-            string subsystem,
-            string operation,
-            string message,
-            Exception? exception = null)
+        public void Write(DiagnosticLevel level, string subsystem, string operation, string message,
+                          Exception? exception = null)
         {
             _ = level;
             _ = subsystem;

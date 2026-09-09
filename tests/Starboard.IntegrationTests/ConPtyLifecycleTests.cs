@@ -31,9 +31,7 @@ public sealed class ConPtyLifecycleTests
 
         var helperAssemblyPath = typeof(ConPtyTestHostMarker).Assembly.Location;
         var helperPath = Path.ChangeExtension(helperAssemblyPath, ".exe");
-        var resultPath = Path.Combine(
-            Path.GetTempPath(),
-            $"starboard-conpty-{mode}-{Guid.NewGuid():N}.json");
+        var resultPath = Path.Combine(Path.GetTempPath(), $"starboard-conpty-{mode}-{Guid.NewGuid():N}.json");
 
         Process? process = null;
         try
@@ -54,15 +52,12 @@ public sealed class ConPtyLifecycleTests
             Assert.IsTrue(File.Exists(resultPath));
 
             var json = await File.ReadAllTextAsync(resultPath);
-            var result = JsonSerializer.Deserialize<TestHostResult>(
-                json,
-                JsonSerializerOptions.Web);
+            var result = JsonSerializer.Deserialize<TestHostResult>(json, JsonSerializerOptions.Web);
 
             Assert.IsNotNull(result);
-            Assert.IsTrue(
-                result.Succeeded,
-                $"The GUI ConPTY host failed with {result.ErrorType}: {result.ErrorMessage}; " +
-                $"exit code {process.ExitCode}.");
+            Assert.IsTrue(result.Succeeded,
+                          $"The GUI ConPTY host failed with {result.ErrorType}: {result.ErrorMessage}; " +
+                          $"exit code {process.ExitCode}.");
             Assert.AreEqual(0, process.ExitCode);
         }
         finally
@@ -85,8 +80,5 @@ public sealed class ConPtyLifecycleTests
         }
     }
 
-    private sealed record TestHostResult(
-        bool Succeeded,
-        string? ErrorType,
-        string? ErrorMessage);
+    private sealed record TestHostResult(bool Succeeded, string? ErrorType, string? ErrorMessage);
 }

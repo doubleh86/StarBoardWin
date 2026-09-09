@@ -35,6 +35,7 @@ internal sealed class ForegroundWindowObserver : IDisposable
         catch
         {
             _callbackRoot.Free();
+
             throw;
         }
 
@@ -56,8 +57,7 @@ internal sealed class ForegroundWindowObserver : IDisposable
         // the hook. Keep the observer retryable when ownership is violated.
         if (_nativeApi.GetCurrentThreadIdentifier() != _registrationThreadIdentifier)
         {
-            throw new InvalidOperationException(
-                "The foreground observer must be disposed on its registration thread.");
+            throw new InvalidOperationException("The foreground observer must be disposed on its registration thread.");
         }
 
         if (Interlocked.Exchange(ref _disposeState, 1) != 0)
@@ -68,23 +68,16 @@ internal sealed class ForegroundWindowObserver : IDisposable
         if (_hook.TryRelease() == false)
         {
             Volatile.Write(ref _disposeState, 0);
-            throw new Win32Exception(
-                _hook.ReleaseErrorCode,
-                "The foreground window event hook could not be released.");
+
+            throw new Win32Exception(_hook.ReleaseErrorCode, "The foreground window event hook could not be released.");
         }
 
         _hook.Dispose();
         _callbackRoot.Free();
     }
 
-    private void HandleWinEvent(
-        nint hook,
-        uint eventType,
-        nint windowHandle,
-        int objectIdentifier,
-        int childIdentifier,
-        uint eventThreadIdentifier,
-        uint eventTime)
+    private void HandleWinEvent(nint hook, uint eventType, nint windowHandle, int objectIdentifier, int childIdentifier,
+                                uint eventThreadIdentifier, uint eventTime)
     {
         _ = hook;
         _ = eventType;

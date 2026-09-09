@@ -14,17 +14,14 @@ internal static class ShellResolver
 
     internal static ShellLaunchSpec Resolve(string? configuredExecutable)
     {
-        var workingDirectory = Environment.GetFolderPath(
-            Environment.SpecialFolder.UserProfile);
+        var workingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
         if (string.IsNullOrWhiteSpace(configuredExecutable) == false)
         {
             var configuredPath = FindExecutable(configuredExecutable.Trim());
             if (configuredPath is null)
             {
-                throw new FileNotFoundException(
-                    "설정한 shell 실행 파일을 찾을 수 없습니다.",
-                    configuredExecutable);
+                throw new FileNotFoundException("설정한 shell 실행 파일을 찾을 수 없습니다.", configuredExecutable);
             }
 
             return CreateSpec(configuredPath, workingDirectory);
@@ -39,13 +36,10 @@ internal static class ShellResolver
             }
         }
 
-        throw new FileNotFoundException(
-            "pwsh.exe, powershell.exe 또는 cmd.exe를 찾을 수 없습니다.");
+        throw new FileNotFoundException("pwsh.exe, powershell.exe 또는 cmd.exe를 찾을 수 없습니다.");
     }
 
-    internal static string? FindExecutable(
-        string executable,
-        IEnumerable<string>? pathDirectories = null)
+    internal static string? FindExecutable(string executable, IEnumerable<string>? pathDirectories = null)
     {
         if (Path.IsPathFullyQualified(executable) == true)
         {
@@ -75,16 +69,14 @@ internal static class ShellResolver
     private static IEnumerable<string> GetSearchDirectories()
     {
         var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-        foreach (var directory in path.Split(
-            Path.PathSeparator,
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var directory in path.Split(Path.PathSeparator,
+                                             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             yield return directory;
         }
 
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        var localApplicationData = Environment.GetFolderPath(
-            Environment.SpecialFolder.LocalApplicationData);
+        var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
 
         yield return Path.Combine(programFiles, "PowerShell", "7");
@@ -93,9 +85,7 @@ internal static class ShellResolver
         yield return Path.Combine(windows, "System32");
     }
 
-    private static ShellLaunchSpec CreateSpec(
-        string executablePath,
-        string workingDirectory)
+    private static ShellLaunchSpec CreateSpec(string executablePath, string workingDirectory)
     {
         var fileName = Path.GetFileName(executablePath);
         var arguments = fileName.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase)

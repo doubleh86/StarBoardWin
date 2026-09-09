@@ -6,6 +6,4 @@ public enum SettingsEditorCompletionKind
     Canceled,
 }
 
-public sealed record SettingsEditorOutcome(
-    SettingsEditorCompletionKind CompletionKind,
-    AppSettings Settings);
+public sealed record SettingsEditorOutcome(SettingsEditorCompletionKind CompletionKind, AppSettings Settings);

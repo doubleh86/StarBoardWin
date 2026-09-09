@@ -6,8 +6,7 @@ internal sealed class SafeWinEventHookHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
     private readonly IWinEventHookNativeApi _nativeApi;
 
-    internal SafeWinEventHookHandle(nint handle,
-                                    IWinEventHookNativeApi nativeApi)
+    internal SafeWinEventHookHandle(nint handle, IWinEventHookNativeApi nativeApi)
         : base(false)
     {
         _nativeApi = nativeApi;

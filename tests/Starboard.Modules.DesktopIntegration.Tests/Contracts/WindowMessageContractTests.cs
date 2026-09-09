@@ -15,11 +15,7 @@ public sealed class WindowMessageContractTests
             ? unchecked((nint)0x8123456789abcdefUL)
             : unchecked((nint)0x89abcdefu);
 
-        var message = new WindowMessage(
-            new nint(0x1234),
-            0x02e0,
-            wordParameter,
-            longParameter);
+        var message = new WindowMessage(new nint(0x1234), 0x02e0, wordParameter, longParameter);
 
         Assert.AreEqual(wordParameter, message.WordParameter);
         Assert.AreEqual(longParameter, message.LongParameter);
@@ -29,16 +25,10 @@ public sealed class WindowMessageContractTests
     public void FromWindowMessageForDpiChangeCopiesBothDpiAxesAndSuggestedBounds()
     {
         var rawDpi = (nuint)((144u << 16) | 120u);
-        var message = new WindowMessage(
-            new nint(23),
-            0x02e0,
-            rawDpi,
-            new nint(0x5678));
+        var message = new WindowMessage(new nint(23), 0x02e0, rawDpi, new nint(0x5678));
         var suggestedBounds = new PixelRect(-1920, 0, 0, 1080);
 
-        var result = DpiChangedWindowMessage.FromWindowMessage(
-            message,
-            suggestedBounds);
+        var result = DpiChangedWindowMessage.FromWindowMessage(message, suggestedBounds);
 
         Assert.AreEqual(new nint(23), result.WindowHandle);
         Assert.AreEqual(new DisplayDpi(120, 144), result.Dpi);
@@ -51,11 +41,7 @@ public sealed class WindowMessageContractTests
         const uint horizontalResolution = 2560;
         const uint verticalResolution = 1440;
         var packedResolution = (nint)((verticalResolution << 16) | horizontalResolution);
-        var message = new WindowMessage(
-            new nint(29),
-            0x007e,
-            32,
-            packedResolution);
+        var message = new WindowMessage(new nint(29), 0x007e, 32, packedResolution);
 
         var result = DisplayChangedWindowMessage.FromWindowMessage(message);
 

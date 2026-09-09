@@ -10,11 +10,7 @@ internal sealed class ProcessAttributeList : IDisposable
     internal ProcessAttributeList(nint pseudoConsole)
     {
         nint requiredSize = 0;
-        _ = NativeMethods.InitializeProcThreadAttributeList(
-            0,
-            1,
-            0,
-            ref requiredSize);
+        _ = NativeMethods.InitializeProcThreadAttributeList(0, 1, 0, ref requiredSize);
 
         if (requiredSize == 0)
         {
@@ -22,23 +18,13 @@ internal sealed class ProcessAttributeList : IDisposable
         }
 
         attributeList = Marshal.AllocHGlobal(requiredSize);
-        if (NativeMethods.InitializeProcThreadAttributeList(
-            attributeList,
-            1,
-            0,
-            ref requiredSize) == false)
+        if (NativeMethods.InitializeProcThreadAttributeList(attributeList, 1, 0, ref requiredSize) == false)
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }
 
-        if (NativeMethods.UpdateProcThreadAttribute(
-            attributeList,
-            0,
-            NativeMethods.ProcThreadAttributePseudoConsole,
-            pseudoConsole,
-            nint.Size,
-            0,
-            0) == false)
+        if (NativeMethods.UpdateProcThreadAttribute(attributeList, 0, NativeMethods.ProcThreadAttributePseudoConsole,
+                                                    pseudoConsole, nint.Size, 0, 0) == false)
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }

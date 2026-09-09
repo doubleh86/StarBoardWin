@@ -22,9 +22,7 @@ public sealed class ShellResolverTests
         var directory = Path.GetDirectoryName(assemblyPath)
             ?? throw new InvalidOperationException("The test assembly has no directory.");
 
-        var result = ShellResolver.FindExecutable(
-            Path.GetFileName(assemblyPath),
-            [directory]);
+        var result = ShellResolver.FindExecutable(Path.GetFileName(assemblyPath), [directory]);
 
         Assert.AreEqual(Path.GetFullPath(assemblyPath), result);
     }
@@ -32,9 +30,7 @@ public sealed class ShellResolverTests
     [TestMethod]
     public void FindExecutableWithMissingFileReturnsNull()
     {
-        var result = ShellResolver.FindExecutable(
-            "missing-starboard-shell.exe",
-            [Path.GetTempPath()]);
+        var result = ShellResolver.FindExecutable("missing-starboard-shell.exe", [Path.GetTempPath()]);
 
         Assert.IsNull(result);
     }

@@ -6,8 +6,7 @@ internal sealed record ProductBuildInfo(string Version, string? BuildCommit)
 {
     private const string _UnknownBuildCommit = "unknown";
 
-    internal static ProductBuildInfo Current { get; } = FromAssembly(
-        typeof(ProductBuildInfo).Assembly);
+    internal static ProductBuildInfo Current { get; } = FromAssembly(typeof(ProductBuildInfo).Assembly);
 
     internal string DisplayText
     {
@@ -20,6 +19,7 @@ internal sealed record ProductBuildInfo(string Version, string? BuildCommit)
 
             var shortCommitLength = Math.Min(7, BuildCommit.Length);
             var shortCommit = BuildCommit[..shortCommitLength];
+
             return $"버전 {Version} · 빌드 {shortCommit}";
         }
     }
@@ -35,10 +35,7 @@ internal sealed record ProductBuildInfo(string Version, string? BuildCommit)
         ArgumentNullException.ThrowIfNull(assembly);
 
         var metadata = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
-            .ToDictionary(
-                attribute => attribute.Key,
-                attribute => attribute.Value,
-                StringComparer.Ordinal);
+            .ToDictionary(attribute => attribute.Key, attribute => attribute.Value, StringComparer.Ordinal);
         var version = metadata.GetValueOrDefault("ProductVersion");
         if (string.IsNullOrWhiteSpace(version) == true)
         {

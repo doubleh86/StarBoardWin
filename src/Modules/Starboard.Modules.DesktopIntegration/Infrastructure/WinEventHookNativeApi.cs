@@ -22,14 +22,9 @@ internal sealed class WinEventHookNativeApi : IWinEventHookNativeApi
 
     public nint RegisterForegroundChanged(WinEventCallback callback)
     {
-        var hook = NativeMethods.SetWinEventHook(
-            NativeMethods.EventSystemForeground,
-            NativeMethods.EventSystemForeground,
-            0,
-            callback,
-            0,
-            0,
-            NativeMethods.WinEventOutOfContext);
+        var hook = NativeMethods.SetWinEventHook(NativeMethods.EventSystemForeground,
+                                                 NativeMethods.EventSystemForeground, 0, callback, 0, 0,
+                                                 NativeMethods.WinEventOutOfContext);
         if (hook == 0)
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());

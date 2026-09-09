@@ -18,15 +18,14 @@ public sealed class JsonSettingsStoreTests
         {
             var settingsPath = Path.Combine(directory, "settings.json");
             await File.WriteAllTextAsync(settingsPath, "not valid json");
-            await File.WriteAllTextAsync(
-                settingsPath + ".bak",
-                """
+            const string backupSettingsJson = """
                 {
                   "schemaVersion": 4,
                   "theme": "Dark",
                   "fontSize": 15
                 }
-                """);
+                """;
+            await File.WriteAllTextAsync(settingsPath + ".bak", backupSettingsJson);
             var store = new JsonSettingsStore(new TestDiagnosticLog(), settingsPath);
 
             var result = await store.LoadAsync(CancellationToken.None);
@@ -54,12 +53,10 @@ public sealed class JsonSettingsStoreTests
             await store.SaveAsync(new AppSettings { Theme = "Dark" }, CancellationToken.None);
             await store.SaveAsync(new AppSettings { Theme = "Light" }, CancellationToken.None);
 
-            var current = JsonSerializer.Deserialize<AppSettings>(
-                await File.ReadAllTextAsync(settingsPath),
-                SerializerOptions);
-            var backup = JsonSerializer.Deserialize<AppSettings>(
-                await File.ReadAllTextAsync(settingsPath + ".bak"),
-                SerializerOptions);
+            var current = JsonSerializer.Deserialize<AppSettings>(await File.ReadAllTextAsync(settingsPath),
+                                                                  SerializerOptions);
+            var backup = JsonSerializer.Deserialize<AppSettings>(await File.ReadAllTextAsync(settingsPath + ".bak"),
+                                                                 SerializerOptions);
 
             Assert.IsNotNull(current);
             Assert.IsNotNull(backup);
@@ -87,7 +84,8 @@ public sealed class JsonSettingsStoreTests
             await Assert.ThrowsExactlyAsync<IOException>(async () =>
                 await store.SaveAsync(new AppSettings { Theme = "Dark" }, CancellationToken.None));
 
-            Assert.AreEqual("existing file", await File.ReadAllTextAsync(blockedPath));
+            var existingContent = await File.ReadAllTextAsync(blockedPath);
+            Assert.AreEqual("existing file", existingContent);
         }
         finally
         {
@@ -99,6 +97,7 @@ public sealed class JsonSettingsStoreTests
     {
         var directory = Path.Combine(Path.GetTempPath(), "Starboard.Preferences.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
+
         return directory;
     }
 
@@ -112,12 +111,8 @@ public sealed class JsonSettingsStoreTests
 
     private sealed class TestDiagnosticLog : IDiagnosticLog
     {
-        public void Write(
-            DiagnosticLevel level,
-            string subsystem,
-            string operation,
-            string message,
-            Exception? exception = null)
+        public void Write(DiagnosticLevel level, string subsystem, string operation, string message,
+                          Exception? exception = null)
         {
         }
     }

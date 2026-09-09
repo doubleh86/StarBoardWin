@@ -11,11 +11,10 @@ public sealed class PanelWindowPolicyTests
     {
         var state = CreateState().HideOnExplicitUserRequest();
         var duringFullscreen = PanelWindowPolicy.Decide(CreateInput(state) with
-        {
-            FullscreenState = PanelFullscreenState.FullscreenOnPanelMonitor,
-        });
-        var afterExplorerRecovery = PanelWindowPolicy.Decide(CreateInput(
-            state.ReconcileEnvironment()));
+                                                        {
+                                                            FullscreenState = PanelFullscreenState.FullscreenOnPanelMonitor,
+                                                        });
+        var afterExplorerRecovery = PanelWindowPolicy.Decide(CreateInput(state.ReconcileEnvironment()));
 
         Assert.AreEqual(PanelWindowPresentation.HiddenByUser, duringFullscreen.Presentation);
         Assert.AreEqual(PanelWindowPolicyPriority.UserHidden, duringFullscreen.AppliedPriority);
@@ -31,9 +30,9 @@ public sealed class PanelWindowPolicyTests
             .SetEngagement(PanelEngagement.Active);
 
         var result = PanelWindowPolicy.Decide(CreateInput(state) with
-        {
-            FullscreenState = PanelFullscreenState.FullscreenOnPanelMonitor,
-        });
+                                              {
+                                                  FullscreenState = PanelFullscreenState.FullscreenOnPanelMonitor,
+                                              });
 
         Assert.AreEqual(PanelWindowPolicyPriority.FullscreenSuppression, result.AppliedPriority);
         Assert.AreEqual(PanelWindowPresentation.TemporarilySuppressed, result.Presentation);
@@ -50,9 +49,9 @@ public sealed class PanelWindowPolicyTests
             .SetEngagement(PanelEngagement.Active);
 
         var result = PanelWindowPolicy.Decide(CreateInput(state) with
-        {
-            TaskbarPresence = TaskbarPresence.Concealed,
-        });
+                                              {
+                                                  TaskbarPresence = TaskbarPresence.Concealed,
+                                              });
 
         Assert.AreEqual(PanelWindowPolicyPriority.EngagementHold, result.AppliedPriority);
         Assert.AreEqual(PanelWindowPresentation.Visible, result.Presentation);
@@ -67,9 +66,9 @@ public sealed class PanelWindowPolicyTests
         var monitorWorkArea = new PixelRect(0, 0, 1920, 1040);
 
         var result = PanelWindowPolicy.Decide(CreateInput(state) with
-        {
-            TaskbarPresence = TaskbarPresence.Concealed,
-        });
+                                              {
+                                                  TaskbarPresence = TaskbarPresence.Concealed,
+                                              });
 
         Assert.AreEqual(PanelWindowPolicyPriority.ExpandedHold, result.AppliedPriority);
         Assert.AreEqual(PanelWindowPresentation.Visible, result.Presentation);
@@ -81,9 +80,9 @@ public sealed class PanelWindowPolicyTests
     public void DecideWithIdleCollapsedPanelAndConcealedTaskbarTemporarilySuppressesPanel()
     {
         var result = PanelWindowPolicy.Decide(CreateInput(CreateState()) with
-        {
-            TaskbarPresence = TaskbarPresence.Concealed,
-        });
+                                              {
+                                                  TaskbarPresence = TaskbarPresence.Concealed,
+                                              });
 
         Assert.AreEqual(PanelWindowPolicyPriority.TaskbarSuppression, result.AppliedPriority);
         Assert.AreEqual(PanelWindowPresentation.TemporarilySuppressed, result.Presentation);
@@ -97,9 +96,9 @@ public sealed class PanelWindowPolicyTests
         var state = CreateState().RememberSafeCollapsedBounds(safeBounds);
 
         var result = PanelWindowPolicy.Decide(CreateInput(state) with
-        {
-            TaskbarPresence = TaskbarPresence.Unknown,
-        });
+                                              {
+                                                  TaskbarPresence = TaskbarPresence.Unknown,
+                                              });
 
         Assert.AreEqual(PanelWindowPolicyPriority.Normal, result.AppliedPriority);
         Assert.AreEqual(PanelWindowPresentation.Visible, result.Presentation);
@@ -125,27 +124,15 @@ public sealed class PanelWindowPolicyTests
 
     private static PanelWindowState CreateState()
     {
-        return new PanelWindowState(
-            PanelUserVisibility.Visible,
-            PanelMode.Collapsed,
-            PanelEngagement.Idle,
-            null);
+        return new PanelWindowState(PanelUserVisibility.Visible, PanelMode.Collapsed, PanelEngagement.Idle, null);
     }
 
     private static PanelWindowPolicyInput CreateInput(PanelWindowState state)
     {
-        return new PanelWindowPolicyInput(
-            state.UserVisibility,
-            PanelFullscreenState.Normal,
-            state.Mode,
-            state.Engagement,
-            TaskbarPresence.Visible,
-            DisplayTrackingState.Tracked,
-            new MonitorSnapshot(
-                new nint(1),
-                new PixelRect(0, 0, 1920, 1080),
-                new PixelRect(0, 0, 1920, 1040),
-                new DisplayDpi(96, 96)),
-            state.LastSafeCollapsedBounds);
+        return new PanelWindowPolicyInput(state.UserVisibility, PanelFullscreenState.Normal, state.Mode,
+                                          state.Engagement, TaskbarPresence.Visible, DisplayTrackingState.Tracked,
+                                          new MonitorSnapshot(new nint(1), new PixelRect(0, 0, 1920, 1080),
+                                                              new PixelRect(0, 0, 1920, 1040), new DisplayDpi(96, 96)),
+                                          state.LastSafeCollapsedBounds);
     }
 }

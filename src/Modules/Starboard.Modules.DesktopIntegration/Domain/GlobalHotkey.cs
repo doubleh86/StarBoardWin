@@ -6,10 +6,7 @@ internal readonly record struct GlobalHotkey(uint Modifiers, uint VirtualKey, st
 
 internal static class GlobalHotkeyParser
 {
-    internal static bool TryParse(
-        string? value,
-        out GlobalHotkey hotkey,
-        out string? failureMessage)
+    internal static bool TryParse(string? value, out GlobalHotkey hotkey, out string? failureMessage)
     {
         hotkey = default;
         failureMessage = null;
@@ -43,10 +40,8 @@ internal static class GlobalHotkeyParser
             return false;
         }
 
-        hotkey = new GlobalHotkey(
-            modifiers,
-            virtualKey,
-            CreateDisplayText(modifiers, virtualKey));
+        hotkey = new GlobalHotkey(modifiers, virtualKey, CreateDisplayText(modifiers, virtualKey));
+
         return true;
     }
 
@@ -65,6 +60,7 @@ internal static class GlobalHotkeyParser
         }
 
         modifiers |= modifier;
+
         return true;
     }
 
@@ -78,13 +74,13 @@ internal static class GlobalHotkeyParser
         }
 
         if (value.Length < 2 || value[0] is not ('F' or 'f') ||
-            int.TryParse(value.AsSpan(1), out var functionNumber) == false ||
-            functionNumber < 1 || functionNumber > 24)
+            int.TryParse(value.AsSpan(1), out var functionNumber) == false || functionNumber < 1 || functionNumber > 24)
         {
             return false;
         }
 
         virtualKey = NativeMethods.VirtualKeyF1 + (uint)(functionNumber - 1);
+
         return true;
     }
 
@@ -110,6 +106,7 @@ internal static class GlobalHotkeyParser
                        virtualKey <= NativeMethods.VirtualKeyF24
             ? $"F{virtualKey - NativeMethods.VirtualKeyF1 + 1}"
             : ((char)virtualKey).ToString());
+
         return string.Join('+', components);
     }
 }

@@ -2,13 +2,9 @@ using Starboard.Modules.DesktopIntegration.Contracts;
 
 namespace Starboard.Modules.DesktopIntegration.Infrastructure;
 
-internal sealed record DesktopGeometrySnapshot(
-    TaskbarSnapshot Taskbar,
-    MonitorSnapshot Monitor,
-    TaskbarPresence TaskbarPresence,
-    DisplayTrackingState TrackingState,
-    Exception? GeometryCaptureFailure,
-    Exception? DpiCaptureFailure);
+internal sealed record DesktopGeometrySnapshot(TaskbarSnapshot Taskbar, MonitorSnapshot Monitor,
+                                               TaskbarPresence TaskbarPresence, DisplayTrackingState TrackingState,
+                                               Exception? GeometryCaptureFailure, Exception? DpiCaptureFailure);
 
 internal sealed class TaskbarService
 {
@@ -42,10 +38,8 @@ internal sealed class TaskbarService
         try
         {
             nativeTaskbar = _nativeApi.GetTaskbar();
-            monitor = _monitorService.SelectCurrentTaskbarMonitor(
-                nativeTaskbar.Bounds,
-                connectedMonitors,
-                out usedMonitorFallback);
+            monitor = _monitorService.SelectCurrentTaskbarMonitor(nativeTaskbar.Bounds, connectedMonitors,
+                                                                  out usedMonitorFallback);
         }
         catch (Exception exception) when (IsRecoverablePlatformFailure(exception) == true)
         {
@@ -56,57 +50,35 @@ internal sealed class TaskbarService
             usedMonitorFallback = true;
             monitor = MonitorService.SelectFallbackMonitor(connectedMonitors);
             var fallbackEdge = InferTaskbarEdge(monitor);
-            nativeTaskbar = new NativeTaskbarSnapshot(
-                fallbackEdge,
-                CalculateTaskbarBounds(monitor, fallbackEdge),
-                false);
+            nativeTaskbar = new NativeTaskbarSnapshot(fallbackEdge, CalculateTaskbarBounds(monitor, fallbackEdge),
+                                                      false);
         }
 
-        var dpi = _monitorService.CaptureDpi(
-            monitor,
-            panelWindowHandle,
-            out var dpiCaptureFailure);
+        var dpi = _monitorService.CaptureDpi(monitor, panelWindowHandle, out var dpiCaptureFailure);
         var edge = usedMonitorFallback == true
             ? InferTaskbarEdge(monitor)
             : nativeTaskbar.Edge;
         var taskbarBounds = usedMonitorFallback == true
             ? CalculateTaskbarBounds(monitor, edge)
             : nativeTaskbar.Bounds;
-        var snapshot = new TaskbarSnapshot(
-            edge,
-            taskbarBounds,
-            monitor.Bounds,
-            monitor.WorkArea,
-            nativeTaskbar.IsAutoHideEnabled,
-            edge is TaskbarEdge.Left or TaskbarEdge.Right ? dpi.X : dpi.Y);
-        var monitorSnapshot = new MonitorSnapshot(
-            monitor.Handle,
-            monitor.Bounds,
-            monitor.WorkArea,
-            dpi);
+        var snapshot = new TaskbarSnapshot(edge, taskbarBounds, monitor.Bounds, monitor.WorkArea,
+                                           nativeTaskbar.IsAutoHideEnabled,
+                                           edge is TaskbarEdge.Left or TaskbarEdge.Right ? dpi.X : dpi.Y);
+        var monitorSnapshot = new MonitorSnapshot(monitor.Handle, monitor.Bounds, monitor.WorkArea, dpi);
         var isFallback = usedMonitorFallback == true ||
             geometryCaptureFailure is not null ||
             dpiCaptureFailure is not null;
-        var taskbarPresence = CaptureTaskbarPresence(
-            nativeTaskbar,
-            monitor,
-            usedMonitorFallback);
+        var taskbarPresence = CaptureTaskbarPresence(nativeTaskbar, monitor, usedMonitorFallback);
 
-        return new DesktopGeometrySnapshot(
-            snapshot,
-            monitorSnapshot,
-            taskbarPresence,
-            isFallback == true
-                ? DisplayTrackingState.Fallback
-                : DisplayTrackingState.Tracked,
-            geometryCaptureFailure,
-            dpiCaptureFailure);
+        return new DesktopGeometrySnapshot(snapshot, monitorSnapshot, taskbarPresence,
+                                           isFallback == true
+                                               ? DisplayTrackingState.Fallback
+                                               : DisplayTrackingState.Tracked,
+                                           geometryCaptureFailure, dpiCaptureFailure);
     }
 
-    private static TaskbarPresence CaptureTaskbarPresence(
-        NativeTaskbarSnapshot taskbar,
-        NativeMonitorSnapshot monitor,
-        bool usedMonitorFallback)
+    private static TaskbarPresence CaptureTaskbarPresence(NativeTaskbarSnapshot taskbar, NativeMonitorSnapshot monitor,
+                                                          bool usedMonitorFallback)
     {
         if (usedMonitorFallback == true)
         {
@@ -118,8 +90,7 @@ internal sealed class TaskbarService
             return TaskbarPresence.Visible;
         }
 
-        if (taskbar.CurrentWindowBounds is not PixelRect currentBounds ||
-            currentBounds.IsEmpty == true)
+        if (taskbar.CurrentWindowBounds is not PixelRect currentBounds || currentBounds.IsEmpty == true)
         {
             return TaskbarPresence.Unknown;
         }
@@ -133,16 +104,8 @@ internal sealed class TaskbarService
         }
 
         var parallelOverlap = taskbar.Edge is TaskbarEdge.Left or TaskbarEdge.Right
-            ? CalculateOverlap(
-                currentBounds.Top,
-                currentBounds.Bottom,
-                monitor.Bounds.Top,
-                monitor.Bounds.Bottom)
-            : CalculateOverlap(
-                currentBounds.Left,
-                currentBounds.Right,
-                monitor.Bounds.Left,
-                monitor.Bounds.Right);
+            ? CalculateOverlap(currentBounds.Top, currentBounds.Bottom, monitor.Bounds.Top, monitor.Bounds.Bottom)
+            : CalculateOverlap(currentBounds.Left, currentBounds.Right, monitor.Bounds.Left, monitor.Bounds.Right);
         if (parallelOverlap <= 0)
         {
             return TaskbarPresence.Unknown;
@@ -172,15 +135,9 @@ internal sealed class TaskbarService
         return TaskbarPresence.Unknown;
     }
 
-    private static int CalculateOverlap(
-        int firstStart,
-        int firstEnd,
-        int secondStart,
-        int secondEnd)
+    private static int CalculateOverlap(int firstStart, int firstEnd, int secondStart, int secondEnd)
     {
-        return Math.Max(
-            0,
-            Math.Min(firstEnd, secondEnd) - Math.Max(firstStart, secondStart));
+        return Math.Max(0, Math.Min(firstEnd, secondEnd) - Math.Max(firstStart, secondStart));
     }
 
     private static TaskbarEdge InferTaskbarEdge(NativeMonitorSnapshot monitor)
@@ -189,9 +146,7 @@ internal sealed class TaskbarService
         var topInset = Math.Max(0, monitor.WorkArea.Top - monitor.Bounds.Top);
         var rightInset = Math.Max(0, monitor.Bounds.Right - monitor.WorkArea.Right);
         var bottomInset = Math.Max(0, monitor.Bounds.Bottom - monitor.WorkArea.Bottom);
-        var largestInset = Math.Max(
-            Math.Max(leftInset, topInset),
-            Math.Max(rightInset, bottomInset));
+        var largestInset = Math.Max(Math.Max(leftInset, topInset), Math.Max(rightInset, bottomInset));
 
         if (largestInset == leftInset && leftInset > 0)
         {
@@ -211,32 +166,18 @@ internal sealed class TaskbarService
         return TaskbarEdge.Bottom;
     }
 
-    private static PixelRect CalculateTaskbarBounds(
-        NativeMonitorSnapshot monitor,
-        TaskbarEdge edge)
+    private static PixelRect CalculateTaskbarBounds(NativeMonitorSnapshot monitor, TaskbarEdge edge)
     {
         return edge switch
         {
-            TaskbarEdge.Left => new PixelRect(
-                monitor.Bounds.Left,
-                monitor.Bounds.Top,
-                monitor.WorkArea.Left,
-                monitor.Bounds.Bottom),
-            TaskbarEdge.Top => new PixelRect(
-                monitor.Bounds.Left,
-                monitor.Bounds.Top,
-                monitor.Bounds.Right,
-                monitor.WorkArea.Top),
-            TaskbarEdge.Right => new PixelRect(
-                monitor.WorkArea.Right,
-                monitor.Bounds.Top,
-                monitor.Bounds.Right,
-                monitor.Bounds.Bottom),
-            _ => new PixelRect(
-                monitor.Bounds.Left,
-                monitor.WorkArea.Bottom,
-                monitor.Bounds.Right,
-                monitor.Bounds.Bottom),
+            TaskbarEdge.Left => new PixelRect(monitor.Bounds.Left, monitor.Bounds.Top, monitor.WorkArea.Left,
+                                              monitor.Bounds.Bottom),
+            TaskbarEdge.Top => new PixelRect(monitor.Bounds.Left, monitor.Bounds.Top, monitor.Bounds.Right,
+                                             monitor.WorkArea.Top),
+            TaskbarEdge.Right => new PixelRect(monitor.WorkArea.Right, monitor.Bounds.Top, monitor.Bounds.Right,
+                                               monitor.Bounds.Bottom),
+            _ => new PixelRect(monitor.Bounds.Left, monitor.WorkArea.Bottom, monitor.Bounds.Right,
+                               monitor.Bounds.Bottom),
         };
     }
 

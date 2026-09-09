@@ -37,9 +37,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private int columns = 80;
     private int rows = 24;
 
-    internal TerminalView(
-        IDiagnosticLog diagnosticLog,
-        TerminalSessionCoordinator sessionCoordinator)
+    internal TerminalView(IDiagnosticLog diagnosticLog, TerminalSessionCoordinator sessionCoordinator)
     {
         this.diagnosticLog = diagnosticLog;
         this.sessionCoordinator = sessionCoordinator;
@@ -51,21 +49,13 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         SetRendererBackground(canvas);
     }
 
-    internal async Task StartAsync(
-        TerminalOptions terminalOptions,
-        CancellationToken cancellationToken)
+    internal async Task StartAsync(TerminalOptions terminalOptions, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
         ArgumentNullException.ThrowIfNull(terminalOptions);
-        var initialAppearance = CreateAppearanceSnapshot(
-            new TerminalAppearanceSettings(
-                terminalOptions.FontFamily,
-                terminalOptions.FontSize,
-                terminalOptions.Theme));
+        var initialAppearance = CreateAppearanceSnapshot(new TerminalAppearanceSettings(terminalOptions.FontFamily, terminalOptions.FontSize, terminalOptions.Theme));
         defaultShell = ShellResolver.Resolve(terminalOptions.ShellExecutable);
-        settings = new TerminalSettings(
-            initialAppearance,
-            terminalOptions.ShellExecutable);
+        settings = new TerminalSettings(initialAppearance, terminalOptions.ShellExecutable);
         appearanceState = new TerminalAppearanceState(initialAppearance);
         ApplyTheme(initialAppearance.Theme);
         ShowLoading("로컬 renderer와 shell session을 준비하고 있습니다.");
@@ -79,14 +69,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException or UnauthorizedAccessException or COMException or Win32Exception)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Error,
-                "Terminal",
-                "Start",
-                "The terminal session could not be started.",
-                exception);
-            if (Renderer.CoreWebView2 is not null &&
-                sessionCoordinator.Snapshot.Tabs.Count > 0)
+            diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "Start",
+                                "The terminal session could not be started.", exception);
+            if (Renderer.CoreWebView2 is not null && sessionCoordinator.Snapshot.Tabs.Count > 0)
             {
                 ShowTerminal();
             }
@@ -97,8 +82,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
-    internal TerminalSettingsApplyResult ApplySettings(
-        TerminalSettings requestedSettings)
+    internal TerminalSettingsApplyResult ApplySettings(TerminalSettings requestedSettings)
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
         ArgumentNullException.ThrowIfNull(requestedSettings);
@@ -110,27 +94,18 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         try
         {
             requestedAppearance = CreateAppearanceSnapshot(requestedSettings.Appearance);
-            requestedShell = string.Equals(
-                requestedSettings.DefaultShellExecutable,
-                previousSettings.DefaultShellExecutable,
-                StringComparison.OrdinalIgnoreCase)
-                ? defaultShell ?? ShellResolver.Resolve(
-                    requestedSettings.DefaultShellExecutable)
+            requestedShell = string.Equals(requestedSettings.DefaultShellExecutable,
+                                           previousSettings.DefaultShellExecutable, StringComparison.OrdinalIgnoreCase)
+                ? defaultShell ?? ShellResolver.Resolve(requestedSettings.DefaultShellExecutable)
                 : ShellResolver.Resolve(requestedSettings.DefaultShellExecutable);
         }
         catch (Exception exception) when (IsRecoverableSettingsException(exception) == true)
         {
-            return new TerminalSettingsApplyResult(
-                requestedSettings,
-                previousSettings,
-                previousSettings,
-                TerminalSettingsApplyStatus.FailedWithoutChange,
-                exception.Message);
+            return new TerminalSettingsApplyResult(requestedSettings, previousSettings, previousSettings,
+                                                   TerminalSettingsApplyStatus.FailedWithoutChange, exception.Message);
         }
 
-        var effectiveSettings = new TerminalSettings(
-            requestedAppearance,
-            requestedSettings.DefaultShellExecutable);
+        var effectiveSettings = new TerminalSettings(requestedAppearance, requestedSettings.DefaultShellExecutable);
         var previousShell = defaultShell
             ?? throw new InvalidOperationException("The terminal shell has not been configured.");
         var hasWorkspace = sessionCoordinator.Snapshot.Tabs.Count > 0;
@@ -152,27 +127,14 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
         catch (Exception exception) when (IsRecoverableSettingsException(exception) == true)
         {
-            var restoreIncomplete = RestorePreviousSettings(
-                previousSettings,
-                previousShell,
-                defaultShellApplied,
-                appearanceAttempted);
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "ApplySettings",
-                "Terminal settings could not be applied and recovery was attempted.",
-                exception);
+            var restoreIncomplete = RestorePreviousSettings(previousSettings, previousShell, defaultShellApplied,
+                                                            appearanceAttempted);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "ApplySettings",
+                                "Terminal settings could not be applied and recovery was attempted.", exception);
 
-            return new TerminalSettingsApplyResult(
-                requestedSettings,
-                previousSettings,
-                previousSettings,
-                GetFailureStatus(
-                    defaultShellApplied,
-                    appearanceAttempted,
-                    restoreIncomplete),
-                exception.Message);
+            return new TerminalSettingsApplyResult(requestedSettings, previousSettings, previousSettings,
+                                                   GetFailureStatus(defaultShellApplied, appearanceAttempted, restoreIncomplete),
+                                                   exception.Message);
         }
 
         defaultShell = requestedShell;
@@ -183,19 +145,12 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             SendAppearanceMessage("apply-appearance", rendererAppearance);
         }
 
-        return new TerminalSettingsApplyResult(
-            requestedSettings,
-            previousSettings,
-            effectiveSettings,
-            TerminalSettingsApplyStatus.Applied,
-            null);
+        return new TerminalSettingsApplyResult(requestedSettings, previousSettings, effectiveSettings,
+                                               TerminalSettingsApplyStatus.Applied, null);
     }
 
-    private bool RestorePreviousSettings(
-        TerminalSettings previousSettings,
-        ShellLaunchSpec previousShell,
-        bool restoreDefaultShell,
-        bool restoreAppearance)
+    private bool RestorePreviousSettings(TerminalSettings previousSettings, ShellLaunchSpec previousShell,
+                                         bool restoreDefaultShell, bool restoreAppearance)
     {
         var restoreIncomplete = false;
         if (restoreDefaultShell == true)
@@ -207,12 +162,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             catch (Exception exception) when (IsRecoverableSettingsException(exception) == true)
             {
                 restoreIncomplete = true;
-                diagnosticLog.Write(
-                    DiagnosticLevel.Error,
-                    "Terminal",
-                    "RestoreDefaultShell",
-                    "The previous default shell could not be restored.",
-                    exception);
+                diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "RestoreDefaultShell",
+                                    "The previous default shell could not be restored.", exception);
             }
         }
 
@@ -225,12 +176,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             catch (Exception exception) when (IsRecoverableSettingsException(exception) == true)
             {
                 restoreIncomplete = true;
-                diagnosticLog.Write(
-                    DiagnosticLevel.Error,
-                    "Terminal",
-                    "RestoreAppearance",
-                    "The previous terminal appearance could not be restored.",
-                    exception);
+                diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "RestoreAppearance",
+                                    "The previous terminal appearance could not be restored.", exception);
             }
         }
 
@@ -266,19 +213,12 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         var indexPath = Path.Combine(rendererDirectory, "index.html");
         if (File.Exists(indexPath) == false)
         {
-            throw new FileNotFoundException(
-                "번들된 terminal renderer를 찾을 수 없습니다.",
-                indexPath);
+            throw new FileNotFoundException("번들된 terminal renderer를 찾을 수 없습니다.", indexPath);
         }
 
-        var userDataDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Starboard",
-            "WebView2");
-        var environment = await CoreWebView2Environment.CreateAsync(
-            null,
-            userDataDirectory,
-            null);
+        var userDataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                             "Starboard", "WebView2");
+        var environment = await CoreWebView2Environment.CreateAsync(null, userDataDirectory, null);
 
         await Renderer.EnsureCoreWebView2Async(environment);
         var core = Renderer.CoreWebView2
@@ -296,10 +236,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private void ConfigureRenderer(CoreWebView2 core)
     {
         var rendererDirectory = Path.Combine(AppContext.BaseDirectory, "Renderer");
-        core.SetVirtualHostNameToFolderMapping(
-            RendererHostName,
-            rendererDirectory,
-            CoreWebView2HostResourceAccessKind.DenyCors);
+        core.SetVirtualHostNameToFolderMapping(RendererHostName, rendererDirectory,
+                                               CoreWebView2HostResourceAccessKind.DenyCors);
 
         core.Settings.AreBrowserAcceleratorKeysEnabled = false;
         core.Settings.AreDefaultContextMenusEnabled = false;
@@ -326,26 +264,17 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     {
         var shell = defaultShell
             ?? throw new InvalidOperationException("The terminal shell has not been configured.");
-        await sessionCoordinator.StartAsync(
-            shell,
-            columns,
-            rows,
-            cancellationToken);
+        await sessionCoordinator.StartAsync(shell, columns, rows, cancellationToken);
     }
 
-    private void Core_WebMessageReceived(
-        object? sender,
-        CoreWebView2WebMessageReceivedEventArgs eventArgs)
+    private void Core_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
     {
         _ = sender;
         var json = eventArgs.WebMessageAsJson;
         if (RendererProtocol.TryParse(json, out var message) == false || message is null)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "RendererMessage",
-                "A malformed or unsupported renderer message was ignored.");
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererMessage",
+                                "A malformed or unsupported renderer message was ignored.");
             return;
         }
 
@@ -369,9 +298,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             case RendererMessageType.Input:
                 if (message.SessionId is { } inputSessionId)
                 {
-                    _ = WriteInputAsync(
-                        inputSessionId,
-                        message.Data ?? string.Empty);
+                    _ = WriteInputAsync(inputSessionId, message.Data ?? string.Empty);
                 }
                 break;
             case RendererMessageType.Resize:
@@ -379,22 +306,17 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 rows = message.Rows;
                 if (message.SessionId is { } resizeSessionId)
                 {
-                    ResizeSession(
-                        resizeSessionId,
-                        message.Columns,
-                        message.Rows);
+                    ResizeSession(resizeSessionId, message.Columns, message.Rows);
                 }
                 break;
             case RendererMessageType.Copy:
-                if (message.SessionId is { } copySessionId &&
-                    ContainsSession(copySessionId) == true)
+                if (message.SessionId is { } copySessionId && ContainsSession(copySessionId) == true)
                 {
                     CopyToClipboard(message.Data ?? string.Empty);
                 }
                 break;
             case RendererMessageType.PasteRequest:
-                if (message.SessionId is { } pasteSessionId &&
-                    ContainsSession(pasteSessionId) == true)
+                if (message.SessionId is { } pasteSessionId && ContainsSession(pasteSessionId) == true)
                 {
                     PasteFromClipboard(pasteSessionId);
                 }
@@ -412,22 +334,15 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 }
                 break;
             case RendererMessageType.SessionError:
-                if (message.SessionId is { } failedSessionId &&
-                    ContainsSession(failedSessionId) == true)
+                if (message.SessionId is { } failedSessionId && ContainsSession(failedSessionId) == true)
                 {
-                    diagnosticLog.Write(
-                        DiagnosticLevel.Warning,
-                        "Terminal",
-                        "RendererSession",
-                        $"Renderer state failed for terminal session {failedSessionId}.");
+                    diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererSession",
+                                        $"Renderer state failed for terminal session {failedSessionId}.");
                 }
                 break;
             case RendererMessageType.RendererError:
-                diagnosticLog.Write(
-                    DiagnosticLevel.Warning,
-                    "Terminal",
-                    "RendererRuntime",
-                    "The terminal renderer reported a local runtime error.");
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererRuntime",
+                                    "The terminal renderer reported a local runtime error.");
                 break;
             default:
                 throw new InvalidOperationException("Unexpected renderer message type.");
@@ -436,13 +351,10 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private bool ContainsSession(TerminalSessionId sessionId)
     {
-        return sessionCoordinator.Snapshot.Tabs.Any(
-            tab => tab.SessionId == sessionId);
+        return sessionCoordinator.Snapshot.Tabs.Any(tab => tab.SessionId == sessionId);
     }
 
-    private void Core_NavigationStarting(
-        object? sender,
-        CoreWebView2NavigationStartingEventArgs eventArgs)
+    private void Core_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs eventArgs)
     {
         _ = sender;
         var allowedPrefix = $"https://{RendererHostName}/";
@@ -452,16 +364,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
-    private void Core_ProcessFailed(
-        object? sender,
-        CoreWebView2ProcessFailedEventArgs eventArgs)
+    private void Core_ProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs eventArgs)
     {
         _ = sender;
-        diagnosticLog.Write(
-            DiagnosticLevel.Error,
-            "Terminal",
-            "RendererProcess",
-            $"The renderer process failed ({eventArgs.ProcessFailedKind}).");
+        diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "RendererProcess",
+                            $"The renderer process failed ({eventArgs.ProcessFailedKind}).");
         rendererFailed = true;
         appearanceState?.MarkRendererUnavailable();
         ShowError("Terminal renderer가 중단됐습니다. shell session은 유지되며 renderer를 다시 연결할 수 있습니다.");
@@ -480,10 +387,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         var reconnectRendererOnly = rendererFailed &&
                                     sessionCoordinator.Snapshot.Tabs.Count > 0;
         RetryButton.IsEnabled = false;
-        ShowLoading(
-            reconnectRendererOnly
-                ? "terminal renderer를 다시 연결하고 있습니다."
-                : "shell session을 다시 시작하고 있습니다.");
+        ShowLoading(reconnectRendererOnly
+                        ? "terminal renderer를 다시 연결하고 있습니다."
+                        : "shell session을 다시 시작하고 있습니다.");
 
         try
         {
@@ -518,9 +424,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             else
             {
                 SendSessionMessage("reset", activeSessionId.Value, new { });
-                await sessionCoordinator.RestartAsync(
-                    activeSessionId.Value,
-                    lifetimeCancellation.Token);
+                await sessionCoordinator.RestartAsync(activeSessionId.Value, lifetimeCancellation.Token);
             }
 
             ShowTerminal();
@@ -528,12 +432,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException or UnauthorizedAccessException or COMException or Win32Exception)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Error,
-                "Terminal",
-                "Restart",
-                "The terminal session could not be restarted.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "Restart",
+                                "The terminal session could not be restarted.", exception);
             ShowError(ToUserMessage(exception));
         }
         finally
@@ -558,12 +458,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         {
             if (isDisposed == false)
             {
-                diagnosticLog.Write(
-                    DiagnosticLevel.Warning,
-                    "Terminal",
-                    "AddSession",
-                    "A terminal tab could not be added.",
-                    exception);
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "AddSession",
+                                    "A terminal tab could not be added.", exception);
             }
         }
     }
@@ -581,12 +477,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
         catch (InvalidOperationException exception)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "SelectSession",
-                "A terminal tab could not be selected.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "SelectSession",
+                                "A terminal tab could not be selected.", exception);
         }
     }
 
@@ -609,12 +501,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
         catch (InvalidOperationException exception)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "SelectSession",
-                "A terminal tab could not be selected.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "SelectSession",
+                                "A terminal tab could not be selected.", exception);
         }
     }
 
@@ -627,25 +515,16 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         try
         {
-            _ = await sessionCoordinator.CloseAsync(
-                sessionId,
-                lifetimeCancellation.Token);
+            _ = await sessionCoordinator.CloseAsync(sessionId, lifetimeCancellation.Token);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException or OperationCanceledException)
         {
             if (isDisposed == false)
             {
-                diagnosticLog.Write(
-                    DiagnosticLevel.Warning,
-                    "Terminal",
-                    "CloseSession",
-                    $"Terminal session {sessionId} could not be closed.",
-                    exception);
-                SendSessionMessage(
-                    "session-error",
-                    sessionId,
-                    new { message = "탭을 닫지 못했습니다." });
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "CloseSession",
+                                    $"Terminal session {sessionId} could not be closed.", exception);
+                SendSessionMessage("session-error", sessionId, new { message = "탭을 닫지 못했습니다." });
             }
         }
     }
@@ -660,32 +539,21 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         SendSessionMessage("reset", sessionId, new { });
         try
         {
-            await sessionCoordinator.RestartAsync(
-                sessionId,
-                lifetimeCancellation.Token);
+            await sessionCoordinator.RestartAsync(sessionId, lifetimeCancellation.Token);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException or OperationCanceledException or Win32Exception or UnauthorizedAccessException)
         {
             if (isDisposed == false)
             {
-                diagnosticLog.Write(
-                    DiagnosticLevel.Warning,
-                    "Terminal",
-                    "RestartSession",
-                    $"Terminal session {sessionId} could not be restarted.",
-                    exception);
-                SendSessionMessage(
-                    "session-error",
-                    sessionId,
-                    new { message = "shell session을 다시 시작하지 못했습니다." });
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RestartSession",
+                                    $"Terminal session {sessionId} could not be restarted.", exception);
+                SendSessionMessage("session-error", sessionId, new { message = "shell session을 다시 시작하지 못했습니다." });
             }
         }
     }
 
-    private async Task WriteInputAsync(
-        TerminalSessionId sessionId,
-        string data)
+    private async Task WriteInputAsync(TerminalSessionId sessionId, string data)
     {
         if (isDisposed == true)
         {
@@ -694,51 +562,31 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         try
         {
-            await sessionCoordinator.WriteAsync(
-                sessionId,
-                data,
-                lifetimeCancellation.Token);
+            await sessionCoordinator.WriteAsync(sessionId, data, lifetimeCancellation.Token);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException or OperationCanceledException)
         {
             if (isDisposed == false)
             {
-                diagnosticLog.Write(
-                    DiagnosticLevel.Warning,
-                    "Terminal",
-                    "WriteInput",
-                    "Terminal input could not be delivered.",
-                    exception);
-                SendSessionMessage(
-                    "session-error",
-                    sessionId,
-                    new { message = "shell 입력 연결이 끊겼습니다. 다시 시작해 주세요." });
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "WriteInput",
+                                    "Terminal input could not be delivered.", exception);
+                SendSessionMessage("session-error", sessionId, new { message = "shell 입력 연결이 끊겼습니다. 다시 시작해 주세요." });
             }
         }
     }
 
-    private void ResizeSession(
-        TerminalSessionId sessionId,
-        int requestedColumns,
-        int requestedRows)
+    private void ResizeSession(TerminalSessionId sessionId, int requestedColumns, int requestedRows)
     {
         try
         {
-            _ = sessionCoordinator.Resize(
-                sessionId,
-                requestedColumns,
-                requestedRows);
+            _ = sessionCoordinator.Resize(sessionId, requestedColumns, requestedRows);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or ObjectDisposedException)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "Resize",
-                "The ConPTY resize request was rejected.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Resize",
+                                "The ConPTY resize request was rejected.", exception);
         }
     }
 
@@ -760,9 +608,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void SyncWorkspace(TerminalWorkspaceSnapshot snapshot)
     {
-        if (isDisposed == true ||
-            rendererFailed == true ||
-            Renderer.CoreWebView2 is null)
+        if (isDisposed == true || rendererFailed == true || Renderer.CoreWebView2 is null)
         {
             return;
         }
@@ -784,36 +630,29 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         for (var index = 0; index < snapshot.Tabs.Count; index++)
         {
             var tab = snapshot.Tabs[index];
-            SendSessionMessage(
-                "session-upsert",
-                tab.SessionId,
-                new
-                {
-                    tab.Name,
-                    state = tab.State.ToString().ToLowerInvariant(),
-                    tab.ExitCode,
-                    order = index,
-                    canAddSession,
-                });
+            SendSessionMessage("session-upsert", tab.SessionId,
+                               new
+                               {
+                                   tab.Name,
+                                   state = tab.State.ToString().ToLowerInvariant(),
+                                   tab.ExitCode,
+                                   order = index,
+                                   canAddSession,
+                               });
 
             if (tab.State == TerminalSessionState.Exited)
             {
-                SendSessionMessage(
-                    "session-error",
-                    tab.SessionId,
-                    new
-                    {
-                        message = tab.ExitCode is null
-                            ? "shell이 종료됐습니다."
-                            : $"shell이 종료됐습니다 (exit {tab.ExitCode.Value}).",
-                    });
+                SendSessionMessage("session-error", tab.SessionId,
+                                   new
+                                   {
+                                       message = tab.ExitCode is null
+                                           ? "shell이 종료됐습니다."
+                                           : $"shell이 종료됐습니다 (exit {tab.ExitCode.Value}).",
+                                   });
             }
             else if (tab.State == TerminalSessionState.Failed)
             {
-                SendSessionMessage(
-                    "session-error",
-                    tab.SessionId,
-                    new { message = "shell session을 시작하거나 유지하지 못했습니다." });
+                SendSessionMessage("session-error", tab.SessionId, new { message = "shell session을 시작하거나 유지하지 못했습니다." });
             }
         }
 
@@ -876,11 +715,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         if (reportOverflow == true)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "OutputBacklog",
-                $"Terminal session {output.SessionId} exceeded its bounded renderer backlog; the oldest data was discarded.");
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "OutputBacklog",
+                                $"Terminal session {output.SessionId} exceeded its bounded renderer backlog; the oldest data was discarded.");
         }
 
         if (scheduleFlush == true)
@@ -938,11 +774,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         var exitCode = sessionExit.ExitCode;
 
-        diagnosticLog.Write(
-            DiagnosticLevel.Warning,
-            "Terminal",
-            "ShellExit",
-            $"Terminal session {sessionExit.SessionId} exited with code {exitCode}.");
+        diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "ShellExit",
+                            $"Terminal session {sessionExit.SessionId} exited with code {exitCode}.");
     }
 
     private void SendInitializeMessage()
@@ -952,32 +785,27 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             return;
         }
 
-        SendAppearanceMessage(
-            "initialize",
-            appearanceState.MarkRendererReady());
+        SendAppearanceMessage("initialize", appearanceState.MarkRendererReady());
     }
 
-    private void SendAppearanceMessage(
-        string type,
-        TerminalAppearanceSettings appearance)
+    private void SendAppearanceMessage(string type, TerminalAppearanceSettings appearance)
     {
-        SendGlobalMessage(
-            type,
-            new
-            {
-                appearance.FontFamily,
-                appearance.FontSize,
-                theme = new
-                {
-                    appearance.Theme.Canvas,
-                    appearance.Theme.Foreground,
-                    appearance.Theme.Muted,
-                    appearance.Theme.Accent,
-                    appearance.Theme.Cursor,
-                    appearance.Theme.Selection,
-                    appearance.Theme.AnsiPalette,
-                },
-            });
+        SendGlobalMessage(type,
+                          new
+                          {
+                              appearance.FontFamily,
+                              appearance.FontSize,
+                              theme = new
+                              {
+                                  appearance.Theme.Canvas,
+                                  appearance.Theme.Foreground,
+                                  appearance.Theme.Muted,
+                                  appearance.Theme.Accent,
+                                  appearance.Theme.Cursor,
+                                  appearance.Theme.Selection,
+                                  appearance.Theme.AnsiPalette,
+                              },
+                          });
     }
 
     private void SendGlobalMessage(string type, object payload)
@@ -985,16 +813,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         PostRendererMessage(RendererProtocol.SerializeGlobalMessage(type, payload));
     }
 
-    private void SendSessionMessage(
-        string type,
-        TerminalSessionId sessionId,
-        object payload)
+    private void SendSessionMessage(string type, TerminalSessionId sessionId, object payload)
     {
-        PostRendererMessage(
-            RendererProtocol.SerializeSessionMessage(
-                type,
-                sessionId,
-                payload));
+        PostRendererMessage(RendererProtocol.SerializeSessionMessage(type, sessionId, payload));
     }
 
     private void PostRendererMessage(string json)
@@ -1013,12 +834,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         {
             rendererFailed = true;
             appearanceState?.MarkRendererUnavailable();
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "RendererOutput",
-                "The renderer could not accept a host message.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererOutput",
+                                "The renderer could not accept a host message.", exception);
             ShowError("Terminal renderer 연결이 끊겼습니다. 다시 시작해 주세요.");
         }
     }
@@ -1036,12 +853,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
         catch (COMException exception)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "Copy",
-                "The clipboard was temporarily unavailable.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Copy",
+                                "The clipboard was temporarily unavailable.", exception);
         }
     }
 
@@ -1058,22 +871,15 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 }
                 else
                 {
-                    diagnosticLog.Write(
-                        DiagnosticLevel.Warning,
-                        "Terminal",
-                        "Paste",
-                        "A clipboard payload larger than the renderer limit was rejected.");
+                    diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Paste",
+                                        "A clipboard payload larger than the renderer limit was rejected.");
                 }
             }
         }
         catch (COMException exception)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Terminal",
-                "Paste",
-                "The clipboard was temporarily unavailable.",
-                exception);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Paste",
+                                "The clipboard was temporarily unavailable.", exception);
         }
     }
 
@@ -1126,33 +932,24 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         SetRendererBackground(canvas);
     }
 
-    private static TerminalAppearanceSettings CreateAppearanceSnapshot(
-        TerminalAppearanceSettings appearance)
+    private static TerminalAppearanceSettings CreateAppearanceSnapshot(TerminalAppearanceSettings appearance)
     {
         ArgumentNullException.ThrowIfNull(appearance);
         ArgumentNullException.ThrowIfNull(appearance.Theme);
         if (string.IsNullOrWhiteSpace(appearance.FontFamily) == true)
         {
-            throw new ArgumentException(
-                "Terminal font family cannot be empty.",
-                nameof(appearance));
+            throw new ArgumentException("Terminal font family cannot be empty.", nameof(appearance));
         }
 
-        if (double.IsFinite(appearance.FontSize) == false ||
-            appearance.FontSize <= 0)
+        if (double.IsFinite(appearance.FontSize) == false || appearance.FontSize <= 0)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(appearance),
-                appearance.FontSize,
-                "Terminal font size must be a positive finite number.");
+            throw new ArgumentOutOfRangeException(nameof(appearance), appearance.FontSize,
+                                                  "Terminal font size must be a positive finite number.");
         }
 
-        if (appearance.Theme.AnsiPalette is null ||
-            appearance.Theme.AnsiPalette.Count != 16)
+        if (appearance.Theme.AnsiPalette is null || appearance.Theme.AnsiPalette.Count != 16)
         {
-            throw new ArgumentException(
-                "Terminal themes require exactly 16 ANSI colors.",
-                nameof(appearance));
+            throw new ArgumentException("Terminal themes require exactly 16 ANSI colors.", nameof(appearance));
         }
 
         var palette = appearance.Theme.AnsiPalette
@@ -1165,19 +962,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         var cursor = ValidateAppearanceColor(appearance.Theme.Cursor);
         var selection = ValidateAppearanceColor(appearance.Theme.Selection);
 
-        var theme = new TerminalTheme(
-            canvas,
-            foreground,
-            muted,
-            accent,
-            cursor,
-            selection,
-            palette);
+        var theme = new TerminalTheme(canvas, foreground, muted, accent, cursor, selection, palette);
 
-        return new TerminalAppearanceSettings(
-            appearance.FontFamily,
-            appearance.FontSize,
-            theme);
+        return new TerminalAppearanceSettings(appearance.FontFamily, appearance.FontSize, theme);
     }
 
     private static string ValidateAppearanceColor(string color)
@@ -1194,21 +981,17 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void SetRendererBackground(Color canvas)
     {
-        Renderer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(
-            canvas.A,
-            canvas.R,
-            canvas.G,
-            canvas.B);
+        Renderer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(canvas.A, canvas.R, canvas.G, canvas.B);
     }
 
     private SolidColorBrush FindBestButtonInk(Color background)
     {
         var dark = ((SolidColorBrush)FindResource("ButtonInkDarkBrush")).Color;
         var light = ((SolidColorBrush)FindResource("ButtonInkLightBrush")).Color;
-        return new SolidColorBrush(
-            ContrastRatio(dark, background) >= ContrastRatio(light, background)
-                ? dark
-                : light);
+
+        return new SolidColorBrush(ContrastRatio(dark, background) >= ContrastRatio(light, background)
+                                       ? dark
+                                       : light);
     }
 
     private static Color ParseColor(string value)
@@ -1218,16 +1001,16 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private static Color Blend(Color source, Color target, double targetWeight)
     {
-        return Color.FromRgb(
-            (byte)Math.Round((source.R * (1 - targetWeight)) + (target.R * targetWeight)),
-            (byte)Math.Round((source.G * (1 - targetWeight)) + (target.G * targetWeight)),
-            (byte)Math.Round((source.B * (1 - targetWeight)) + (target.B * targetWeight)));
+        return Color.FromRgb((byte)Math.Round((source.R * (1 - targetWeight)) + (target.R * targetWeight)),
+                             (byte)Math.Round((source.G * (1 - targetWeight)) + (target.G * targetWeight)),
+                             (byte)Math.Round((source.B * (1 - targetWeight)) + (target.B * targetWeight)));
     }
 
     private static double ContrastRatio(Color foreground, Color background)
     {
         var lighter = Math.Max(RelativeLuminance(foreground), RelativeLuminance(background));
         var darker = Math.Min(RelativeLuminance(foreground), RelativeLuminance(background));
+
         return (lighter + 0.05) / (darker + 0.05);
     }
 
@@ -1245,10 +1028,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             : Math.Pow((channel + 0.055) / 1.055, 2.4);
     }
 
-    private static TerminalSettingsApplyStatus GetFailureStatus(
-        bool defaultShellApplied,
-        bool appearanceAttempted,
-        bool restoreIncomplete)
+    private static TerminalSettingsApplyStatus GetFailureStatus(bool defaultShellApplied, bool appearanceAttempted,
+                                                                bool restoreIncomplete)
     {
         if (defaultShellApplied == false && appearanceAttempted == false)
         {

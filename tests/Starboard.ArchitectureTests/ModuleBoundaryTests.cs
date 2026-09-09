@@ -30,10 +30,8 @@ public sealed class ModuleBoundaryTests
                 .Select(reference => reference.Name)
                 .ToArray();
 
-            Assert.AreEqual(
-                0,
-                forbiddenReferences.Length,
-                $"{assembly.GetName().Name} references another feature module.");
+            Assert.AreEqual(0, forbiddenReferences.Length,
+                            $"{assembly.GetName().Name} references another feature module.");
         }
     }
 
@@ -67,10 +65,7 @@ public sealed class ModuleBoundaryTests
                 .Select(type => type.FullName)
                 .ToArray();
 
-            Assert.AreEqual(
-                0,
-                invalidTypes.Length,
-                $"{assemblyName} exposes implementation types outside Contracts.");
+            Assert.AreEqual(0, invalidTypes.Length, $"{assemblyName} exposes implementation types outside Contracts.");
         }
     }
 
@@ -81,10 +76,7 @@ public sealed class ModuleBoundaryTests
         var sourceRoot = Path.Combine(root, "src");
         var testsRoot = Path.Combine(root, "tests") + Path.DirectorySeparatorChar;
 
-        foreach (var projectPath in Directory.EnumerateFiles(
-                     sourceRoot,
-                     "*.csproj",
-                     SearchOption.AllDirectories))
+        foreach (var projectPath in Directory.EnumerateFiles(sourceRoot, "*.csproj", SearchOption.AllDirectories))
         {
             var projectDirectory = Path.GetDirectoryName(projectPath)
                 ?? throw new InvalidOperationException("A project path has no parent directory.");
@@ -97,10 +89,7 @@ public sealed class ModuleBoundaryTests
                 .Where(path => path.StartsWith(testsRoot, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
-            Assert.AreEqual(
-                0,
-                testReferences.Length,
-                $"{projectPath} references a test project.");
+            Assert.AreEqual(0, testReferences.Length, $"{projectPath} references a test project.");
         }
     }
 
@@ -125,10 +114,8 @@ public sealed class ModuleBoundaryTests
             })
             .ToArray();
 
-        Assert.AreEqual(
-            0,
-            violations.Length,
-            "The host must compose modules through public contracts and entry points only.");
+        Assert.AreEqual(0, violations.Length,
+                        "The host must compose modules through public contracts and entry points only.");
     }
 
     private static string FindSolutionRoot()

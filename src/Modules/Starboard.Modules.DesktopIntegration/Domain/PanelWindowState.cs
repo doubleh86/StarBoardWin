@@ -6,11 +6,8 @@ namespace Starboard.Modules.DesktopIntegration.Domain;
 /// Stores panel state that must survive environmental reconciliation. Taskbar,
 /// display, and fullscreen observations are deliberately not persisted here.
 /// </summary>
-internal sealed record PanelWindowState(
-    PanelUserVisibility UserVisibility,
-    PanelMode Mode,
-    PanelEngagement Engagement,
-    PixelRect? LastSafeCollapsedBounds)
+internal sealed record PanelWindowState(PanelUserVisibility UserVisibility, PanelMode Mode, PanelEngagement Engagement,
+                                        PixelRect? LastSafeCollapsedBounds)
 {
     internal PanelWindowState ShowOnExplicitUserRequest()
     {
@@ -52,9 +49,7 @@ internal sealed record PanelWindowState(
     {
         if (bounds.IsEmpty == true)
         {
-            throw new ArgumentException(
-                "A safe collapsed frame must have a non-zero size.",
-                nameof(bounds));
+            throw new ArgumentException("A safe collapsed frame must have a non-zero size.", nameof(bounds));
         }
 
         return this with

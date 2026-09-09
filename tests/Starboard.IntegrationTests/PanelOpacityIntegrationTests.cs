@@ -38,7 +38,7 @@ public sealed class PanelOpacityIntegrationTests
                 var foreground = nativeApi.GetForegroundWindow();
                 var bounds = nativeApi.GetWindowBounds(handle);
                 using var runtime = new WindowsDesktopIntegrationRuntime(new NullDiagnosticLog(),
-                                                                          opacity => window.Opacity = opacity);
+                                                                         opacity => window.Opacity = opacity);
                 foreach (var opacity in _OpacityValues)
                 {
                     runtime.SetPanelOpacity(handle, opacity);
@@ -67,16 +67,15 @@ public sealed class PanelOpacityIntegrationTests
     public void SetOpacityPropagatesHostFailureForSettingsRollback()
     {
         var failure = new InvalidOperationException("Host opacity failed.");
-        using var runtime = new WindowsDesktopIntegrationRuntime(new NullDiagnosticLog(),
-                                                                  _ => throw failure);
+        using var runtime = new WindowsDesktopIntegrationRuntime(new NullDiagnosticLog(), _ => throw failure);
         var actual = Assert.ThrowsExactly<InvalidOperationException>(() => runtime.SetPanelOpacity(0, 0.8));
         Assert.AreSame(failure, actual);
     }
 
     private sealed class NullDiagnosticLog : IDiagnosticLog
     {
-        public void Write(DiagnosticLevel level, string subsystem, string operation,
-                          string message, Exception? exception = null)
+        public void Write(DiagnosticLevel level, string subsystem, string operation, string message,
+                          Exception? exception = null)
         {
         }
     }

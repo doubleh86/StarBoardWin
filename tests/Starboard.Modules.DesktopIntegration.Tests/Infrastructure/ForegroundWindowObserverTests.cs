@@ -110,14 +110,7 @@ public sealed class ForegroundWindowObserverTests
 
         internal void RaiseForegroundChanged()
         {
-            _callback?.Invoke(
-                new nint(41),
-                0x0003,
-                new nint(20),
-                0,
-                0,
-                0,
-                0);
+            _callback?.Invoke(new nint(41), 0x0003, new nint(20), 0, 0, 0, 0);
         }
     }
 }

@@ -13,10 +13,7 @@ internal sealed class ConPtySessionFactory : ITerminalSessionFactory
         this.diagnosticLog = diagnosticLog;
     }
 
-    public ITerminalSession Start(
-        ShellLaunchSpec shell,
-        int columns,
-        int rows)
+    public ITerminalSession Start(ShellLaunchSpec shell, int columns, int rows)
     {
         return ConPtySession.Start(shell, columns, rows, diagnosticLog);
     }

@@ -6,6 +6,12 @@
 규칙이다. `C:/Work/TRK-Server/Docs/CodeStyle.md`의 명시성과 작은 논리적 변경
 원칙을 가져오되, WPF·Win32·ConPTY 데스크톱 앱에 맞게 조정했다.
 
+2026-09-09에 원문의 최신 공통 규칙을 다시 가져왔다. 이 문서를 독립적인 정본으로
+사용하며 외부 경로를 runtime/build 의존성으로 만들지 않는다. 원문의 서버·DB 예외,
+`TimeZoneHelper`, NetworkProtocols, 게임 ID/마스터 데이터, 서버 partial helper 규칙은
+적용하지 않는다. 대신 아래 Windows/ConPTY 오류·시간·interop 경계를 따른다.
+원본 Git hook의 설치나 main 전용 문서 편집 정책도 가져오지 않는다.
+
 프로젝트 또는 하위 디렉터리에 더 구체적인 규칙이 생기면 루트 `AGENTS.md`의
 제품 제약과 module 경계 안에서 적용하고, 명시되지 않은 부분은 이 문서를 따른다.
 지침 충돌과 확인이 필요한 경우의 처리는 `docs/development-workflow.md`를 따른다.
@@ -56,20 +62,33 @@ return values[values.Count - 1];
 
 ## 메서드 호출과 선언 정렬
 
+- 120열을 권장 상한으로 사용하되 hard limit로 취급하지 않는다. 구조가 단순하고
+  한눈에 읽히는 호출·선언·예외 생성은 120열을 넘더라도 한 줄로 둘 수 있다.
 - 짧고 읽기 쉬운 호출과 선언은 한 줄로 작성한다.
 - 여러 줄로 나눌 때 첫 번째 인자 또는 매개변수는 메서드명과 같은 줄에 둔다.
 - 후속 줄의 첫 글자는 첫 번째 인자 또는 매개변수의 첫 글자와 같은 열에 둔다.
 - 닫는 괄호는 마지막 인자 또는 매개변수 뒤에 둔다.
 - 같은 줄에 자연스럽게 들어갈 내용을 기계적으로 한 줄에 하나씩 내리지 않는다.
+- 연속된 인자/파라미터를 순서와 의미가 드러나는 묶음으로 같은 줄에 배치한다.
+  후속 줄에도 같은 기준을 적용하며 항목 수를 고정하지 않는다.
+- 후속 줄의 선행 공백 수는 첫 인자/파라미터의 0-based 문자 위치와 정확히 같아야 한다.
+  임의의 4칸 continuation indent나 한 칸씩 어긋난 정렬을 사용하지 않는다.
 - 메서드 인자인 여러 줄 객체 초기화는 `new`의 `n` 열에 중괄호와 다음 인자를
   맞추고, 초기화 멤버는 4칸 더 들여쓴다.
+- 다음 인자가 객체 초기화의 닫는 중괄호 뒤에 자연스럽게 들어가면 `}, 다음인자`로
+  같은 줄에 두고, 그렇지 않으면 다음 줄의 `new` 열에 맞춘다.
+- 코드와 메시지처럼 구조가 단순한 예외 생성은 메시지만 다음 줄로 내리지 않는다.
+  긴 메시지를 나눌 때는 첫 문자열을 생성자와 같은 줄에 두고 의미 단위로 `+` 연결한다.
+  `+`는 앞 문자열 뒤에 두고 후속 문자열의 시작 열을 첫 문자열과 정확히 맞춘다.
+- 다른 호출의 인자로 `await` 결과를 직접 중첩하지 않는다. 의미 있는 지역 변수에
+  먼저 받은 뒤 전달한다. `return await SomeAsync()` 자체는 이 금지 대상이 아니다.
 
 ```csharp
 await session.ResizeAsync(columns, rows,
                           cancellationToken);
 
 private async Task StartShellAsync(ShellLaunchOptions options,
-                                   CancellationToken cancellationToken)
+                                  CancellationToken cancellationToken)
 {
 }
 
@@ -126,6 +145,16 @@ var clampedHeight = Math.Min(scaledHeight, workAreaHeight);
 
 return clampedHeight;
 ```
+
+## 로직 단락과 조건식 정렬
+
+- 검증·초기화, 주요 처리, 결과 구성·반환처럼 역할이 달라지는 단계 사이에는 빈 줄
+  하나를 둔다. 선언과 즉시 사용처럼 하나의 동작으로 읽히는 문장을 일률적으로 띄우지 않는다.
+- `throw` 앞에 같은 블록의 로그·진단 등 선행 실행문이 있으면 빈 줄 하나를 둔다.
+  블록 첫 문장인 `throw` 앞에는 빈 줄을 넣지 않는다.
+- 같은 검증 의미의 단순 조건 2~3개는 한 줄로 둘 수 있다. 여러 줄이라면 `||`·`&&`를
+  앞줄 끝에 두고 후속 조건 첫 글자를 `if (` 뒤 첫 조건과 정확히 정렬한다.
+- 공백만 있는 줄이나 줄 끝 공백은 남기지 않는다.
 
 ## 클래스와 helper
 
@@ -204,6 +233,22 @@ return clampedHeight;
   있는 literal을 사용할 수 있다.
 
 ## 변경 후 정리
+
+Roslyn 기본 formatter의 initializer 들여쓰기는 위의 `new` 열 정렬과 다르므로
+`IDE0055`만 비활성화한다. 중괄호·nullable·접근 제한자 등 나머지 analyzer는 유지한다.
+`dotnet format whitespace`로 전체 코드를 덮어쓰면 이 규약의 정렬을 되돌릴 수 있다.
+
+TRK 정렬 검사기를 저장소에 포함했으며 Git hook은 자동 설치하지 않는다.
+
+```powershell
+pwsh -NoProfile -File scripts/Test-CSharpAlignment.ps1 -SelfTest
+pwsh -NoProfile -File scripts/Test-CSharpAlignment.ps1 -WorkingTree
+pwsh -NoProfile -File scripts/Test-CSharpAlignment.ps1 -Staged
+```
+
+`-WorkingTree`는 `src/`, `tests/`의 관리 C# 파일을, `-Staged`는 해당 staged 변경과
+맞닿은 호출/선언을 검사한다. 검사기는 자동 수정하지 않으며 lambda·일부 복잡한 구문을
+건너뛰므로 토큰/수동 diff 검토와 build/test를 대체하지 않는다.
 
 - 이번 변경으로 새로 미사용 상태가 된 private helper, field, using, test fixture는
   같은 작업에서 제거한다.

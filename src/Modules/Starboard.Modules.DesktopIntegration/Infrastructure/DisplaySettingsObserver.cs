@@ -36,6 +36,7 @@ internal sealed class DisplaySettingsObserver : IDisposable
             // A failed unsubscribe still owns the static event subscription. Keep
             // disposal retryable rather than marking the observer as released.
             Volatile.Write(ref _disposeState, 0);
+
             throw;
         }
     }

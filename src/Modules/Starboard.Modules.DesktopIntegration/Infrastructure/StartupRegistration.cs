@@ -40,6 +40,7 @@ internal sealed class RegistryStartupRegistration : IStartupRegistration
         {
             using var existingRunKey = Registry.CurrentUser.OpenSubKey(_RunKeyPath, true);
             existingRunKey?.DeleteValue(_ValueName, false);
+
             return;
         }
 

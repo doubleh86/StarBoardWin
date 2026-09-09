@@ -64,10 +64,7 @@ public sealed class FullscreenServiceTests
 
     private static MonitorSnapshot CreatePanelMonitor()
     {
-        return new MonitorSnapshot(
-            new nint(1),
-            new PixelRect(0, 0, 1920, 1080),
-            new PixelRect(0, 0, 1920, 1040),
-            new DisplayDpi(96, 96));
+        return new MonitorSnapshot(new nint(1), new PixelRect(0, 0, 1920, 1080), new PixelRect(0, 0, 1920, 1040),
+                                   new DisplayDpi(96, 96));
     }
 }

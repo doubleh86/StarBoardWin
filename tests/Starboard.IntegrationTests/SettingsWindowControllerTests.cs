@@ -13,6 +13,7 @@ public sealed class SettingsWindowControllerTests
         {
             var window = new FakeSettingsWindow();
             createdWindows.Add(window);
+
             return window;
         });
 
@@ -32,6 +33,7 @@ public sealed class SettingsWindowControllerTests
         {
             var window = new FakeSettingsWindow();
             createdWindows.Add(window);
+
             return window;
         });
 

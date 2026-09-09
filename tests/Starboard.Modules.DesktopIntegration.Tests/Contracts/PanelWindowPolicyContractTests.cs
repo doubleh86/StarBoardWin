@@ -88,29 +88,17 @@ public sealed class PanelWindowPolicyContractTests
 
     private static PanelWindowPolicyInput CreateInput()
     {
-        return new PanelWindowPolicyInput(
-            PanelUserVisibility.Visible,
-            PanelFullscreenState.Normal,
-            PanelMode.Collapsed,
-            PanelEngagement.Idle,
-            TaskbarPresence.Visible,
-            DisplayTrackingState.Tracked,
-            new MonitorSnapshot(
-                new nint(7),
-                new PixelRect(0, 0, 1920, 1080),
-                new PixelRect(0, 0, 1920, 1040),
-                new DisplayDpi(96, 96)),
-            new PixelRect(0, 840, 1920, 1040));
+        return new PanelWindowPolicyInput(PanelUserVisibility.Visible, PanelFullscreenState.Normal, PanelMode.Collapsed,
+                                          PanelEngagement.Idle, TaskbarPresence.Visible, DisplayTrackingState.Tracked,
+                                          new MonitorSnapshot(new nint(7), new PixelRect(0, 0, 1920, 1080),
+                                                              new PixelRect(0, 0, 1920, 1040), new DisplayDpi(96, 96)),
+                                          new PixelRect(0, 840, 1920, 1040));
     }
 
     private static PanelWindowPolicyDecision CreateDecision(PanelWindowPresentation presentation)
     {
-        return new PanelWindowPolicyDecision(
-            PanelWindowPolicyPriority.UserHidden,
-            presentation,
-            PanelWindowGeometryAction.Preserve,
-            null,
-            PanelWindowActivation.PreserveForeground,
-            PanelWindowZOrder.PreserveNormal);
+        return new PanelWindowPolicyDecision(PanelWindowPolicyPriority.UserHidden, presentation,
+                                             PanelWindowGeometryAction.Preserve, null,
+                                             PanelWindowActivation.PreserveForeground, PanelWindowZOrder.PreserveNormal);
     }
 }

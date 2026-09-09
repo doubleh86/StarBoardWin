@@ -47,38 +47,25 @@ internal static partial class NativeMethods
     internal static partial bool GetMonitorInfoW(nint monitor, ref MonitorInfo monitorInfo);
 
     [LibraryImport("user32.dll")]
-    internal static partial nint MonitorFromRect(
-        in NativeRect rectangle,
-        uint flags);
+    internal static partial nint MonitorFromRect(in NativeRect rectangle, uint flags);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool EnumDisplayMonitors(
-        nint deviceContext,
-        nint clipRectangle,
-        MonitorEnumerationCallback callback,
-        nint applicationData);
+    internal static partial bool EnumDisplayMonitors(nint deviceContext, nint clipRectangle,
+                                                     MonitorEnumerationCallback callback, nint applicationData);
 
     [LibraryImport("user32.dll")]
-    internal static partial nint MonitorFromWindow(
-        nint windowHandle,
-        uint flags);
+    internal static partial nint MonitorFromWindow(nint windowHandle, uint flags);
 
     [LibraryImport("user32.dll")]
     internal static partial uint GetDpiForWindow(nint windowHandle);
 
     [LibraryImport("shcore.dll")]
-    internal static partial int GetDpiForMonitor(
-        nint monitor,
-        uint dpiType,
-        out uint dpiX,
-        out uint dpiY);
+    internal static partial int GetDpiForMonitor(nint monitor, uint dpiType, out uint dpiX, out uint dpiY);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool GetWindowRect(
-        nint windowHandle,
-        out NativeRect rectangle);
+    internal static partial bool GetWindowRect(nint windowHandle, out NativeRect rectangle);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -92,28 +79,17 @@ internal static partial class NativeMethods
     internal static partial nint GetShellWindow();
 
     [LibraryImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
-    internal static partial int DwmGetWindowAttributeUInt32(
-        nint windowHandle,
-        uint attribute,
-        out uint attributeValue,
-        uint attributeSize);
+    internal static partial int DwmGetWindowAttributeUInt32(nint windowHandle, uint attribute, out uint attributeValue,
+                                                            uint attributeSize);
 
     [LibraryImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
-    internal static partial int DwmGetWindowAttributeRectangle(
-        nint windowHandle,
-        uint attribute,
-        out NativeRect attributeValue,
-        uint attributeSize);
+    internal static partial int DwmGetWindowAttributeRectangle(nint windowHandle, uint attribute,
+                                                               out NativeRect attributeValue, uint attributeSize);
 
     [LibraryImport("user32.dll", SetLastError = true)]
-    internal static partial nint SetWinEventHook(
-        uint eventMinimum,
-        uint eventMaximum,
-        nint hookModule,
-        WinEventCallback callback,
-        uint processIdentifier,
-        uint threadIdentifier,
-        uint flags);
+    internal static partial nint SetWinEventHook(uint eventMinimum, uint eventMaximum, nint hookModule,
+                                                 WinEventCallback callback, uint processIdentifier,
+                                                 uint threadIdentifier, uint flags);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -127,14 +103,8 @@ internal static partial class NativeMethods
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool SetWindowPos(
-        nint windowHandle,
-        nint insertAfter,
-        int x,
-        int y,
-        int width,
-        int height,
-        uint flags);
+    internal static partial bool SetWindowPos(nint windowHandle, nint insertAfter, int x, int y, int width, int height,
+                                              uint flags);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -147,24 +117,16 @@ internal static partial class NativeMethods
     internal static partial uint GetCurrentThreadId();
 
     [LibraryImport("user32.dll")]
-    internal static partial uint GetWindowThreadProcessId(
-        nint windowHandle,
-        out uint processIdentifier);
+    internal static partial uint GetWindowThreadProcessId(nint windowHandle, out uint processIdentifier);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool AttachThreadInput(
-        uint sourceThreadIdentifier,
-        uint targetThreadIdentifier,
-        [MarshalAs(UnmanagedType.Bool)] bool attach);
+    internal static partial bool AttachThreadInput(uint sourceThreadIdentifier, uint targetThreadIdentifier,
+                                                   [MarshalAs(UnmanagedType.Bool)] bool attach);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool RegisterHotKey(
-        nint windowHandle,
-        int identifier,
-        uint modifiers,
-        uint virtualKey);
+    internal static partial bool RegisterHotKey(nint windowHandle, int identifier, uint modifiers, uint virtualKey);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

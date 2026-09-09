@@ -15,17 +15,13 @@ public sealed class TerminalModule : IDisposable
 
     public TerminalModule(IDiagnosticLog diagnosticLog)
     {
-        sessionCoordinator = new TerminalSessionCoordinator(
-            new ConPtySessionFactory(diagnosticLog),
-            diagnosticLog);
+        sessionCoordinator = new TerminalSessionCoordinator(new ConPtySessionFactory(diagnosticLog), diagnosticLog);
         terminalView = new TerminalView(diagnosticLog, sessionCoordinator);
     }
 
     public FrameworkElement Surface => terminalView;
 
-    public Task StartAsync(
-        TerminalOptions options,
-        CancellationToken cancellationToken)
+    public Task StartAsync(TerminalOptions options, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
         return terminalView.StartAsync(options, cancellationToken);
@@ -40,8 +36,7 @@ public sealed class TerminalModule : IDisposable
             return terminalView.ApplySettings(settings);
         }
 
-        return terminalView.Dispatcher.Invoke(
-            () => terminalView.ApplySettings(settings));
+        return terminalView.Dispatcher.Invoke(() => terminalView.ApplySettings(settings));
     }
 
     public void Dispose()

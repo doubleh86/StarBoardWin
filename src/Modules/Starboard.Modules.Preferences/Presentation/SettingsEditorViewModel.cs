@@ -17,10 +17,9 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
     private const string ExpandShortcutPropertyName = nameof(ExpandShortcut);
     private const string ActivationShortcutPropertyName = nameof(ActivationShortcut);
 
-    private static readonly Regex ShortcutPattern = new(
-        "^(?:(?:Ctrl|Alt|Shift)\\+)+(?:[A-Za-z0-9]|F(?:[1-9]|1[0-9]|2[0-4]))$",
-        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
-        TimeSpan.FromMilliseconds(100));
+    private static readonly Regex ShortcutPattern = new("^(?:(?:Ctrl|Alt|Shift)\\+)+(?:[A-Za-z0-9]|F(?:[1-9]|1[0-9]|2[0-4]))$",
+                                                        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+                                                        TimeSpan.FromMilliseconds(100));
 
     private readonly ISettingsEditorSaveHandler saveHandler;
     private readonly Dictionary<string, List<string>> errors = new(StringComparer.Ordinal);
@@ -41,9 +40,7 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
     private bool isSaving;
     private bool isCompleted;
 
-    internal SettingsEditorViewModel(
-        AppSettings currentSettings,
-        ISettingsEditorSaveHandler saveHandler)
+    internal SettingsEditorViewModel(AppSettings currentSettings, ISettingsEditorSaveHandler saveHandler)
     {
         originalSettings = SettingsValidator.Normalize(currentSettings);
         this.saveHandler = saveHandler;
@@ -181,9 +178,7 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
         isCompleted = true;
         LoadDraft(originalSettings);
         SaveError = null;
-        completion.TrySetResult(new SettingsEditorOutcome(
-            SettingsEditorCompletionKind.Canceled,
-            originalSettings));
+        completion.TrySetResult(new SettingsEditorOutcome(SettingsEditorCompletionKind.Canceled, originalSettings));
     }
 
     internal async Task SaveAsync(CancellationToken cancellationToken)
@@ -206,9 +201,7 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
             await saveHandler.SaveAsync(settings, cancellationToken);
             originalSettings = settings;
             isCompleted = true;
-            completion.TrySetResult(new SettingsEditorOutcome(
-                SettingsEditorCompletionKind.Saved,
-                settings));
+            completion.TrySetResult(new SettingsEditorOutcome(SettingsEditorCompletionKind.Saved, settings));
         }
         catch (OperationCanceledException)
         {
@@ -259,8 +252,7 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
         var expandError = ValidateShortcut(ExpandShortcut);
         var activationError = ValidateShortcut(ActivationShortcut);
         if (string.Equals(ExpandShortcut.Trim(), ActivationShortcut.Trim(), StringComparison.OrdinalIgnoreCase) == true &&
-            string.IsNullOrWhiteSpace(expandError) == true &&
-            string.IsNullOrWhiteSpace(activationError) == true)
+            string.IsNullOrWhiteSpace(expandError) == true && string.IsNullOrWhiteSpace(activationError) == true)
         {
             activationError = "확장 단축키와 호출/숨김 단축키는 서로 달라야 합니다.";
         }
@@ -318,17 +310,9 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
         expandShortcut = settings.ExpandShortcut;
         activationShortcut = settings.ActivationShortcut;
 
-        OnPropertiesChanged(
-            nameof(ShellExecutable),
-            nameof(Theme),
-            nameof(CollapsedHeightText),
-            nameof(FontFamily),
-            nameof(FontSizeText),
-            nameof(OpacityText),
-            nameof(StartWithWindows),
-            nameof(PreferredMonitor),
-            nameof(ExpandShortcut),
-            nameof(ActivationShortcut));
+        OnPropertiesChanged(nameof(ShellExecutable), nameof(Theme), nameof(CollapsedHeightText), nameof(FontFamily),
+                            nameof(FontSizeText), nameof(OpacityText), nameof(StartWithWindows),
+                            nameof(PreferredMonitor), nameof(ExpandShortcut), nameof(ActivationShortcut));
     }
 
     private void SetDraftProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

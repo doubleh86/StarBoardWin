@@ -1,8 +1,6 @@
 namespace Starboard.Modules.Terminal.Domain;
 
-internal sealed record TerminalTabCloseResult(
-    TerminalTab ClosedTab,
-    TerminalTab? ReplacementTab);
+internal sealed record TerminalTabCloseResult(TerminalTab ClosedTab, TerminalTab? ReplacementTab);
 
 internal sealed class TerminalTabRegistry
 {
@@ -14,16 +12,12 @@ internal sealed class TerminalTabRegistry
 
     private int nextTabNumber = 1;
 
-    internal TerminalTabRegistry(
-        Func<TerminalSessionId>? sessionIdFactory = null,
-        int maximumTabs = DefaultMaximumTabs)
+    internal TerminalTabRegistry(Func<TerminalSessionId>? sessionIdFactory = null, int maximumTabs = DefaultMaximumTabs)
     {
         if (maximumTabs <= 0)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(maximumTabs),
-                maximumTabs,
-                "The maximum tab count must be positive.");
+            throw new ArgumentOutOfRangeException(nameof(maximumTabs), maximumTabs,
+                                                  "The maximum tab count must be positive.");
         }
 
         this.sessionIdFactory = sessionIdFactory ?? TerminalSessionId.CreateNew;
@@ -36,8 +30,7 @@ internal sealed class TerminalTabRegistry
     {
         if (tabs.Count >= maximumTabs)
         {
-            throw new InvalidOperationException(
-                $"Terminal tab limit ({maximumTabs}) has been reached.");
+            throw new InvalidOperationException($"Terminal tab limit ({maximumTabs}) has been reached.");
         }
 
         var sessionId = sessionIdFactory();
@@ -51,11 +44,7 @@ internal sealed class TerminalTabRegistry
             throw new InvalidOperationException("The session identifier must be unique.");
         }
 
-        var tab = new TerminalTab(
-            sessionId,
-            $"PowerShell {nextTabNumber}",
-            TerminalSessionState.Starting,
-            null);
+        var tab = new TerminalTab(sessionId, $"PowerShell {nextTabNumber}", TerminalSessionState.Starting, null);
         nextTabNumber++;
         tabs.Add(tab);
         ActiveSessionId = sessionId;
@@ -71,6 +60,7 @@ internal sealed class TerminalTabRegistry
         }
 
         ActiveSessionId = sessionId;
+
         return true;
     }
 
@@ -121,10 +111,7 @@ internal sealed class TerminalTabRegistry
         return tabs.Any(tab => tab.SessionId == sessionId);
     }
 
-    internal void SetState(
-        TerminalSessionId sessionId,
-        TerminalSessionState state,
-        uint? exitCode = null)
+    internal void SetState(TerminalSessionId sessionId, TerminalSessionState state, uint? exitCode = null)
     {
         var index = tabs.FindIndex(tab => tab.SessionId == sessionId);
         if (index < 0)
@@ -159,6 +146,7 @@ internal sealed class TerminalTabRegistry
 
         var selectedIndex = (activeIndex + offset + tabs.Count) % tabs.Count;
         ActiveSessionId = tabs[selectedIndex].SessionId;
+
         return true;
     }
 }

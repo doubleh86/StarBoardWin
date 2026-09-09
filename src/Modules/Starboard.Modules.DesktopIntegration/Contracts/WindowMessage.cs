@@ -9,8 +9,4 @@ namespace Starboard.Modules.DesktopIntegration.Contracts;
 /// originating window procedure. The DesktopIntegration native adapter owns copying
 /// pointed-to data before the procedure returns.
 /// </remarks>
-public readonly record struct WindowMessage(
-    nint WindowHandle,
-    int MessageId,
-    nuint WordParameter,
-    nint LongParameter);
+public readonly record struct WindowMessage(nint WindowHandle, int MessageId, nuint WordParameter, nint LongParameter);

@@ -28,9 +28,8 @@ internal sealed class JsonSettingsStore
         {
             if (File.Exists(settingsPath + ".bak") == true)
             {
-                return await TryRecoverBackupAsync(
-                    new FileNotFoundException("The primary settings file is missing.", settingsPath),
-                    cancellationToken);
+                return await TryRecoverBackupAsync(new FileNotFoundException("The primary settings file is missing.", settingsPath),
+                                                   cancellationToken);
             }
 
             return new PreferencesLoadResult(new AppSettings(), true, null);
@@ -40,10 +39,7 @@ internal sealed class JsonSettingsStore
         {
             var settings = await ReadAsync(settingsPath, cancellationToken);
 
-            return new PreferencesLoadResult(
-                settings,
-                false,
-                null);
+            return new PreferencesLoadResult(settings, false, null);
         }
         catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
         {
@@ -62,19 +58,11 @@ internal sealed class JsonSettingsStore
         Directory.CreateDirectory(directory);
         try
         {
-            await using (var stream = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                4096,
-                FileOptions.Asynchronous | FileOptions.WriteThrough))
+            await using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write,
+                                                     FileShare.None, 4096,
+                                                     FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
-                await JsonSerializer.SerializeAsync(
-                    stream,
-                    normalized,
-                    SerializerOptions,
-                    cancellationToken);
+                await JsonSerializer.SerializeAsync(stream, normalized, SerializerOptions, cancellationToken);
                 await stream.FlushAsync(cancellationToken);
             }
 
@@ -96,64 +84,40 @@ internal sealed class JsonSettingsStore
         }
     }
 
-    private async Task<PreferencesLoadResult> TryRecoverBackupAsync(
-        Exception primaryException,
-        CancellationToken cancellationToken)
+    private async Task<PreferencesLoadResult> TryRecoverBackupAsync(Exception primaryException,
+                                                                    CancellationToken cancellationToken)
     {
         var backupPath = settingsPath + ".bak";
         if (File.Exists(backupPath) == false)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Preferences",
-                "Load",
-                "Settings could not be read; defaults will be used.",
-                primaryException);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Preferences", "Load",
+                                "Settings could not be read; defaults will be used.", primaryException);
 
-            return new PreferencesLoadResult(
-                new AppSettings(),
-                true,
-                "설정 파일을 읽지 못해 기본값으로 시작했습니다.");
+            return new PreferencesLoadResult(new AppSettings(), true, "설정 파일을 읽지 못해 기본값으로 시작했습니다.");
         }
 
         try
         {
             var settings = await ReadAsync(backupPath, cancellationToken);
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Preferences",
-                "LoadBackup",
-                "The primary settings file could not be read; the previous settings were restored.",
-                primaryException);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Preferences", "LoadBackup",
+                                "The primary settings file could not be read; the previous settings were restored.",
+                                primaryException);
 
-            return new PreferencesLoadResult(
-                settings,
-                false,
-                "설정 파일을 읽지 못해 이전 설정으로 복구했습니다.");
+            return new PreferencesLoadResult(settings, false, "설정 파일을 읽지 못해 이전 설정으로 복구했습니다.");
         }
         catch (Exception backupException) when (backupException is IOException or JsonException or UnauthorizedAccessException)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Preferences",
-                "LoadBackup",
-                "The backup settings file could not be read; defaults will be used.",
-                backupException);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Preferences", "LoadBackup",
+                                "The backup settings file could not be read; defaults will be used.", backupException);
 
-            return new PreferencesLoadResult(
-                new AppSettings(),
-                true,
-                "설정 파일과 이전 설정을 읽지 못해 기본값으로 시작했습니다.");
+            return new PreferencesLoadResult(new AppSettings(), true, "설정 파일과 이전 설정을 읽지 못해 기본값으로 시작했습니다.");
         }
     }
 
     private static async Task<AppSettings> ReadAsync(string path, CancellationToken cancellationToken)
     {
         await using var stream = File.OpenRead(path);
-        var candidate = await JsonSerializer.DeserializeAsync<AppSettings>(
-            stream,
-            SerializerOptions,
-            cancellationToken);
+        var candidate = await JsonSerializer.DeserializeAsync<AppSettings>(stream, SerializerOptions, cancellationToken);
 
         return SettingsValidator.Normalize(candidate);
     }

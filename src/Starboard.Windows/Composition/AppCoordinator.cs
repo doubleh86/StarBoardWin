@@ -40,15 +40,14 @@ internal sealed class AppCoordinator : IDisposable
 
     internal async Task StartAsync(CancellationToken cancellationToken)
     {
-        var smokeResult = PortableReleaseSmokeCheck.TryRun(
-            Environment.GetCommandLineArgs(),
-            ProductBuildInfo.Current,
-            AppContext.BaseDirectory);
+        var smokeResult = PortableReleaseSmokeCheck.TryRun(Environment.GetCommandLineArgs(), ProductBuildInfo.Current,
+                                                           AppContext.BaseDirectory);
         if (smokeResult is not null)
         {
             var application = Application.Current
                 ?? throw new InvalidOperationException("The WPF application is unavailable.");
             application.Shutdown(smokeResult.ExitCode);
+
             return;
         }
 
@@ -63,52 +62,34 @@ internal sealed class AppCoordinator : IDisposable
         mainWindow.Show();
 
         var windowHandle = mainWindow.AttachDesktopIntegration(desktopIntegrationModule);
-        desktopIntegrationModule.Attach(
-            windowHandle,
-            new PanelOptions(settings.CollapsedHeightDip));
+        desktopIntegrationModule.Attach(windowHandle, new PanelOptions(settings.CollapsedHeightDip));
 
         var terminalSettings = SettingsApplicationService.ToTerminalSettings(settings);
-        var terminalOptions = new TerminalOptions(
-            settings.ShellExecutable,
-            settings.FontFamily,
-            settings.FontSize,
-            terminalSettings.Appearance.Theme);
+        var terminalOptions = new TerminalOptions(settings.ShellExecutable, settings.FontFamily, settings.FontSize,
+                                                  terminalSettings.Appearance.Theme);
         mainWindow.SetTerminalContent(terminalModule.Surface);
         await terminalModule.StartAsync(terminalOptions, cancellationToken);
 
-        var desktopResult = desktopIntegrationModule.ApplySettings(
-            SettingsApplicationService.ToDesktopSettings(settings));
-        var effectiveSettings = SettingsApplicationService.WithDesktopSettings(
-            settings,
-            desktopResult.EffectiveSettings);
+        var desktopResult = desktopIntegrationModule.ApplySettings(SettingsApplicationService.ToDesktopSettings(settings));
+        var effectiveSettings = SettingsApplicationService.WithDesktopSettings(settings,
+                                                                               desktopResult.EffectiveSettings);
         ApplyHostAppearance(effectiveSettings);
 
-        settingsApplicationService = new SettingsApplicationService(
-            preferencesModule,
-            terminalModule,
-            desktopIntegrationModule,
-            settings,
-            effectiveSettings,
-            ApplyHostAppearance,
-            diagnosticLog);
+        settingsApplicationService = new SettingsApplicationService(preferencesModule, terminalModule,
+                                                                    desktopIntegrationModule, settings,
+                                                                    effectiveSettings, ApplyHostAppearance,
+                                                                    diagnosticLog);
         settingsWindowController = new SettingsWindowController(CreateSettingsWindow);
 
         if (desktopResult.Status != DesktopSettingsApplyStatus.Applied)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Host",
-                "ApplyStartupSettings",
-                "Saved desktop settings could not be fully applied during startup.");
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Host", "ApplyStartupSettings",
+                                "Saved desktop settings could not be fully applied during startup.");
         }
 
         if (loadResult.RecoveryMessage is not null)
         {
-            diagnosticLog.Write(
-                DiagnosticLevel.Warning,
-                "Host",
-                "SettingsRecovery",
-                loadResult.RecoveryMessage);
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Host", "SettingsRecovery", loadResult.RecoveryMessage);
         }
     }
 
@@ -323,13 +304,9 @@ internal sealed class AppCoordinator : IDisposable
     {
         var applicationService = settingsApplicationService
             ?? throw new InvalidOperationException("Settings application is unavailable before startup completes.");
-        var session = PreferencesModule.CreateSettingsEditor(
-            applicationService.PersistedSettings,
-            applicationService);
-        return new SettingsWindow(
-            session,
-            applicationService,
-            ProductBuildInfo.Current);
+        var session = PreferencesModule.CreateSettingsEditor(applicationService.PersistedSettings, applicationService);
+
+        return new SettingsWindow(session, applicationService, ProductBuildInfo.Current);
     }
 
     private void OpenSettingsOnExplicitRequest()

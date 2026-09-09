@@ -28,16 +28,10 @@ internal sealed class ConPtySession : ITerminalSession
     private Task? processWait;
     private bool isDisposed;
 
-    private ConPtySession(
-        IDiagnosticLog diagnosticLog,
-        SafePseudoConsoleHandle pseudoConsole,
-        SafeFileHandle pseudoConsoleInput,
-        SafeFileHandle pseudoConsoleOutput,
-        ProcessAttributeList processAttributeList,
-        SafeKernelHandle process,
-        SafeKernelHandle processThread,
-        FileStream inputStream,
-        FileStream outputStream)
+    private ConPtySession(IDiagnosticLog diagnosticLog, SafePseudoConsoleHandle pseudoConsole,
+                          SafeFileHandle pseudoConsoleInput, SafeFileHandle pseudoConsoleOutput,
+                          ProcessAttributeList processAttributeList, SafeKernelHandle process,
+                          SafeKernelHandle processThread, FileStream inputStream, FileStream outputStream)
     {
         this.diagnosticLog = diagnosticLog;
         this.pseudoConsole = pseudoConsole;
@@ -54,11 +48,7 @@ internal sealed class ConPtySession : ITerminalSession
 
     public event Action<uint>? Exited;
 
-    internal static ConPtySession Start(
-        ShellLaunchSpec shell,
-        int columns,
-        int rows,
-        IDiagnosticLog diagnosticLog)
+    internal static ConPtySession Start(ShellLaunchSpec shell, int columns, int rows, IDiagnosticLog diagnosticLog)
     {
         SafeFileHandle? pseudoConsoleInput = null;
         SafeFileHandle? hostInput = null;
@@ -74,17 +64,12 @@ internal sealed class ConPtySession : ITerminalSession
             CreatePipe(out pseudoConsoleInput, out hostInput);
             CreatePipe(out hostOutput, out pseudoConsoleOutput);
 
-            var result = NativeMethods.CreatePseudoConsole(
-                ToConsoleSize(columns, rows),
-                pseudoConsoleInput,
-                pseudoConsoleOutput,
-                0,
-                out var pseudoConsoleValue);
+            var result = NativeMethods.CreatePseudoConsole(ToConsoleSize(columns, rows), pseudoConsoleInput,
+                                                           pseudoConsoleOutput, 0, out var pseudoConsoleValue);
             ThrowIfFailed(result, "CreatePseudoConsole");
             pseudoConsole = new SafePseudoConsoleHandle(pseudoConsoleValue);
 
-            processAttributeList = new ProcessAttributeList(
-                pseudoConsole.DangerousGetHandle());
+            processAttributeList = new ProcessAttributeList(pseudoConsole.DangerousGetHandle());
             var startupInfo = new StartupInfoExtended
             {
                 StartupInfo = new StartupInfo
@@ -93,8 +78,7 @@ internal sealed class ConPtySession : ITerminalSession
                 },
                 AttributeList = processAttributeList.DangerousGetHandle(),
             };
-            var commandLine = new StringBuilder(
-                $"\"{shell.ExecutablePath}\" {shell.Arguments}".TrimEnd());
+            var commandLine = new StringBuilder($"\"{shell.ExecutablePath}\" {shell.Arguments}".TrimEnd());
             var securityAttributeSize = Marshal.SizeOf<SecurityAttributes>();
             var processAttributes = new SecurityAttributes
             {
@@ -105,17 +89,9 @@ internal sealed class ConPtySession : ITerminalSession
                 Length = securityAttributeSize,
             };
 
-            if (NativeMethods.CreateProcessW(
-                shell.ExecutablePath,
-                commandLine,
-                ref processAttributes,
-                ref threadAttributes,
-                false,
-                NativeMethods.ExtendedStartupInfoPresent,
-                0,
-                shell.WorkingDirectory,
-                ref startupInfo,
-                out var processInformation) == false)
+            if (NativeMethods.CreateProcessW(shell.ExecutablePath, commandLine, ref processAttributes,
+                                             ref threadAttributes, false, NativeMethods.ExtendedStartupInfoPresent, 0,
+                                             shell.WorkingDirectory, ref startupInfo, out var processInformation) == false)
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
@@ -128,16 +104,8 @@ internal sealed class ConPtySession : ITerminalSession
             var outputStream = new FileStream(hostOutput, FileAccess.Read, 4096, false);
             hostOutput = null;
 
-            return new ConPtySession(
-                diagnosticLog,
-                pseudoConsole,
-                pseudoConsoleInput,
-                pseudoConsoleOutput,
-                processAttributeList,
-                process,
-                processThread,
-                inputStream,
-                outputStream);
+            return new ConPtySession(diagnosticLog, pseudoConsole, pseudoConsoleInput, pseudoConsoleOutput,
+                                     processAttributeList, process, processThread, inputStream, outputStream);
         }
         catch
         {
@@ -149,6 +117,7 @@ internal sealed class ConPtySession : ITerminalSession
             process?.Dispose();
             processAttributeList?.Dispose();
             pseudoConsole?.Dispose();
+
             throw;
         }
     }
@@ -160,9 +129,7 @@ internal sealed class ConPtySession : ITerminalSession
         processWait ??= WaitForExitAsync(lifetimeCancellation.Token);
     }
 
-    public async ValueTask WriteAsync(
-        string data,
-        CancellationToken cancellationToken)
+    public async ValueTask WriteAsync(string data, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
         var bytes = Encoding.UTF8.GetBytes(data);
@@ -182,9 +149,7 @@ internal sealed class ConPtySession : ITerminalSession
     public void Resize(int columns, int rows)
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
-        var result = NativeMethods.ResizePseudoConsole(
-            pseudoConsole,
-            ToConsoleSize(columns, rows));
+        var result = NativeMethods.ResizePseudoConsole(pseudoConsole, ToConsoleSize(columns, rows));
         ThrowIfFailed(result, "ResizePseudoConsole");
     }
 
@@ -228,12 +193,7 @@ internal sealed class ConPtySession : ITerminalSession
     {
         try
         {
-            using var reader = new StreamReader(
-                outputStream,
-                new UTF8Encoding(false, false),
-                false,
-                4096,
-                true);
+            using var reader = new StreamReader(outputStream, new UTF8Encoding(false, false), false, 4096, true);
             var buffer = new char[4096];
 
             while (cancellationToken.IsCancellationRequested == false)
@@ -254,21 +214,15 @@ internal sealed class ConPtySession : ITerminalSession
         {
             if (cancellationToken.IsCancellationRequested == false)
             {
-                diagnosticLog.Write(
-                    DiagnosticLevel.Warning,
-                    "Terminal",
-                    "ReadOutput",
-                    "The ConPTY output stream ended unexpectedly.",
-                    exception);
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "ReadOutput",
+                                    "The ConPTY output stream ended unexpectedly.", exception);
             }
         }
     }
 
     private async Task WaitForExitAsync(CancellationToken cancellationToken)
     {
-        await Task.Run(
-            () => NativeMethods.WaitForSingleObject(process, NativeMethods.Infinite),
-            cancellationToken).ConfigureAwait(false);
+        await Task.Run(() => NativeMethods.WaitForSingleObject(process, NativeMethods.Infinite), cancellationToken).ConfigureAwait(false);
 
         if (NativeMethods.GetExitCodeProcess(process, out var exitCode) == false)
         {
@@ -278,9 +232,7 @@ internal sealed class ConPtySession : ITerminalSession
         Exited?.Invoke(exitCode);
     }
 
-    private static void CreatePipe(
-        out SafeFileHandle readPipe,
-        out SafeFileHandle writePipe)
+    private static void CreatePipe(out SafeFileHandle readPipe, out SafeFileHandle writePipe)
     {
         if (NativeMethods.CreatePipe(out readPipe, out writePipe, 0, 0) == false)
         {
@@ -290,9 +242,7 @@ internal sealed class ConPtySession : ITerminalSession
 
     private static ConsoleSize ToConsoleSize(int columns, int rows)
     {
-        return new ConsoleSize(
-            checked((short)Math.Clamp(columns, 2, 500)),
-            checked((short)Math.Clamp(rows, 1, 300)));
+        return new ConsoleSize(checked((short)Math.Clamp(columns, 2, 500)), checked((short)Math.Clamp(rows, 1, 300)));
     }
 
     private static void ThrowIfFailed(int result, string operation)
@@ -302,9 +252,8 @@ internal sealed class ConPtySession : ITerminalSession
             return;
         }
 
-        throw new InvalidOperationException(
-            $"{operation} failed with HRESULT 0x{result:X8}.",
-            Marshal.GetExceptionForHR(result));
+        throw new InvalidOperationException($"{operation} failed with HRESULT 0x{result:X8}.",
+                                            Marshal.GetExceptionForHR(result));
     }
 
     private static async Task ObserveBackgroundTaskAsync(Task? task)

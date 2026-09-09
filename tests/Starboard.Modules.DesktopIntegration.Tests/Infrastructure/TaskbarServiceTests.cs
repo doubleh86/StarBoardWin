@@ -17,10 +17,7 @@ public sealed class TaskbarServiceTests
                 CreateMonitor(1, new PixelRect(0, 0, 1920, 1080), true),
                 CreateMonitor(2, new PixelRect(1920, 0, 3840, 1080), false),
             ],
-            Taskbar = new NativeTaskbarSnapshot(
-                TaskbarEdge.Bottom,
-                new PixelRect(1920, 1040, 3840, 1080),
-                false),
+            Taskbar = new NativeTaskbarSnapshot(TaskbarEdge.Bottom, new PixelRect(1920, 1040, 3840, 1080), false),
             RectangleMonitorHandle = 2,
         };
         var service = new TaskbarService(nativeApi);
@@ -50,10 +47,7 @@ public sealed class TaskbarServiceTests
             [
                 CreateMonitor(1, new PixelRect(0, 0, 1920, 1080), true),
             ],
-            Taskbar = new NativeTaskbarSnapshot(
-                TaskbarEdge.Bottom,
-                new PixelRect(0, 1040, 1920, 1080),
-                false),
+            Taskbar = new NativeTaskbarSnapshot(TaskbarEdge.Bottom, new PixelRect(0, 1040, 1920, 1080), false),
             RectangleMonitorHandle = 1,
         };
         var service = new TaskbarService(nativeApi);
@@ -62,16 +56,10 @@ public sealed class TaskbarServiceTests
         nativeApi.ConnectedMonitors =
         [
             CreateMonitor(1, new PixelRect(0, 0, 1920, 1080), true),
-            new NativeMonitorSnapshot(
-                new nint(3),
-                new PixelRect(-2560, 0, 0, 1440),
-                new PixelRect(-2500, 0, 0, 1440),
-                false),
+            new NativeMonitorSnapshot(new nint(3), new PixelRect(-2560, 0, 0, 1440), new PixelRect(-2500, 0, 0, 1440),
+                                      false),
         ];
-        nativeApi.Taskbar = new NativeTaskbarSnapshot(
-            TaskbarEdge.Left,
-            new PixelRect(-2560, 0, -2500, 1440),
-            true);
+        nativeApi.Taskbar = new NativeTaskbarSnapshot(TaskbarEdge.Left, new PixelRect(-2560, 0, -2500, 1440), true);
         nativeApi.RectangleMonitorHandle = 3;
         nativeApi.MonitorDpi = new DisplayDpi(144, 144);
 
@@ -95,11 +83,7 @@ public sealed class TaskbarServiceTests
             [
                 CreateMonitor(1, new PixelRect(0, 0, 1920, 1080), true),
             ],
-            Taskbar = new NativeTaskbarSnapshot(
-                TaskbarEdge.Bottom,
-                taskbarBounds,
-                true,
-                taskbarBounds),
+            Taskbar = new NativeTaskbarSnapshot(TaskbarEdge.Bottom, taskbarBounds, true, taskbarBounds),
             RectangleMonitorHandle = 1,
         };
         var service = new TaskbarService(nativeApi);
@@ -115,8 +99,7 @@ public sealed class TaskbarServiceTests
     [DataRow(TaskbarEdge.Top)]
     [DataRow(TaskbarEdge.Right)]
     [DataRow(TaskbarEdge.Bottom)]
-    public void CaptureLatestWithConcealedAutoHideTaskbarOnEachEdgeReportsConcealed(
-        TaskbarEdge edge)
+    public void CaptureLatestWithConcealedAutoHideTaskbarOnEachEdgeReportsConcealed(TaskbarEdge edge)
     {
         var taskbarBounds = edge switch
         {
@@ -138,11 +121,7 @@ public sealed class TaskbarServiceTests
             [
                 CreateMonitor(1, new PixelRect(0, 0, 1920, 1080), true),
             ],
-            Taskbar = new NativeTaskbarSnapshot(
-                edge,
-                taskbarBounds,
-                true,
-                concealedBounds),
+            Taskbar = new NativeTaskbarSnapshot(edge, taskbarBounds, true, concealedBounds),
             RectangleMonitorHandle = 1,
         };
         var service = new TaskbarService(nativeApi);
@@ -162,11 +141,8 @@ public sealed class TaskbarServiceTests
             [
                 CreateMonitor(1, new PixelRect(0, 0, 1920, 1080), true),
             ],
-            Taskbar = new NativeTaskbarSnapshot(
-                TaskbarEdge.Bottom,
-                new PixelRect(0, 1040, 1920, 1080),
-                true,
-                new PixelRect(0, 1060, 1920, 1100)),
+            Taskbar = new NativeTaskbarSnapshot(TaskbarEdge.Bottom, new PixelRect(0, 1040, 1920, 1080), true,
+                                                new PixelRect(0, 1060, 1920, 1100)),
             RectangleMonitorHandle = 1,
         };
         var service = new TaskbarService(nativeApi);
@@ -187,10 +163,7 @@ public sealed class TaskbarServiceTests
             [
                 CreateMonitor(1, new PixelRect(0, 0, 1920, 1080), true),
             ],
-            Taskbar = new NativeTaskbarSnapshot(
-                TaskbarEdge.Bottom,
-                new PixelRect(0, 1040, 1920, 1080),
-                false),
+            Taskbar = new NativeTaskbarSnapshot(TaskbarEdge.Bottom, new PixelRect(0, 1040, 1920, 1080), false),
             RectangleMonitorHandle = 1,
             MonitorDpiException = dpiFailure,
             WindowDpi = 120,
@@ -207,17 +180,13 @@ public sealed class TaskbarServiceTests
     [TestMethod]
     public void CaptureLatestDuringExplorerRestartUsesOnlyLivePrimaryGeometry()
     {
-        var taskbarFailure = new InvalidOperationException(
-            "Explorer is recreating the taskbar.");
+        var taskbarFailure = new InvalidOperationException("Explorer is recreating the taskbar.");
         var nativeApi = new FakeDesktopNativeApi
         {
             ConnectedMonitors =
             [
-                new NativeMonitorSnapshot(
-                    new nint(5),
-                    new PixelRect(-1920, 0, 0, 1080),
-                    new PixelRect(-1920, 0, 0, 1040),
-                    true),
+                new NativeMonitorSnapshot(new nint(5), new PixelRect(-1920, 0, 0, 1080),
+                                          new PixelRect(-1920, 0, 0, 1040), true),
             ],
             TaskbarException = taskbarFailure,
         };
@@ -244,10 +213,7 @@ public sealed class TaskbarServiceTests
             [
                 CreateMonitor(1, new PixelRect(0, 0, 1920, 1080), true),
             ],
-            Taskbar = new NativeTaskbarSnapshot(
-                TaskbarEdge.Bottom,
-                new PixelRect(0, 1040, 1920, 1080),
-                false),
+            Taskbar = new NativeTaskbarSnapshot(TaskbarEdge.Bottom, new PixelRect(0, 1040, 1920, 1080), false),
             RectangleMonitorHandle = 1,
             MonitorDpiException = monitorFailure,
             WindowDpiException = windowFailure,
@@ -257,23 +223,16 @@ public sealed class TaskbarServiceTests
         var result = service.CaptureLatest(new nint(89));
 
         Assert.AreEqual(new DisplayDpi(96, 96), result.Monitor.Dpi);
-        var aggregateFailure = Assert.IsInstanceOfType<AggregateException>(
-            result.DpiCaptureFailure);
-        CollectionAssert.AreEqual(
-            new Exception[] { monitorFailure, windowFailure },
-            aggregateFailure.InnerExceptions.ToArray());
+        var aggregateFailure = Assert.IsInstanceOfType<AggregateException>(result.DpiCaptureFailure);
+        CollectionAssert.AreEqual(new Exception[] { monitorFailure, windowFailure },
+                                  aggregateFailure.InnerExceptions.ToArray());
         Assert.AreEqual(DisplayTrackingState.Fallback, result.TrackingState);
     }
 
-    private static NativeMonitorSnapshot CreateMonitor(
-        int handle,
-        PixelRect bounds,
-        bool isPrimary)
+    private static NativeMonitorSnapshot CreateMonitor(int handle, PixelRect bounds, bool isPrimary)
     {
-        return new NativeMonitorSnapshot(
-            new nint(handle),
-            bounds,
-            new PixelRect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom - 40),
-            isPrimary);
+        return new NativeMonitorSnapshot(new nint(handle), bounds,
+                                         new PixelRect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom - 40),
+                                         isPrimary);
     }
 }

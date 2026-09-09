@@ -33,18 +33,9 @@ internal struct MonitorInfo
 
 [UnmanagedFunctionPointer(CallingConvention.Winapi)]
 [return: MarshalAs(UnmanagedType.Bool)]
-internal delegate bool MonitorEnumerationCallback(
-    nint monitor,
-    nint deviceContext,
-    nint monitorRectangle,
-    nint applicationData);
+internal delegate bool MonitorEnumerationCallback(nint monitor, nint deviceContext, nint monitorRectangle,
+                                                  nint applicationData);
 
 [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-internal delegate void WinEventCallback(
-    nint hook,
-    uint eventType,
-    nint windowHandle,
-    int objectIdentifier,
-    int childIdentifier,
-    uint eventThreadIdentifier,
-    uint eventTime);
+internal delegate void WinEventCallback(nint hook, uint eventType, nint windowHandle, int objectIdentifier,
+                                        int childIdentifier, uint eventThreadIdentifier, uint eventTime);

@@ -15,8 +15,7 @@ internal sealed class TerminalAppearanceState
 
     internal TerminalAppearanceSettings Current => current;
 
-    internal TerminalAppearanceSettings? Update(
-        TerminalAppearanceSettings appearance)
+    internal TerminalAppearanceSettings? Update(TerminalAppearanceSettings appearance)
     {
         ArgumentNullException.ThrowIfNull(appearance);
         current = appearance;
