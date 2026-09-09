@@ -45,6 +45,19 @@
 
 ### 1. 탭 정리
 
+- **TAB-UX-01 — 새 탭 버튼 위치 개선:** 탭 옆 `×`를 추가 버튼으로 오인해 닫은
+  사용자 사례를 반영한다. 현재 탭 목록이 남은 폭을 채워 `+`가 화면 맨 오른쪽에
+  떨어져 있다. 사용자가 제공한 Windows Terminal 배치처럼 `×`는 각 탭 안에,
+  `+`는 마지막 탭 바로 뒤의 독립 버튼으로 배치하고 간격으로 역할을 구분한다.
+  활성 탭은 이름·닫기 영역을 하나의 배경으로 묶어 본문과 이어지게 한다.
+  비활성 탭은 배경 명도로 구분하고 상단 모서리는 가볍게 둥글린다.
+  `×`의 닫기 기능과 기존 단축키는 유지한다. 탭이 넘치면 목록만 가로 스크롤하며
+  `+`는 스크롤 영역 밖에 계속 표시한다. 최대 8개에서는 기존처럼 비활성화한다.
+  W2-C 소유이며 1/3/8개 탭·좁은 폭에서 위치, 클릭 대상, 32px 높이를 검증한다.
+  W3에서 `+`가 새 탭만 만들고 기존 세션을 닫지 않는지 확인한다. 상세 근거는
+  [탭 UI 후속 계획](2026-09-03-renderer-and-tab-ui.md)을 따른다. 이번에는 구현하지 않는다.
+  참고 이미지의 `∨` 셸 선택 메뉴는 후속 후보이며 이번 범위에는 포함하지 않는다.
+  `+`의 기본 셸 사용 정책, 4개 테마와 접근성·키보드 focus 표시는 유지한다.
 - 탭의 우클릭 메뉴에 `이름 변경`, `왼쪽으로 이동`, `오른쪽으로 이동`,
   `시작 폴더 설정`을 제공한다. 키보드 사용자는 탭에 focus를 둔 상태에서
   `Shift+F10`으로 같은 메뉴를 연다. terminal 본문의 shell 입력과 구분한다.
@@ -91,6 +104,19 @@
   삭제 실패는 사용자에게 알리고 저장 데이터가 남아 있음을 표시한다. 다음 시작은
   복원 옵션이 꺼진 상태를 우선해 기본 탭 하나만 생성한다.
 
+### 4. 패널은 밀착하고 입력 줄은 내부 여백으로 보호
+
+- **PANEL-UX-02:** 축소 패널과 하단 작업표시줄 사이의 기존 외부 6 DIP 간격을
+  0으로 바꾸고, terminal 본문 안쪽 아래에 6 DIP 상당의 추가 여백을 둔다.
+  패널 바깥의 바탕화면 틈을 없애면서 입력 줄이 작업표시줄에 붙어 보이지 않게 한다.
+- 기본 높이 200 DIP와 탭 바 높이는 유지한다. 여백을 제외한 영역으로 xterm fit과
+  ConPTY rows를 계산하며, 글자·커서를 가리는 방식으로 여백을 만들지 않는다.
+- 하단 작업표시줄의 축소 상태만 변경한다. 확장·상단·좌우 배치와 auto-hide의
+  안전 경계, 작업 영역 비예약·focus·세션 유지 정책은 보존한다. 드래그 자석 기능은 제외한다.
+- W1에서 상태 전달·DPI 변환을 확정하고 W2-C는 내부 여백, W2-E는 외부 geometry를
+  각각 구현한다. W3에서 함께 연결한다. UI 세부 기준은
+  [탭·패널 UI 계획](2026-09-03-renderer-and-tab-ui.md)을 따른다. 이번에는 기획만 반영한다.
+
 ## 저장과 실패 정책
 
 - Terminal이 `%LOCALAPPDATA%/Starboard/workspace.json`의 읽기·검증·원자적 저장과
@@ -126,8 +152,10 @@
 | 검증·문서 | Terminal/Preferences/Integration/Architecture tests, `README.md`, `docs/test-plan.md`, `docs/architecture.md`, package 검증 | 회귀·개인정보·배포 검증 |
 
 모듈 경로는 `src/Modules/Starboard.Modules.<이름>/` 기준이다. Terminal 전용 구성 DTO를
-SharedKernel이나 Preferences로 이동하지 않는다. DesktopIntegration geometry·focus 정책은
-수정하지 않으며 기본 높이 200 DIP와 하단 간격 6 DIP를 보존한다.
+SharedKernel이나 Preferences로 이동하지 않는다. 기본 높이 200 DIP와 focus 정책은
+보존한다. PANEL-UX-02에 한해 DesktopIntegration의
+`Domain/PanelGeometryCalculator.cs`와 관련 geometry/settings/window tests를 변경하며,
+현재 외부 6 DIP 간격 보존 조건을 외부 간격 0·terminal 내부 여백으로 대체한다.
 
 ## 병렬 구현 계획과 인수 기준
 
@@ -139,14 +167,15 @@ SharedKernel이나 Preferences로 이동하지 않는다. DesktopIntegration geo
 W0 기준선 → W1 공통 계약 확정
                 ├─ W2-A 탭·시작 폴더 로직 ─┐
                 ├─ W2-B 구성 저장소 ──────┤
-                ├─ W2-C 탭 편집 화면 ─────┼→ W3 통합·복원 연결 → W4 최종 검증
-                └─ W2-D 설정 편집 ────────┘
+                ├─ W2-C 탭·패널 화면 ─────┼→ W3 통합·복원 연결 → W4 최종 검증
+                ├─ W2-D 설정 편집 ────────┤
+                └─ W2-E 패널 밀착 geometry ┘
 ```
 
-W2-A~D 사이에는 선행 의존성을 두지 않는다. W1에서 합의한 계약과 테스트 대역으로
-각자 구현하며, 실제 module 연결과 end-to-end 검증은 네 결과가 모두 준비된 뒤 W3에서 한다.
+W2-A~E 사이에는 선행 의존성을 두지 않는다. W1에서 합의한 계약과 테스트 대역으로
+각자 구현하며, 실제 module 연결과 end-to-end 검증은 다섯 결과가 모두 준비된 뒤 W3에서 한다.
 실행 환경의 worker 한도를 넘기지 않는다. 예를 들어 통합 담당 1명과 worker 3명까지
-가능하면 A/B/C를 먼저 시작하고 빈 자리가 생기는 즉시 D를 시작한다.
+가능하면 A/B/C를 먼저 시작하고 빈 자리가 생기는 대로 D/E를 시작한다.
 
 ### 작업별 소유권과 완료 조건
 
@@ -159,9 +188,10 @@ W2-A~D 사이에는 선행 의존성을 두지 않는다. W1에서 합의한 계
 | W1 공통 계약 | W0 | 통합 담당: Terminal 계약·구성 schema·저장소 경계, C#/TS protocol, Preferences 옵션 선언, 공통 fixture·architecture 허용 목록 | 아래 계약 gate 통과, build 가능한 공통 기준 확정 |
 | W2-A 탭·시작 폴더 로직 | W1 | Terminal의 기존 `TerminalTab*`, `TerminalSessionCoordinator.cs`, `ShellResolver.cs`와 해당 로직 tests; W1의 확정 타입 제외 | 이름·순서·시작 폴더 변경과 새 세션 복원 로직; 저장소 대역으로 부분 실패·PID 보존 검증 |
 | W2-B 구성 저장소 | W1 | Terminal 신규 구성 저장소 구현·저장 큐 파일과 전용 tests; coordinator·기존 ConPTY 파일 제외 | 원자적 저장, debounce·flush·삭제, 손상/미래 schema/쓰기 실패 검증; 실제 사용자 파일은 사용하지 않음 |
-| W2-C 탭 편집 화면 | W1 | Terminal `Presentation/Renderer/src/` 및 `dist/`, renderer 전용 검증 파일 | 이름·순서·폴더 편집과 상태 UI, protocol fixture 기반 입력·오류 검증, source/dist 일치; 실제 셸 연결 검증은 W3에 인계 |
+| W2-C 탭·패널 화면 | W1 | Terminal `Presentation/Renderer/src/` 및 `dist/`, renderer 전용 검증 파일 | 이름·순서·폴더 편집, TAB-UX-01 버튼 배치, PANEL-UX-02 내부 여백·fit, protocol fixture 검증과 source/dist 일치; 실제 셸 연결은 W3에 인계 |
 | W2-D 설정 편집 | W1 | Preferences validation·migration·editor 구현과 해당 tests; 확정 계약 선언 제외 | 기본 꺼짐, 이전 설정 migration, 편집·취소 및 저장/삭제 결과 표시를 callback 대역으로 검증 |
-| W3 통합·복원 연결 | W2-A, W2-B, W2-C, W2-D | 통합 담당: `TerminalModule.cs`, `TerminalView.xaml.cs`, host composition, integration/architecture tests, 공용 문서 | 저장소·coordinator·renderer 연결, 시작·옵션 전환·종료 순서, 실제 세션 복원과 실패 경로 통합 |
+| W2-E 패널 밀착 geometry | W1 | DesktopIntegration `Domain/PanelGeometryCalculator.cs`, 두 geometry test 파일과 `DesktopSettingsApplyTests.cs`; host/integration tests 제외 | 축소 하단 외부 간격 0, DPI·공간 부족·확장/복원 회귀 검증; 내부 여백과의 실제 연결은 W3에 인계 |
+| W3 통합·복원 연결 | W2-A, W2-B, W2-C, W2-D, W2-E | 통합 담당: `TerminalModule.cs`, `TerminalView.xaml.cs`, 필요한 Desktop module 연결, host composition, integration/architecture tests, 공용 문서 | 저장소·coordinator·renderer와 패널 상태 연결, 시작·옵션 전환·종료 순서, 세션 복원·실패 경로·외부 밀착/내부 여백 통합 |
 | W4 최종 검증 | W3 | 통합 담당: package 검증, 공용 문서와 필요한 회귀 수정 | 전체 build/test, renderer/package 검사, 실제 UI 결과와 미수행 항목 인수인계 |
 
 ### W1 계약 gate
@@ -178,6 +208,9 @@ worker가 서로의 미완성 구현을 기다리지 않도록 다음을 먼저 
   W2-C가 backend 없이 실행할 요청/응답 fixture와 host 연결 인수 항목을 제공한다.
 - Preferences 복원 옵션의 schema/default, host의 옵션 적용 결과 계약,
   일반 설정 성공과 구성 저장·삭제 실패의 구분, 재시도 순서.
+- PANEL-UX-02의 하단/축소 표시 상태와 내부 여백 전달: 기존 계약으로 가능한지 먼저
+  확인하고 필요한 최소 계약만 확장한다. host가 조정하며 module끼리 직접 참조하지 않는다.
+  WPF DIP와 renderer CSS pixel 변환·fit 적용 순서를 확정해 C/E가 독립 검증할 수 있게 한다.
 - 공통 타입·fixture는 모든 worker가 build할 수 있는 상태로 통합한다. 아직 없는 구현을
   호출해 build를 깨뜨리거나, 가짜 성공을 반환하는 runtime placeholder를 만들지 않는다.
 
@@ -197,7 +230,7 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
   asset 편집을 동시에 실행하지 않는다. 공유 package staging의 동시 실행도 금지한다.
 - 각 worker는 작업 ID, 기준 커밋, 변경 파일, 계약 변경 여부, 검증 명령·결과,
   미수행 항목과 W3 연결 지점을 인계한다. mock 통과를 실제 UI 통과로 보고하지 않는다.
-- W3에서는 결과를 A → B → C → D 순으로 적용하고 단계별 관련 build/test를 확인한다.
+- W3에서는 결과를 A → B → C → D → E 순으로 적용하고 단계별 관련 build/test를 확인한다.
   이 순서는 통합 순서이며 W2 실행 의존성은 아니다. 충돌은 통합 담당이 의미를 확인해
   해결한다. worker 종료만으로 gate를 통과시키지 않는다.
 - W3 중 재작업을 위임하면 수정 대상 파일 소유권을 일시적으로 돌려주고 해당 파일의
@@ -219,7 +252,7 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
   IME Enter/Escape, 우클릭/Shift+F10, tab overflow와 screen reader 접근성 이름 확인.
 - 복원 수동: 복원을 켠 뒤 정상 종료·재실행 → 이름·순서·폴더·선택 확인 → 이전 명령이
   자동으로 실행되지 않음 확인 → 옵션 끄기 후 기본 탭 하나와 저장 구성 삭제 확인.
-- 회귀: 호출/숨김·확장/축소·6 DIP 하단 간격, 100/125/150/200% geometry,
+- 회귀: 호출/숨김·확장/축소·하단 외부 간격 0과 내부 여백, 100/125/150/200% geometry,
   shell/renderer failure, settings 저장/rollback. 실제 장비 항목은 자동 검사와 구분한다.
 - `AGENTS.md`의 solution restore/build/test와 renderer 변경 시 `npm ci`, `npm run build`를
   수행한다. package에 workspace 파일·백업·임시 파일이 들어가면 검증을 실패시킨다.
@@ -244,8 +277,12 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
 - [x] 2026-09-09: 기존 후속 후보와 실제 코드 경계를 확인하고 기획 초안 작성.
 - [x] 2026-09-09: 병렬 가능한 기획 요청에 따라 W1 계약 선행, W2-A~D 독립 작업,
   W3 직렬 통합·W4 최종 검증으로 재구성. 파일 소유권과 계약 변경·인수인계 규칙 추가.
+- [x] 2026-09-09: TAB-UX-01 새 탭 버튼 위치 개선을 W2-C 요구사항으로 추가.
+  사용자 요청에 따라 기획만 유지하고 시도한 제품 코드 변경은 원복했다.
+- [x] 2026-09-09: PANEL-UX-02 외부 밀착·내부 여백을 추가하고 기존 외부 6 DIP
+  보존 조건을 후속안으로 대체. 독립 geometry 작업 W2-E와 W1/W3 연결 기준 추가.
 - [ ] W0~W1 기준선·계약 확정.
-- [ ] W2-A~D 독립 구현·검증.
+- [ ] W2-A~E 독립 구현·검증.
 - [ ] W3 통합·W4 최종 검증.
 
 이번 산출물은 기획서와 이전 기획의 후속 링크뿐이다. 기존 제품 코드·미커밋 변경·
