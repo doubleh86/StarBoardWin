@@ -33,6 +33,9 @@ public sealed class DesktopIntegrationModule : IDisposable
     private PanelOptions options = new(200);
     private PanelWindowPolicyDecision? lastDecision;
     private DesktopSettings effectiveSettings = CreateDefaultSettings();
+    private HotkeySettings configuredHotkeys = new("Ctrl+Alt+E", "Ctrl+Alt+S");
+    private string? expandHotkeyFailure;
+    private string? activationHotkeyFailure;
     private bool? lastRequestedVisibility;
     private nint windowHandle;
     private bool expandHotKeyRegistered;
@@ -82,6 +85,11 @@ public sealed class DesktopIntegrationModule : IDisposable
     /// </summary>
     public event EventHandler? SettingsRequested;
 
+    /// <summary>
+    /// Raised only after the tray menu explicitly requests the shortcut guide.
+    /// </summary>
+    public event EventHandler<ShortcutGuideRequestEventArgs>? ShortcutGuideRequested;
+
     public event Action<bool>? PanelPresentationRequested;
 
     public event EventHandler? ExitRequested;
@@ -119,6 +127,7 @@ public sealed class DesktopIntegrationModule : IDisposable
         runtime.TrayToggleVisibilityRequested += HandleTrayToggleVisibilityRequested;
         runtime.TraySummonRequested += HandleTraySummonRequested;
         runtime.TraySettingsRequested += HandleTraySettingsRequested;
+        runtime.TrayShortcutGuideRequested += HandleTrayShortcutGuideRequested;
         runtime.TrayExitRequested += HandleTrayExitRequested;
 
         try
@@ -458,6 +467,9 @@ public sealed class DesktopIntegrationModule : IDisposable
             {
                 Hotkeys = actualHotkeys,
             };
+            configuredHotkeys = requestedSettings.Hotkeys;
+            expandHotkeyFailure = null;
+            activationHotkeyFailure = null;
 
             return new DesktopSettingsApplyResult(requestedSettings, previousSettings, effectiveSettings,
                                                   DesktopSettingsApplyStatus.Applied,
@@ -674,6 +686,20 @@ public sealed class DesktopIntegrationModule : IDisposable
         SettingsRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    private void HandleTrayShortcutGuideRequested(object? sender, EventArgs eventArguments)
+    {
+        _ = sender;
+        _ = eventArguments;
+
+        GlobalShortcutRegistrationSnapshot snapshot;
+        lock (stateLock)
+        {
+            snapshot = CreateShortcutRegistrationSnapshot();
+        }
+
+        ShortcutGuideRequested?.Invoke(this, new ShortcutGuideRequestEventArgs(snapshot));
+    }
+
     private void HandleTrayExitRequested(object? sender, EventArgs eventArguments)
     {
         _ = sender;
@@ -688,6 +714,7 @@ public sealed class DesktopIntegrationModule : IDisposable
         runtime.TrayToggleVisibilityRequested -= HandleTrayToggleVisibilityRequested;
         runtime.TraySummonRequested -= HandleTraySummonRequested;
         runtime.TraySettingsRequested -= HandleTraySettingsRequested;
+        runtime.TrayShortcutGuideRequested -= HandleTrayShortcutGuideRequested;
         runtime.TrayExitRequested -= HandleTrayExitRequested;
     }
 
@@ -709,12 +736,14 @@ public sealed class DesktopIntegrationModule : IDisposable
 
         if (expandHotKeyRegistered == false)
         {
+            expandHotkeyFailure = "Windows could not register this shortcut because another app may already be using it.";
             diagnosticLog.Write(DiagnosticLevel.Warning, "DesktopIntegration", "RegisterHotKey",
                                 "The expand shortcut is already in use; Starboard will continue without it.");
         }
 
         if (activationHotKeyRegistered == false)
         {
+            activationHotkeyFailure = "Windows could not register this shortcut because another app may already be using it.";
             diagnosticLog.Write(DiagnosticLevel.Warning, "DesktopIntegration", "RegisterHotKey",
                                 "The summon shortcut is already in use; Starboard will continue without it.");
         }
@@ -796,6 +825,31 @@ public sealed class DesktopIntegrationModule : IDisposable
             : $"{failedShortcut} could not be registered, and one or more previous shortcuts could not be restored.";
 
         return false;
+    }
+
+    private GlobalShortcutRegistrationSnapshot CreateShortcutRegistrationSnapshot()
+    {
+        var status = isAttached == true
+            ? GlobalShortcutRegistrationStatus.NotRegistered
+            : GlobalShortcutRegistrationStatus.Unknown;
+        var expand = new GlobalShortcutRegistrationState(configuredHotkeys.ExpandShortcut,
+                                                          expandHotKeyRegistered == true
+                                                              ? configuredHotkeys.ExpandShortcut
+                                                              : null,
+                                                          expandHotKeyRegistered == true
+                                                              ? GlobalShortcutRegistrationStatus.Registered
+                                                              : status,
+                                                          expandHotKeyRegistered == true ? null : expandHotkeyFailure);
+        var activation = new GlobalShortcutRegistrationState(configuredHotkeys.ActivationShortcut,
+                                                              activationHotKeyRegistered == true
+                                                                  ? configuredHotkeys.ActivationShortcut
+                                                                  : null,
+                                                              activationHotKeyRegistered == true
+                                                                  ? GlobalShortcutRegistrationStatus.Registered
+                                                                  : status,
+                                                              activationHotKeyRegistered == true ? null : activationHotkeyFailure);
+
+        return new GlobalShortcutRegistrationSnapshot(expand, activation);
     }
 
     private bool TryRestoreHotkeys(HotkeySettings settings, out HotkeySettings actualHotkeys)
@@ -999,6 +1053,12 @@ internal interface IDesktopIntegrationRuntime : IDisposable
         remove { }
     }
 
+    event EventHandler? TrayShortcutGuideRequested
+    {
+        add { }
+        remove { }
+    }
+
     event EventHandler? TrayExitRequested;
 
     void Attach(nint windowHandle);
@@ -1070,6 +1130,8 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
     public event EventHandler? TraySummonRequested;
 
     public event EventHandler? TraySettingsRequested;
+
+    public event EventHandler? TrayShortcutGuideRequested;
 
     public event EventHandler? TrayExitRequested;
 
@@ -1192,6 +1254,7 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
             _trayIconService.ToggleVisibilityRequested += HandleTrayToggleVisibilityRequested;
             _trayIconService.SummonRequested += HandleTraySummonRequested;
             _trayIconService.SettingsRequested += HandleTraySettingsRequested;
+            _trayIconService.ShortcutGuideRequested += HandleTrayShortcutGuideRequested;
             _trayIconService.ExitRequested += HandleTrayExitRequested;
             _trayIconService.SetPanelVisible(isVisible);
         }
@@ -1213,6 +1276,7 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
         _trayIconService.ToggleVisibilityRequested -= HandleTrayToggleVisibilityRequested;
         _trayIconService.SummonRequested -= HandleTraySummonRequested;
         _trayIconService.SettingsRequested -= HandleTraySettingsRequested;
+        _trayIconService.ShortcutGuideRequested -= HandleTrayShortcutGuideRequested;
         _trayIconService.ExitRequested -= HandleTrayExitRequested;
         _trayIconService.Dispose();
         _trayIconService = null;
@@ -1264,6 +1328,13 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
         _ = sender;
         _ = eventArguments;
         TraySettingsRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void HandleTrayShortcutGuideRequested(object? sender, EventArgs eventArguments)
+    {
+        _ = sender;
+        _ = eventArguments;
+        TrayShortcutGuideRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void HandleTrayExitRequested(object? sender, EventArgs eventArguments)

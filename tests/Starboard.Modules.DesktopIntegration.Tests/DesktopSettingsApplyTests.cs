@@ -180,6 +180,25 @@ public sealed class DesktopSettingsApplyTests
     }
 
     [TestMethod]
+    public void TrayShortcutGuideRequested_ReportsActualGlobalShortcutRegistrationState()
+    {
+        var runtime = new FakeRuntime();
+        runtime.RejectedShortcuts.Add("Ctrl+Alt+E");
+        using var module = CreateAttachedModule(runtime, new FakeStartupRegistration());
+        GlobalShortcutRegistrationSnapshot? receivedSnapshot = null;
+        module.ShortcutGuideRequested += (_, eventArguments) => receivedSnapshot = eventArguments.RegistrationSnapshot;
+
+        runtime.RaiseTrayShortcutGuideRequested();
+
+        Assert.IsNotNull(receivedSnapshot);
+        Assert.AreEqual("Ctrl+Alt+E", receivedSnapshot.Expand.ConfiguredGesture);
+        Assert.AreEqual(GlobalShortcutRegistrationStatus.NotRegistered, receivedSnapshot.Expand.Status);
+        Assert.IsNull(receivedSnapshot.Expand.EffectiveGesture);
+        Assert.AreEqual("Ctrl+Alt+S", receivedSnapshot.Activation.EffectiveGesture);
+        Assert.AreEqual(GlobalShortcutRegistrationStatus.Registered, receivedSnapshot.Activation.Status);
+    }
+
+    [TestMethod]
     public void QuoteExecutablePath_PathContainsSpacesAndKorean_QuotesEntirePath()
     {
         var command = RegistryStartupRegistration.QuoteExecutablePath("C:\\사용자 파일\\Starboard App\\Starboard.exe");
@@ -262,6 +281,8 @@ public sealed class DesktopSettingsApplyTests
         }
 
         public event EventHandler? TraySettingsRequested;
+
+        public event EventHandler? TrayShortcutGuideRequested;
 
         public event EventHandler? TrayExitRequested
         {
@@ -355,6 +376,11 @@ public sealed class DesktopSettingsApplyTests
         public void RaiseTraySettingsRequested()
         {
             TraySettingsRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void RaiseTrayShortcutGuideRequested()
+        {
+            TrayShortcutGuideRequested?.Invoke(this, EventArgs.Empty);
         }
 
         public void Dispose()

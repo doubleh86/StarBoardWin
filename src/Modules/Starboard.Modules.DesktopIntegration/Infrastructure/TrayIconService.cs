@@ -8,6 +8,7 @@ internal sealed class TrayIconService : IDisposable
     private readonly ContextMenuStrip _contextMenu;
     private readonly ToolStripMenuItem _toggleVisibilityItem;
     private readonly ToolStripMenuItem _settingsItem;
+    private readonly ToolStripMenuItem _shortcutGuideItem;
     private readonly ToolStripMenuItem _exitItem;
     private readonly NotifyIcon _notifyIcon;
 
@@ -27,6 +28,12 @@ internal sealed class TrayIconService : IDisposable
         };
         _settingsItem.Click += HandleSettingsClick;
 
+        _shortcutGuideItem = new ToolStripMenuItem("단축키 안내")
+        {
+            AccessibleName = "Starboard 단축키 안내 열기",
+        };
+        _shortcutGuideItem.Click += HandleShortcutGuideClick;
+
         _exitItem = new ToolStripMenuItem("종료")
         {
             AccessibleName = "Starboard 종료",
@@ -40,6 +47,7 @@ internal sealed class TrayIconService : IDisposable
             ShowImageMargin = false,
         };
         _contextMenu.Items.Add(_toggleVisibilityItem);
+        _contextMenu.Items.Add(_shortcutGuideItem);
         _contextMenu.Items.Add(_settingsItem);
         _contextMenu.Items.Add(new ToolStripSeparator());
         _contextMenu.Items.Add(_exitItem);
@@ -59,6 +67,8 @@ internal sealed class TrayIconService : IDisposable
     internal event EventHandler? SummonRequested;
 
     internal event EventHandler? SettingsRequested;
+
+    internal event EventHandler? ShortcutGuideRequested;
 
     internal event EventHandler? ExitRequested;
 
@@ -81,6 +91,7 @@ internal sealed class TrayIconService : IDisposable
         _notifyIcon.MouseClick -= HandleNotifyIconMouseClick;
         _toggleVisibilityItem.Click -= HandleToggleVisibilityClick;
         _settingsItem.Click -= HandleSettingsClick;
+        _shortcutGuideItem.Click -= HandleShortcutGuideClick;
         _exitItem.Click -= HandleExitClick;
         _notifyIcon.Dispose();
         _contextMenu.Dispose();
@@ -115,5 +126,12 @@ internal sealed class TrayIconService : IDisposable
         _ = sender;
         _ = eventArguments;
         SettingsRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void HandleShortcutGuideClick(object? sender, EventArgs eventArguments)
+    {
+        _ = sender;
+        _ = eventArguments;
+        ShortcutGuideRequested?.Invoke(this, EventArgs.Empty);
     }
 }

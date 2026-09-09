@@ -10,6 +10,7 @@ namespace Starboard.Windows.Shell;
 public partial class MainWindow : Window
 {
     private DesktopIntegrationModule? desktopIntegration;
+    private ShortcutGuideWindow? shortcutGuideWindow;
     private HwndSource? windowSource;
 
     internal MainWindow()
@@ -47,6 +48,7 @@ public partial class MainWindow : Window
     internal nint AttachDesktopIntegration(DesktopIntegrationModule module)
     {
         desktopIntegration = module;
+        desktopIntegration.ShortcutGuideRequested += HandleShortcutGuideRequested;
         var helper = new WindowInteropHelper(this);
         windowSource = HwndSource.FromHwnd(helper.Handle)
             ?? throw new InvalidOperationException("The Starboard window source is unavailable.");
@@ -104,6 +106,13 @@ public partial class MainWindow : Window
 
         windowSource?.RemoveHook(WindowProcedure);
         windowSource = null;
+        if (desktopIntegration is not null)
+        {
+            desktopIntegration.ShortcutGuideRequested -= HandleShortcutGuideRequested;
+        }
+
+        shortcutGuideWindow?.Close();
+        shortcutGuideWindow = null;
         desktopIntegration = null;
         Activated -= HandleActivated;
         Deactivated -= HandleDeactivated;
@@ -122,5 +131,52 @@ public partial class MainWindow : Window
         brush.Freeze();
 
         return brush;
+    }
+
+    private void HandleShortcutGuideRequested(object? sender, ShortcutGuideRequestEventArgs eventArguments)
+    {
+        _ = sender;
+        if (Dispatcher.CheckAccess() == false)
+        {
+            _ = Dispatcher.BeginInvoke(() => ShowShortcutGuide(eventArguments.RegistrationSnapshot));
+            return;
+        }
+
+        ShowShortcutGuide(eventArguments.RegistrationSnapshot);
+    }
+
+    private void ShowShortcutGuide(GlobalShortcutRegistrationSnapshot registrationSnapshot)
+    {
+        var guideWindow = shortcutGuideWindow;
+        if (guideWindow is null)
+        {
+            guideWindow = new ShortcutGuideWindow(registrationSnapshot);
+            guideWindow.Closed += HandleShortcutGuideClosed;
+            shortcutGuideWindow = guideWindow;
+            guideWindow.Show();
+        }
+        else
+        {
+            guideWindow.UpdateRegistrationSnapshot(registrationSnapshot);
+        }
+
+        if (guideWindow.WindowState == WindowState.Minimized)
+        {
+            guideWindow.WindowState = WindowState.Normal;
+        }
+
+        _ = guideWindow.Activate();
+    }
+
+    private void HandleShortcutGuideClosed(object? sender, EventArgs eventArguments)
+    {
+        _ = eventArguments;
+        if (ReferenceEquals(sender, shortcutGuideWindow) == false)
+        {
+            return;
+        }
+
+        shortcutGuideWindow!.Closed -= HandleShortcutGuideClosed;
+        shortcutGuideWindow = null;
     }
 }
