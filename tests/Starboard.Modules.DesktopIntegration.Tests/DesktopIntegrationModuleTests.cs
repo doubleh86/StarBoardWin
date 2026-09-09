@@ -8,7 +8,8 @@ public sealed class DesktopIntegrationModuleTests
     [TestMethod]
     public void HandleWindowMessageWithActivationHotKeyRaisesActivationToggleRequest()
     {
-        using var module = new DesktopIntegrationModule(new NullDiagnosticLog());
+        using var module = new DesktopIntegrationModule(new NullDiagnosticLog(),
+                                                        _ => Assert.Fail("Hotkey handling must not apply opacity."));
         var requestCount = 0;
         module.PanelActivationToggleRequested += (_, _) => requestCount++;
 
@@ -23,7 +24,8 @@ public sealed class DesktopIntegrationModuleTests
     [TestMethod]
     public void HandleWindowMessageWithUnknownHotKeyDoesNotRaiseActivationToggleRequest()
     {
-        using var module = new DesktopIntegrationModule(new NullDiagnosticLog());
+        using var module = new DesktopIntegrationModule(new NullDiagnosticLog(),
+                                                        _ => Assert.Fail("Hotkey handling must not apply opacity."));
         var requestCount = 0;
         module.PanelActivationToggleRequested += (_, _) => requestCount++;
 

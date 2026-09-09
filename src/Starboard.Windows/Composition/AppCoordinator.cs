@@ -28,7 +28,7 @@ internal sealed class AppCoordinator : IDisposable
     {
         diagnosticLog = new FileDiagnosticLog();
         preferencesModule = new PreferencesModule(diagnosticLog);
-        desktopIntegrationModule = new DesktopIntegrationModule(diagnosticLog);
+        desktopIntegrationModule = new DesktopIntegrationModule(diagnosticLog, ApplyPanelOpacity);
         terminalModule = new TerminalModule(diagnosticLog);
         desktopIntegrationModule.PanelVisibilityToggleRequested += HandlePanelVisibilityToggleRequested;
         desktopIntegrationModule.PanelActivationToggleRequested += HandlePanelActivationToggleRequested;
@@ -342,5 +342,13 @@ internal sealed class AppCoordinator : IDisposable
         var window = mainWindow
             ?? throw new InvalidOperationException("The main window is unavailable.");
         window.ApplyAppearance(settings, PreferencesModule.GetTheme(settings.Theme));
+    }
+
+    private void ApplyPanelOpacity(double opacity)
+    {
+        var window = mainWindow
+            ?? throw new InvalidOperationException("The main window is unavailable.");
+        window.Dispatcher.VerifyAccess();
+        window.Opacity = opacity;
     }
 }

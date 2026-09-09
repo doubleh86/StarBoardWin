@@ -22,8 +22,6 @@ internal static partial class NativeMethods
 
     internal const int WindowLongExtendedStyle = -20;
     internal const long ExtendedStyleToolWindow = 0x00000080L;
-    internal const long ExtendedStyleLayered = 0x00080000L;
-    internal const uint LayeredWindowAlpha = 0x00000002;
 
     internal const uint SetWindowPositionNoSize = 0x0001;
     internal const uint SetWindowPositionNoMove = 0x0002;
@@ -126,14 +124,6 @@ internal static partial class NativeMethods
 
     [LibraryImport("user32.dll", SetLastError = true)]
     internal static partial nint SetWindowLongPtrW(nint windowHandle, int index, nint newLong);
-
-    [LibraryImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool SetLayeredWindowAttributes(
-        nint windowHandle,
-        uint colorKey,
-        byte alpha,
-        uint flags);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

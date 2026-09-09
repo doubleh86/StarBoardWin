@@ -339,6 +339,27 @@ ConPTY, visible window가 정상이라고 보고하지 않는다. Explorer 재�
 
 ## 완료 요약
 
+### 2026-09-09 바탕화면 배포 시작 오류 후속
+
+- 실제 배포본과 최소 WPF integration test에서 `SetLayeredWindowAttributes`가
+  Win32 error 87로 실패함을 재현했다. `AllowsTransparency=false`인 WPF가
+  `WS_EX_LAYERED`를 제거하므로 외부 native opacity 설정과 호환되지 않는다.
+- 변경 범위: DesktopIntegration의 opacity 적용을 host가 전달하는 동기 callback으로
+  연결한다. host는 기존 WPF `Opacity` 속성을 사용하며 module 간 직접 참조는 추가하지
+  않는다. 실패/rollback 순서는 유지하고 미사용 native opacity API를 제거한다.
+- 영향 파일: `DesktopIntegrationModule`, `WindowPlacementService`, `NativeMethods`,
+  `AppCoordinator`, 신규 `PanelOpacityIntegrationTests`, architecture/test-plan 문서.
+- opaque WPF 및 child-HWND WebView2 제약 때문에 desktop 전체에 대한 진짜 반투명 효과는
+  보장하지 않는다. `AllowsTransparency` 변경이나 renderer 교체는 이번 범위가 아니다.
+- 검증: 재현 test의 실패→통과, 실제 WPF에서 opacity 반복 적용과 focus/geometry 보존,
+  전체 Debug/Release suite, portable package 검사, 바탕화면 교체 및 실제 재실행 확인.
+- 상태: 수정, Debug/Release 각각 전체 188개 test 및 package 검증 완료.
+  실제 WPF 회귀 test에서 native setter 오류를 먼저 재현했고, 수정 후 opacity 반복
+  적용의 bounds/focus 보존과 실패 전파를 확인했다. 바탕화면 기존 폴더를 백업한 뒤
+  499개 파일 hash를 검증해 교체하고 재실행했다. 앱 응답과 PowerShell/ConPTY/WebView2
+  process를 확인했다. computer-use에서 panel HWND를 찾지 못해 실제 화면·입력과
+  전체 hardware manual matrix는 미검증이다. 상세 결과는 test-plan을 따른다.
+
 P4 Windows 창 통합, P5~P9 설정 적용·복구와 P10~P11 portable package 자동 C gate를
 완료했다. 중앙 version과 build commit이 executable, 설정 화면과 release metadata에서
 일치하며 version staging 밖을 정리하지 않는 self-contained ZIP/SHA-256 흐름과 추출 smoke를

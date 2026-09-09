@@ -36,6 +36,29 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-09
+- 범위: 바탕화면 시작 오류(Win32 error 87) 수정 및 재배포
+- 수정 전 실제 opaque WPF 창의 native opacity 적용에서 같은 오류와
+  `WindowPlacementService.SetOpacity` stack을 재현했다. host callback을 통한 WPF
+  속성 적용으로 변경한 뒤 신규 integration test 2개가 통과했다. 0.97 → 0.8 → 1.0 →
+  0.97 반복 적용 시 bounds와 foreground 보존, callback 실패의 rollback 경로 전파를
+  검증했다. 실제 desktop 투과 효과를 검증한 것은 아니다.
+- Debug restore/build/test와 Release package build/test 모두 경고·오류 0개,
+  전체 188개 통과(Architecture 5, Terminal 61, DesktopIntegration 66, Preferences 27,
+  Integration 29). `out/startup-fix-tests`에 Debug TRX를 보관했다.
+- self-contained ZIP/SHA-256, 재생성 hash, 추출 smoke가 통과했다. 기존 instance를
+  종료한 뒤 smoke를 수행해 single-instance 조기 종료를 피했다. 499개 파일을
+  publish 파일별 hash와 대조해 바탕화면에 교체했다. 기존 폴더는 백업했고 사용자
+  settings 파일은 배포 전후 없으므로 기본값을 유지한다.
+- 배포본은 `b014901` 기반 미커밋 시작 오류 수정본이다. package SHA-256:
+  `36a1e500da0df232a8a0b7483c10e370740f1a6cda0172b2591e41599dab689c`.
+  commit 표기만으로 수정 전/후를 구별할 수 없으므로 이 hash를 기준으로 식별한다.
+- 탐색기를 통해 재실행한 배포 경로의 앱 응답과 `pwsh.exe`, `conhost.exe`,
+  `msedgewebview2.exe` 자식 process를 확인했고 새로운 시작 오류나 진단 로그는 없었다.
+  computer-use의 앱/창 목록에는 panel이 노출되지 않아 실제 renderer 화면·입력,
+  tray/settings 조작까지 통과했다고 판단하지 않는다. MAN-039/040의 전체 시나리오,
+  실제 multi-monitor/DPI/fullscreen/IME 검증은 여전히 미완료다.
+
 - 실행일: 2026-09-08
 - 범위: P10~P11 portable 배포와 C gate 자동 검증
 - 결과: build server 정상 종료 후 지정 SDK로 restore, Debug solution build 경고

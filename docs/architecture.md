@@ -114,6 +114,16 @@ Preferences가 유효성을 확인한 draft의 저장 callback은 host compositi
 4. WPF host surface의 theme와 geometry 속성을 같은 snapshot으로 맞춘다.
 5. 모든 live apply가 성공한 뒤 Preferences atomic store에 영속화한다.
 
+DesktopIntegration의 opacity 적용은 composition root가 전달한 동기 callback을 통해
+WPF `Window.Opacity`에 반영한다. 실패는 module의 기존 settings rollback 경로로 전파한다.
+`AllowsTransparency=false`를 유지하며 `SetLayeredWindowAttributes`로 HWND style을
+강제하지 않는다. WPF는 opaque HwndTarget에서 `WS_EX_LAYERED`를 제거하므로 이 조합은
+실제 WPF integration test와 배포 실행에서 Win32 error 87을 발생시켰다(2026-09-09).
+[WPF HwndTarget 구현](https://github.com/dotnet/wpf/blob/main/src/Microsoft.DotNet.Wpf/src/PresentationCore/System/Windows/InterOp/HwndTarget.cs)과
+[Win32 API 요구사항](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setlayeredwindowattributes)을
+근거로 native opacity setter를 제거했다. 현재 속성 적용은 WPF surface에 한정되며,
+opaque 창과 child-HWND WebView2 전체의 바탕화면 투과 효과를 보장하지 않는다.
+
 Terminal이나 DesktopIntegration은 자체 operation의 실패와 local rollback 결과를
 `EffectiveSettings`로 보고한다. 뒤 단계 또는 persistence가 실패하면 host는 마지막
 persisted snapshot을 DesktopIntegration, Terminal 역순으로 다시 적용한다. host는

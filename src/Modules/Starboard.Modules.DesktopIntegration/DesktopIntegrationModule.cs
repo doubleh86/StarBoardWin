@@ -46,10 +46,10 @@ public sealed class DesktopIntegrationModule : IDisposable
     private bool isAttached;
     private bool isDisposed;
 
-    public DesktopIntegrationModule(IDiagnosticLog diagnosticLog)
+    public DesktopIntegrationModule(IDiagnosticLog diagnosticLog, Action<double> applyPanelOpacity)
         : this(
             diagnosticLog,
-            new WindowsDesktopIntegrationRuntime(diagnosticLog),
+            new WindowsDesktopIntegrationRuntime(diagnosticLog, applyPanelOpacity),
             new RegistryStartupRegistration(new ProcessExecutablePathProvider()),
             true)
     {
@@ -1173,6 +1173,7 @@ internal interface IDesktopIntegrationRuntime : IDisposable
 internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRuntime
 {
     private readonly IDiagnosticLog _diagnosticLog;
+    private readonly Action<double> _applyPanelOpacity;
     private readonly FullscreenService _fullscreenService;
     private readonly TaskbarService _taskbarService;
 
@@ -1181,9 +1182,11 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
     private TrayIconService? _trayIconService;
     private bool _isDisposed;
 
-    internal WindowsDesktopIntegrationRuntime(IDiagnosticLog diagnosticLog)
+    internal WindowsDesktopIntegrationRuntime(IDiagnosticLog diagnosticLog, Action<double> applyPanelOpacity)
     {
+        ArgumentNullException.ThrowIfNull(applyPanelOpacity);
         _diagnosticLog = diagnosticLog;
+        _applyPanelOpacity = applyPanelOpacity;
         var nativeApi = new DesktopNativeApi();
         _fullscreenService = new FullscreenService(nativeApi);
         _taskbarService = new TaskbarService(nativeApi);
@@ -1289,7 +1292,10 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
 
     public void SetPanelOpacity(nint windowHandle, double opacity)
     {
-        WindowPlacementService.SetOpacity(windowHandle, opacity);
+        _ = windowHandle;
+        // WPF owns its layered-window style. Let the host apply its supported
+        // surface opacity instead of forcing WS_EX_LAYERED on an opaque HWND.
+        _applyPanelOpacity(opacity);
     }
 
     public void ActivateOnExplicitRequest(nint windowHandle)
