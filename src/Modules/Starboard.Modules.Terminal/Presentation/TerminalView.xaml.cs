@@ -23,12 +23,14 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly IDiagnosticLog diagnosticLog;
     private readonly TerminalSessionCoordinator sessionCoordinator;
     private readonly TerminalWorkspacePersistence workspacePersistence;
+    private readonly TerminalSavedTabService savedTabService;
     private readonly Lock outputLock = new();
     private readonly Dictionary<TerminalSessionId, PendingSessionOutput> pendingOutput = [];
     private readonly HashSet<TerminalSessionId> outputFlushScheduled = [];
     private readonly HashSet<TerminalSessionId> outputOverflowReported = [];
     private readonly HashSet<TerminalSessionId> rendererSessionIds = [];
     private readonly Dictionary<TerminalSessionId, long> rendererSessionGenerations = [];
+    private readonly HashSet<TerminalSavedTabRequestId> savedTabLaunchRequestIds = [];
     private readonly CancellationTokenSource lifetimeCancellation = new();
 
     private TaskCompletionSource rendererReady = CreateCompletionSource();
@@ -37,17 +39,21 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private ShellLaunchSpec? defaultShell;
     private TerminalShellKind? defaultShellKind;
     private PendingSafetyConfirmation? pendingSafetyConfirmation;
+    private bool savedTabsInitialized;
     private bool rendererFailed;
     private bool isDisposed;
+    private long rendererGeneration;
     private int columns = 80;
     private int rows = 24;
 
     internal TerminalView(IDiagnosticLog diagnosticLog, TerminalSessionCoordinator sessionCoordinator,
-                          TerminalWorkspacePersistence workspacePersistence)
+                          TerminalWorkspacePersistence workspacePersistence,
+                          TerminalSavedTabService savedTabService)
     {
         this.diagnosticLog = diagnosticLog;
         this.sessionCoordinator = sessionCoordinator;
         this.workspacePersistence = workspacePersistence;
+        this.savedTabService = savedTabService;
         sessionCoordinator.WorkspaceChanged += Session_WorkspaceChanged;
         sessionCoordinator.OutputReceived += Session_OutputReceived;
         sessionCoordinator.SessionExited += Session_Exited;
@@ -73,6 +79,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         try
         {
             await InitializeRendererAsync(cancellationToken);
+            await InitializeSavedTabsAsync(cancellationToken);
             await StartWorkspaceAsync(terminalOptions.RestoreWorkspaceOnLaunch, cancellationToken);
             ShowTerminal();
         }
@@ -308,6 +315,18 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         workspacePersistence.CompleteRestore();
     }
 
+    private async Task InitializeSavedTabsAsync(CancellationToken cancellationToken)
+    {
+        if (savedTabsInitialized == true)
+        {
+            return;
+        }
+
+        _ = await savedTabService.InitializeAsync(cancellationToken);
+        savedTabsInitialized = true;
+        SyncSavedTabs();
+    }
+
     private void WorkspacePersistence_StatusChanged(TerminalWorkspaceSaveStatus status)
     {
         if (isDisposed == true)
@@ -344,6 +363,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         switch (message.Type)
         {
             case RendererMessageType.Ready:
+                rendererGeneration++;
                 rendererReady.TrySetResult();
                 break;
             case RendererMessageType.NewTab:
@@ -438,8 +458,155 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                     _ = ApplyConfirmationResponseAsync(confirmationResponse);
                 }
                 break;
+            case RendererMessageType.CreateSavedTab:
+                if (message.SavedTabCreateRequest is { } createSavedTabRequest)
+                {
+                    _ = CreateSavedTabAsync(createSavedTabRequest, rendererGeneration);
+                }
+                break;
+            case RendererMessageType.UpdateSavedTab:
+                if (message.SavedTabUpdateRequest is { } updateSavedTabRequest)
+                {
+                    _ = UpdateSavedTabAsync(updateSavedTabRequest, rendererGeneration);
+                }
+                break;
+            case RendererMessageType.DeleteSavedTab:
+                if (message.SavedTabDeleteRequest is { } deleteSavedTabRequest)
+                {
+                    _ = DeleteSavedTabAsync(deleteSavedTabRequest, rendererGeneration);
+                }
+                break;
+            case RendererMessageType.LaunchSavedTab:
+                if (message.SavedTabLaunchRequest is { } launchSavedTabRequest)
+                {
+                    StartSavedTabLaunch(launchSavedTabRequest, rendererGeneration);
+                }
+                break;
+            case RendererMessageType.CancelSavedTabLaunch:
+                if (message.SavedTabLaunchCancellation is { } savedTabLaunchCancellation)
+                {
+                    _ = savedTabService.CancelLaunch(savedTabLaunchCancellation);
+                }
+                break;
             default:
                 throw new InvalidOperationException("Unexpected renderer message type.");
+        }
+    }
+
+    private async Task CreateSavedTabAsync(TerminalSavedTabCreateRequest request, long requestRendererGeneration)
+    {
+        try
+        {
+            var result = await savedTabService.CreateAsync(request, lifetimeCancellation.Token);
+            CompleteSavedTabOperation(result, requestRendererGeneration);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
+        {
+            HandleSavedTabCallbackException("CreateSavedTab", exception);
+        }
+    }
+
+    private async Task UpdateSavedTabAsync(TerminalSavedTabUpdateRequest request, long requestRendererGeneration)
+    {
+        try
+        {
+            var result = await savedTabService.UpdateAsync(request, lifetimeCancellation.Token);
+            CompleteSavedTabOperation(result, requestRendererGeneration);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
+        {
+            HandleSavedTabCallbackException("UpdateSavedTab", exception);
+        }
+    }
+
+    private async Task DeleteSavedTabAsync(TerminalSavedTabDeleteRequest request, long requestRendererGeneration)
+    {
+        try
+        {
+            var result = await savedTabService.DeleteAsync(request, lifetimeCancellation.Token);
+            CompleteSavedTabOperation(result, requestRendererGeneration);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
+        {
+            HandleSavedTabCallbackException("DeleteSavedTab", exception);
+        }
+    }
+
+    private void CompleteSavedTabOperation(TerminalSavedTabOperationResult result, long requestRendererGeneration)
+    {
+        if (CanSendSavedTabResult(requestRendererGeneration) == true)
+        {
+            PostRendererMessage(RendererProtocol.SerializeSavedTabOperationResult(
+                result, sessionCoordinator.Snapshot.Tabs.Count));
+            return;
+        }
+
+        SyncSavedTabs();
+    }
+
+    private void StartSavedTabLaunch(TerminalSavedTabLaunchRequest request, long requestRendererGeneration)
+    {
+        if (savedTabLaunchRequestIds.Add(request.RequestId) == false)
+        {
+            var duplicate = new TerminalSavedTabLaunchResult(
+                request.RequestId, request.SavedTabId, TerminalSavedTabLaunchStatus.DuplicateRequest, null, null);
+            CompleteSavedTabLaunch(duplicate, requestRendererGeneration);
+            return;
+        }
+
+        _ = LaunchSavedTabAsync(request, requestRendererGeneration);
+    }
+
+    private async Task LaunchSavedTabAsync(TerminalSavedTabLaunchRequest request, long requestRendererGeneration)
+    {
+        try
+        {
+            var result = await savedTabService.LaunchAsync(request, lifetimeCancellation.Token);
+            CompleteSavedTabLaunch(result, requestRendererGeneration);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
+        {
+            HandleSavedTabCallbackException("LaunchSavedTab", exception);
+        }
+    }
+
+    private void CompleteSavedTabLaunch(TerminalSavedTabLaunchResult result, long requestRendererGeneration)
+    {
+        if (CanSendSavedTabResult(requestRendererGeneration) == true)
+        {
+            PostRendererMessage(RendererProtocol.SerializeSavedTabLaunchResult(
+                result, sessionCoordinator.Snapshot.Tabs.Count));
+            return;
+        }
+
+        SyncSavedTabs();
+    }
+
+    private bool CanSendSavedTabResult(long requestRendererGeneration)
+    {
+        return isDisposed == false && rendererFailed == false && Renderer.CoreWebView2 is not null &&
+               rendererGeneration == requestRendererGeneration;
+    }
+
+    private void SyncSavedTabs()
+    {
+        if (savedTabsInitialized == false || isDisposed == true || rendererFailed == true ||
+            Renderer.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        PostRendererMessage(RendererProtocol.SerializeSavedTabsSnapshot(
+            savedTabService.Snapshot, sessionCoordinator.Snapshot.Tabs.Count));
+    }
+
+    private void HandleSavedTabCallbackException(string operation, Exception exception)
+    {
+        if (isDisposed == false && lifetimeCancellation.IsCancellationRequested == false)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", operation,
+                                "A saved terminal tab renderer request could not be completed.", exception);
+            SyncSavedTabs();
         }
     }
 
@@ -948,6 +1115,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             rendererSessionIds.Clear();
             rendererSessionIds.UnionWith(currentSessionIds);
             SyncNewOutputState(sessionCoordinator.NewOutputState);
+            SyncSavedTabs();
         }
     }
 

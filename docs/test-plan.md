@@ -47,6 +47,26 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-10 (run `20260910-073231-827228-6ed3d9e7`, 저장한 탭 수명 통합)
+- 지정 SDK restore는 NuGet vulnerability metadata 접근이 필요한 sandbox 첫 시도만 `NU1900`으로
+  실패했고 허용된 network에서 같은 명령으로 통과했다. 기본 병렬 Debug build는 이 머신에 남아
+  있는 다수의 MSBuild node 때문에 오류 0개인 채 exit 1, 기본 전체 test는 test 시작 전 출력 없이
+  정체되어 중단했다. build-server 비활성·단일 MSBuild node로 실행한 같은 Debug solution은 build
+  경고·오류 0개, 전체 348개 test(Architecture 8, Terminal 193, DesktopIntegration 75,
+  Preferences 31, Integration 41)가 통과했다.
+- 저장 store/service 집중 89개, 새 integration contract 3개와 architecture 8개가 통과했다.
+  저장 정의의 지정 셸·폴더와 기존 session instance 보존은 module test, 실제 서로 다른 PID와
+  session interactive-state 격리는 기존 ConPTY GUI-host integration을 함께 근거로 삼았다. 실제
+  WebView2에서 저장 메뉴를 조작해 PID와 scrollback을 관찰한 결과는 아니며 MAN-044~045로 남겼다.
+- 과제에 지정된 `powershell -NoProfile -File scripts/package-portable.ps1`이 Windows PowerShell
+  5.1에서도 동작하도록 .NET API/long-path 호환을 보완했다. Release build 경고·오류 0개와 같은
+  348개 test, 499-file self-contained publish, ZIP 재현성·SHA-256·추출 smoke가 통과했다.
+  ZIP SHA-256은 `4aabeecfac4f14164b855557ed38834a41df0ee4962e617625a1d55d79263d67`이며
+  saved-tabs primary/backup/temporary, settings/workspace runtime data와 개발 PC 경로 검사는 0건이다.
+- renderer source rebuild는 sandbox의 esbuild child spawn `EPERM` 뒤 허용된 로컬 실행에서
+  통과했고 source/dist diff가 없었다. 실제 WebView2 화면, Korean IME, 125/150/200% 및 mixed-DPI
+  장비 조작은 수행하지 않았다.
+
 - 실행일: 2026-09-10 (run `20260910-055029-889715-ee5de9ac`, Windows platform 수동 검증 시도)
 - 실제 장비의 OS, GPU, 연결된 monitor와 현재 topology를 읽기 전용으로 조회했다.
   Windows 11 Pro `10.0.26200` x64, RTX 3060, 동일한 LG ULTRAGEAR 2대이며, 1920×1080
@@ -457,6 +477,10 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-029 | renderer source/dist offline contract | committed bundle이 source와 동기화되고 CDN·remote font/script 없이 local asset만 사용 | Passed |
 | INT-030 | portable user-data exclusion | publish/ZIP/추출본에 workspace JSON, `.bak`, `.tmp`, log와 WebView2 data가 없음을 package 검사로 거부 | Passed (automated package) |
 | INT-031 | ConPTY GUI-host close synchronization | restart generation confirmation, tab removal과 shell PID exit를 timeout/cancellation 안에서 관찰 | Passed |
+| INT-032 | 저장한 탭 CRUD와 재실행 유지 | 별도 strict JSON의 create/update/delete, 원자 저장, 재로드와 workspace 계약 독립성 | Passed (module automated) |
+| INT-033 | 저장 항목 새 shell 실행 | 지정 shell·폴더·이름으로 새 session을 만들고 기존 session instance/PID/state를 교체하지 않음 | Passed (module automated + ConPTY GUI-host process isolation) |
+| INT-034 | renderer 저장 탭 수명 연결 | CRUD/launch/cancel routing, request ID 중복 억제, renderer generation 변경 뒤 snapshot 재동기화와 shutdown 순서 | Passed (automated integration contract) |
+| INT-035 | portable saved-tabs exclusion | publish/ZIP/추출본에서 saved-tabs primary, backup, temporary와 개발 PC 절대 경로를 package 검사로 거부 | Passed (automated package) |
 
 ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan child process를 남기지
 않는다. GUI host는 재시작 close의 session ID·generation, tab 제거와 process 종료 상태를
@@ -589,6 +613,8 @@ build hash를 함께 기록한다.
 | MAN-041 | workspace restore UI | 복원 opt-in 뒤 재시작에서 탭 이름·순서·선택·시작 폴더가 보존되고 각 tab이 새 PID인지 확인 | Blocked — 현재 `workspace.json`/`.bak`은 없었고 restore opt-in 설정 UI를 조작할 수 없었음; 따라서 재시작 뒤 새 shell PID와 tab metadata 복원을 확인하지 못했음 |
 | MAN-042 | workspace IME and partial failure | 한글 IME 이름 편집, 없는/권한 없는 폴더 또는 shell 한 tab 실패가 다른 tab을 막지 않는지 확인 | Blocked — terminal UI 자동화 대상이 없어 한글 이름 편집 및 실패 tab을 만든 뒤 다른 tab의 계속 시작을 관찰할 수 없었음 |
 | MAN-043 | workspace opt-out | 옵션 해제 뒤 구성 파일 삭제와 다음 시작의 기본 tab 하나를 확인 | Blocked — 초기 workspace primary/backup 부재만 읽기 전용으로 확인했음; opt-out 저장으로 파일을 삭제하고 다음 시작 기본 tab을 확인하는 destructive UI 시나리오는 수행하지 못했음 |
+| MAN-044 | 저장한 탭 전체 UI 흐름 | 실제 WebView2에서 저장·취소·편집·삭제·선택·실패 재시도, 앱 재실행 유지와 workspace on/off 독립성 확인 | Not run — terminal UI 입력 자동화가 허용되지 않아 실제 menu/dialog 조작과 재실행을 수행하지 않았음 |
+| MAN-045 | 저장 항목 shell/폴더와 기존 xterm 보존 | 저장 항목 실행 전후 새 PID·지정 폴더/셸 및 기존 탭 PID·입력·scrollback 보존을 실제 화면에서 확인 | Not run — module/ConPTY 자동 검증은 통과했지만 실제 WebView2 scrollback과 사용자 입력 상태는 관찰하지 않았음 |
 
 ## Focus 검증 절차
 

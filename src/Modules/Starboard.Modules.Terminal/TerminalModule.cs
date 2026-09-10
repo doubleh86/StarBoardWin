@@ -10,6 +10,7 @@ namespace Starboard.Modules.Terminal;
 public sealed class TerminalModule : IDisposable
 {
     private readonly TerminalSessionCoordinator sessionCoordinator;
+    private readonly TerminalSavedTabService savedTabService;
     private readonly TerminalWorkspacePersistence workspacePersistence;
     private readonly TerminalView terminalView;
     private readonly Lock shutdownLock = new();
@@ -23,8 +24,10 @@ public sealed class TerminalModule : IDisposable
         sessionCoordinator = new TerminalSessionCoordinator(new ConPtySessionFactory(diagnosticLog), diagnosticLog);
         var workspaceStore = new FileTerminalWorkspaceStore(FileTerminalWorkspaceStore.GetDefaultPath());
         workspacePersistence = new TerminalWorkspacePersistence(workspaceStore, sessionCoordinator, diagnosticLog);
+        var savedTabStore = new FileTerminalSavedTabStore(FileTerminalSavedTabStore.GetDefaultPath());
+        savedTabService = new TerminalSavedTabService(savedTabStore, sessionCoordinator, diagnosticLog);
         workspacePersistence.StatusChanged += HandleWorkspacePersistenceStatusChanged;
-        terminalView = new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence);
+        terminalView = new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence, savedTabService);
     }
 
     public FrameworkElement Surface => terminalView;
@@ -94,6 +97,7 @@ public sealed class TerminalModule : IDisposable
 
         isDisposed = true;
         await terminalView.DisposeAsync();
+        await savedTabService.DisposeAsync();
         isCapturingShutdownStatus = true;
         try
         {

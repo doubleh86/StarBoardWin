@@ -313,6 +313,33 @@ session ID와 새 ConPTY process에 매핑하므로 PID, shell의 현재 state, 
 output, scrollback, clipboard, environment는 복원하지 않는다. 개별 shell 또는 directory
 실패는 failed tab으로 격리해 이후 tab 복원을 계속한다.
 
+### Saved terminal tabs
+
+저장한 탭은 workspace restore와 다른 Terminal 소유 수명이다. `TerminalModule`이
+`%LOCALAPPDATA%/Starboard/saved-tabs.json`의 store와 `TerminalSavedTabService`를 만들고,
+renderer 입력을 소유하는 `TerminalView`에 전달한다. renderer가 준비되면 저장 목록을 한 번
+읽고 workspace restore on/off와 무관하게 snapshot을 전송한다. workspace 옵션을 끄거나
+workspace 파일을 삭제해도 saved-tabs 파일은 변경하지 않는다.
+
+저장 항목은 불변 ID, 32 text-element 이하 이름, 존재하는 local absolute 시작 폴더와
+`Automatic`/`Pwsh`/`PowerShell`/`Cmd` shell kind만 담는다. 최대 20개이며 64 KiB strict
+schema JSON을 같은 directory의 flush된 `.tmp`에서 원자 교체한다. 손상·누락·미래 schema와
+I/O timeout은 shell startup을 막지 않고, 미래 schema는 덮어쓰지 않는다. 이름이나 경로
+원문은 diagnostic log에 기록하지 않는다.
+
+실행은 `TerminalSessionCoordinator.AddSavedTabAsync`의 기존 8-tab gate와 세션 생성 경로를
+사용한다. 선택한 정의마다 새 session ID와 ConPTY/shell PID를 만들고 해당 이름·폴더·셸만
+적용하므로 기존 탭의 process, input, output buffer와 renderer scrollback을 교체하지 않는다.
+동일 renderer request ID는 `TerminalView` 수명 동안 한 번만 launch에 전달한다. renderer
+document generation이 바뀐 뒤 완료된 callback은 새 document에 과거 결과로 적용하지 않고
+최신 저장 목록과 실행 탭 수만 다시 동기화한다. renderer 실패 중에도 저장 변경 자체가
+성공했다면 재연결 snapshot에 반영된다.
+
+종료는 renderer 입력과 view callback을 먼저 취소하고 saved-tab service의 pending launch와
+I/O를 제한 시간 안에서 중단한 뒤 workspace persistence와 terminal sessions를 정리한다.
+따라서 늦은 저장/launch callback은 renderer에 새 탭을 추가하지 않으며 저장 I/O가 앱 종료를
+무한히 지연하지 않는다.
+
 기본 collapsed 높이는 schema 4의 200 DIP다. 32 DIP tab strip 아래에 13px font와
 1.35 line-height 기준 약 8행의 terminal body를 표시한다. schema 3 이하에서 이전
 기본값인 148 DIP만 200 DIP로 migration하고 다른 설정 높이는 사용자 지정으로
@@ -547,6 +574,8 @@ WebView2 transparent composition 위험 때문에 glassmorphism과 blur를 쓰�
   기록하지 않으며 현재 session generation이 바뀌면 폐기한다.
 - opt-in workspace JSON은 탭 이름·순서·시작 폴더처럼 사용자가 선택한 구성만 담으며,
   command, output, clipboard, environment, runtime session ID와 PID는 담지 않는다.
+- saved-tabs JSON은 저장 ID·이름·시작 폴더·shell kind만 담으며 workspace opt-in과 독립적이다.
+  저장 목록과 경로 원문은 log 또는 portable package에 넣지 않는다.
 - analytics, crash upload, remote config와 runtime asset fetch를 사용하지 않는다.
 
 ## Portable release와 build metadata
@@ -561,8 +590,9 @@ build는 commit을 `unknown`으로 표시할 수 있고, package 흐름은 확�
 `staging`만 정리한다. staging이 reparse point이거나 계산한 경로가 root를 벗어나면
 중단한다. publish는 self-contained `win-x64`, multi-file이고 WebView2 Runtime 자체는
 포함하지 않는다. committed `Renderer` asset, 제품 MIT `LICENSE`, README, third-party
-notice/license와 release metadata를 포함한 뒤 settings/workspace JSON과 그 backup·temporary
-파일, logs/WebView2 user data, dump, PDB와 개발 PC 절대 경로가 없는지 검사한다.
+notice/license와 release metadata를 포함한 뒤 settings/workspace/saved-tabs JSON과 그
+backup·temporary 파일, logs/WebView2 user data, dump, PDB와 개발 PC 절대 경로가 없는지
+검사한다.
 
 ZIP entry는 ordinal 경로 순서와 source commit 시각을 사용한다. SHA-256 파일을 만든 뒤
 다시 계산해 일치 여부를 확인하고 별도 staging에 압축 해제한다. 추출본은 전용 smoke

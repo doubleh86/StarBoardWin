@@ -50,6 +50,25 @@ public sealed class ModuleBoundaryTests
     }
 
     [TestMethod]
+    public void SavedTabContractsRemainOwnedByTerminalAndSeparateFromHostComposition()
+    {
+        Assert.AreSame(typeof(TerminalModule).Assembly, typeof(TerminalSavedTab).Assembly);
+        Assert.AreEqual("Starboard.Modules.Terminal.Contracts", typeof(TerminalSavedTabRequestId).Namespace);
+
+        var root = FindSolutionRoot();
+        var hostRoot = Path.Combine(root, "src", "Starboard.Windows");
+        var savedTabImplementationReferences = Directory
+            .EnumerateFiles(hostRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(path => File.ReadLines(path).Any(line =>
+                line.Contains("TerminalSavedTabService", StringComparison.Ordinal) ||
+                line.Contains("FileTerminalSavedTabStore", StringComparison.Ordinal)))
+            .ToArray();
+
+        Assert.AreEqual(0, savedTabImplementationReferences.Length,
+                        "Saved-tab storage and lifecycle composition must remain inside TerminalModule.");
+    }
+
+    [TestMethod]
     public void TerminalPanelVisibilityLifecycleIsExposedOnlyThroughModuleEntryPoint()
     {
         var visibilityMethod = typeof(TerminalModule).GetMethod(nameof(TerminalModule.NotifyPanelVisibilityChanged),

@@ -6,6 +6,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
 function Invoke-CheckedCommand {
     param(
         [Parameter(Mandatory = $true)]
@@ -30,14 +33,14 @@ function Assert-SafeChildPath {
         [string]$ChildPath
     )
 
-    $normalizedParent = [System.IO.Path]::GetFullPath($ParentPath)
+    $normalizedParent = [System.IO.Path]::GetFullPath($ParentPath).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar)
     $normalizedChild = [System.IO.Path]::GetFullPath($ChildPath)
-    $relativePath = [System.IO.Path]::GetRelativePath(
-        $normalizedParent,
-        $normalizedChild)
-    if ([System.IO.Path]::IsPathRooted($relativePath) -or
-        $relativePath -eq ".." -or
-        $relativePath.StartsWith("..$([System.IO.Path]::DirectorySeparatorChar)")) {
+    $parentPrefix = $normalizedParent + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $normalizedChild.StartsWith(
+            $parentPrefix,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Unsafe output path outside the verified parent: $normalizedChild"
     }
 }
@@ -61,7 +64,13 @@ function Remove-SafeDirectory {
         throw "Refusing to clean a staging path that is a reparse point: $TargetPath"
     }
 
-    Remove-Item -LiteralPath $TargetPath -Recurse -Force
+    $deletePath = $targetItem.FullName
+    if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT -and
+        -not $deletePath.StartsWith("\\?\", [System.StringComparison]::Ordinal)) {
+        $deletePath = "\\?\$deletePath"
+    }
+
+    [System.IO.Directory]::Delete($deletePath, $true)
 }
 
 function New-DeterministicArchive {
@@ -76,7 +85,6 @@ function New-DeterministicArchive {
         [DateTimeOffset]$EntryTimestamp
     )
 
-    Add-Type -AssemblyName System.IO.Compression
     $archiveStream = [System.IO.File]::Open(
         $ArchivePath,
         [System.IO.FileMode]::CreateNew,
@@ -159,7 +167,15 @@ function Test-PortableContents {
     foreach ($file in $files) {
         $relativePath = $file.FullName.Substring($publishPrefix.Length).Replace("\", "/")
         $segments = $relativePath.Split("/")
-        if ($file.Name -in @("settings.json", "settings.json.bak", "Starboard.settings.json", "workspace.json") -or
+        if ($file.Name -in @(
+                "settings.json",
+                "settings.json.bak",
+                "Starboard.settings.json",
+                "workspace.json",
+                "workspace.json.bak",
+                "saved-tabs.json",
+                "saved-tabs.json.bak",
+                "saved-tabs.json.tmp") -or
             $file.Extension -in @(".bak", ".tmp", ".log", ".pdb", ".dmp", ".hdmp") -or
             $segments -contains "WebView2" -or
             $segments -contains "WebView2Data" -or
@@ -186,9 +202,9 @@ function Test-PortableContents {
 
         $content = [System.IO.File]::ReadAllText($file.FullName)
         $normalizedContent = $content.Replace("\", "/")
-        if ($normalizedContent.Contains(
+        if ($normalizedContent.IndexOf(
                 $normalizedRepositoryRoot,
-                [System.StringComparison]::OrdinalIgnoreCase) -or
+                [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
             $content -match "(?i)[A-Z]:[\\/](Users|PrivateProject|Work)[\\/]") {
             throw "A development-machine absolute path was included in $($file.FullName)."
         }
@@ -211,11 +227,7 @@ function Invoke-PortableSmoke {
     $startInfo.FileName = $ExecutablePath
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
-    $startInfo.ArgumentList.Add("--portable-smoke-test")
-    $startInfo.ArgumentList.Add("--expected-version")
-    $startInfo.ArgumentList.Add($Version)
-    $startInfo.ArgumentList.Add("--expected-commit")
-    $startInfo.ArgumentList.Add($Commit)
+    $startInfo.Arguments = "--portable-smoke-test --expected-version $Version --expected-commit $Commit"
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
@@ -225,7 +237,7 @@ function Invoke-PortableSmoke {
         }
 
         if ($process.WaitForExit(30000) -ne $true) {
-            $process.Kill($true)
+            $process.Kill()
             throw "The extracted Starboard smoke check did not exit within 30 seconds."
         }
 

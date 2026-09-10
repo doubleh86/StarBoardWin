@@ -16,6 +16,7 @@ Windows 10 1809 이상은 best-effort 대상이다.
 - bundled xterm.js와 local-only WebView2 renderer
 - 하나의 WebView2 안에서 탭별 xterm, scrollback과 shell 상태 유지
 - 최대 8개 탭, 탭별 독립 ConPTY process·working directory·interactive state와 이름·순서 변경
+- `저장한 탭` 메뉴에서 이름·시작 폴더·셸을 최대 20개 저장하고 새 독립 탭으로 실행
 - terminal resize를 ConPTY cell size로 전달
 - shell/renderer 오류 surface와 shell restart
 - 실행 중인 탭 닫기는 기본적으로 확인하며, 여러 줄 clipboard 붙여넣기는 확인한 동일 미리보기만 전달
@@ -47,6 +48,19 @@ shell 시작 실패는 해당 탭만 오류 상태로 남기고 나머지 탭 �
 shell 상태를 유지하지만, renderer process 자체가 재시작되면 과거 scrollback은
 복원하지 않고 살아 있는 ConPTY의 이후 output과 현재 탭 snapshot만 다시 연결한다.
 실제 mixed-DPI, 한글 IME와 작업공간 재시작 UI smoke는 아직 수동 검증이 필요하다.
+
+탭의 우클릭 또는 `Shift+F10` 메뉴에서 `저장한 탭에 추가…`를 선택하면 현재 탭의
+이름·설정된 시작 폴더·셸 종류를 편집해 저장할 수 있다. `+` 옆의 `저장한 탭` 메뉴에서
+항목을 선택하면 기존 탭을 바꾸지 않고 지정 폴더에서 새 셸을 시작한다. `저장한 탭
+관리…`에서는 추가·편집·삭제할 수 있으며, 저장 실패 시 메모리 목록도 바뀌지 않아
+편집 화면을 다시 열어 재시도할 수 있다. 실행 중 탭은 계속 최대 8개다.
+
+저장 목록은 작업공간 복원 옵션과 별개로 항상 `%LOCALAPPDATA%/Starboard/saved-tabs.json`에
+유지된다. 작업공간 복원을 꺼도 저장 목록은 삭제되지 않고, 저장 항목은 PID, 입력 상태,
+현재 shell working directory, history, output 또는 scrollback을 보관하지 않는다. 따라서
+저장 항목을 열 때마다 새 PID와 빈 interactive state를 얻는다. 현재 탭을 저장할 때 폴더는
+shell prompt의 실시간 현재 폴더가 아니라 탭에 설정된 시작 폴더이므로 필요하면 저장 창에서
+경로를 고쳐야 한다.
 
 ## 요구 사항
 
@@ -85,8 +99,8 @@ pwsh -NoProfile -File scripts/package-portable.ps1 -DotNetPath '<dotnet.exe 경�
 `.sha256` 파일이다. 스크립트는 Git이 확인한 저장소 루트 아래의 해당 버전
 `staging`만 정리하며, reparse point나 범위를 벗어난 경로는 거부한다. ZIP은 실행
 파일, local renderer, 제품 `LICENSE`, third-party notice와 release metadata를 포함하고
-사용자 설정, 작업공간 JSON과 backup/temporary 파일, 로그, WebView2 user data와 PDB는
-거부한다. 같은 source commit과 SDK/
+사용자 설정, 작업공간·저장한 탭 JSON과 backup/temporary 파일, 로그, WebView2 user data와
+PDB는 거부한다. 같은 source commit과 SDK/
 dependency 입력에서 파일 순서와 ZIP entry 시각을 고정해 다시 만들 수 있다.
 
 portable package는 .NET Runtime을 포함하므로 별도 .NET 설치가 필요 없지만,
@@ -174,14 +188,17 @@ package의 local asset/CSP 계약은 자동 검증됐지만, system network를 �
   workspace.json                 # 복원 옵션을 켠 경우의 탭 구성만
   workspace.json.bak
   workspace.json.tmp             # 원자 저장 중에만 존재 가능
+  saved-tabs.json                # 작업공간 복원 옵션과 독립적인 저장 탭 정의
+  saved-tabs.json.tmp            # 원자 저장 중에만 존재 가능
   Logs/starboard.log
   WebView2/
 ```
 
 Starboard에는 analytics, telemetry, crash upload, remote configuration이 없다.
-작업공간 파일은 최대 64 KiB의 일반 로컬 JSON이며 암호화되지 않는다. 여기에는 탭
+작업공간과 저장한 탭 파일은 각각 최대 64 KiB의 일반 로컬 JSON이며 암호화되지 않는다. 작업공간에는 탭
 구성 ID, 이름, 순서, 시작 폴더, shell 종류와 활성 탭만 들어간다. terminal command,
-output, clipboard 내용, environment 값, runtime PID/session ID는 로그나 작업공간
+저장한 탭 파일에는 저장 ID, 이름, 시작 폴더와 shell 종류만 들어간다. terminal command,
+output, clipboard 내용, environment 값, runtime PID/session ID는 로그나 두 구성
 파일에 남기지 않는다. 닫기 확인 token, 여러 줄 붙여넣기 미리보기와 새 출력 표시는
 메모리의 현재 session 세대에만 묶이며 disk·log·package에 저장하지 않는다. 로그는
 subsystem, operation, 복구 가능성에 필요한 오류 종류만 기록한다. portable ZIP에는

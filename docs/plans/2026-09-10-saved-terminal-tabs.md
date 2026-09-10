@@ -7,8 +7,9 @@
 여러 세션은 탭 전환으로 다룬다.
 
 사용자가 탭 이름·시작 폴더·셸을 즐겨찾기로 저장하고, 필요할 때 선택해 해당 폴더에서
-새 터미널을 바로 열 수 있게 한다. 현재 요청은 기획 문서 작성만이며 구현·작업 실행·
-브랜치 생성·commit/push·배포는 포함하지 않는다.
+새 터미널을 바로 열 수 있게 한다. 2026-09-10 통합 작업은 앞서 구현된 저장 정책과
+renderer UI를 `TerminalModule`/`TerminalView` 수명 주기에 연결하고, package 개인정보
+제외와 자동·수동 검증 문서를 완결한다. commit/push·배포는 포함하지 않는다.
 
 - 저장한 항목을 선택하면 지정 폴더·셸·이름으로 새 탭 하나가 열린다.
 - 저장·편집·삭제는 이미 실행 중인 탭이나 셸을 바꾸거나 종료하지 않는다.
@@ -133,4 +134,11 @@ Terminal 경로는 `src/Modules/Starboard.Modules.Terminal/` 기준이다. publi
 
 - [x] 2026-09-10: 사용자 제보와 저장한 탭 제안을 문서화하고 기존 복원과의 차이,
   현재 폴더 추적 한계, 파일 소유권과 병렬 가능한 순서를 정리했다.
-- [ ] P0/U1/P1/P2/P3/P4 실행 및 검증. 현재 제품 코드 수정·작업 실행은 하지 않았다.
+- [x] P0/U1/P1/P2: 저장 계약·원자 저장 정책·새 세션 실행 정책과 renderer 저장/관리 UI를
+  구현하고 해당 Terminal module 테스트를 추가했다.
+- [x] P3/P4: `TerminalModule`/`TerminalView` 수명 연결, renderer generation·request ID 기반
+  늦은 callback/중복 launch 억제, 종료 취소 순서와 portable 제외 검사를 구현했다. 저장 관련
+  집중 test 89개, 통합 contract 3개, architecture 8개와 단일 노드 Debug/Release 전체 348개,
+  renderer rebuild, 499-file portable ZIP·추출 smoke를 통과했다.
+- [x] 자동/수동 결과를 분리했다. 실제 WebView2 저장 메뉴·scrollback/PID 관찰과 DPI·IME는
+  실행 환경에서 수행하지 않아 `docs/test-plan.md`의 MAN-044~045 및 기존 matrix에 남겼다.
