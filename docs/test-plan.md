@@ -453,6 +453,22 @@ ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan c
 각 실행에서 OS build, monitor topology, scaling, taskbar edge/auto-hide, shell과 app
 build hash를 함께 기록한다.
 
+### 2026-09-10 설정·작업공간 실환경 시도
+
+- 환경: Windows interactive session, 96 DPI(100%)로 보고됨. 바탕화면 portable
+  `C:\Users\round1studio_14\Desktop\Starboard-win-x64\Starboard.exe`가 PID 102920로
+  실행 중이었다. `%LOCALAPPDATA%\Starboard`에는 Logs와 WebView2 user data만 있었고
+  `settings.json`, `workspace.json`, `workspace.json.bak` 및 HKCU Run `Starboard` 값은
+  모두 없었다.
+- 실제 UI 제어 결과: Computer Use의 targetable window 목록과 app 목록에 Starboard
+  window가 나타나지 않았다. 따라서 tray 메뉴와 설정 창을 열거나 terminal UI를 입력할
+  수 없었다. OS/process CIM 조회도 access denied여서 child shell PID와 working
+  directory를 독립적으로 읽지 못했다.
+- 이 결과는 현재 실행본이 설정·복원 데이터를 아직 만들지 않았다는 읽기 전용 관찰일
+  뿐이다. 설정을 변경하거나 Run 값을 등록/해제하지 않았고, 기존 terminal session과
+  사용자 파일을 변경하지 않았다. 아래 항목은 UI 접근 가능한 interactive desktop에서
+  재수행해야 한다.
+
 | ID | Scenario | 확인 내용 | 상태 |
 |---|---|---|---|
 | MAN-001 | cold launch while editor focused | editor focus 유지, panel 표시 | Blocked — 기준 editor UI 제어 미승인 및 terminal app 자동화 금지; cold launch/화면 관찰 불가 |
@@ -477,7 +493,7 @@ build hash를 함께 기록한다.
 | MAN-020 | exclusive fullscreen game/video | 강제 overlay 없음 | Blocked — 제어 가능한 exclusive-fullscreen app과 화면 관찰 권한 없음 |
 | MAN-021 | virtual desktop switch | 지원 capability와 실제 visibility 일치 | Blocked — virtual desktop UI 제어 권한 없음; Windows-key 자동화 금지 |
 | MAN-022 | expand/collapse hotkey | 현재 monitor work area 확장과 정확한 복원 | Blocked — terminal application 대상 keyboard shortcut 자동화 금지 |
-| MAN-023 | hotkey conflict | settings에서 실패가 설명되고 app 유지 | Not run |
+| MAN-023 | hotkey conflict | settings에서 실패가 설명되고 app 유지 | Blocked — 2026-09-10 실행 중인 portable app은 Computer Use targetable window/app 목록에 노출되지 않아 tray 설정 창을 열고 충돌 등록을 유발할 수 없었음; app PID 102920는 관찰했으나 충돌 UI·session 유지 여부는 미확인 |
 | MAN-024 | PowerShell 7 | persistent prompt, history, resize | Not run |
 | MAN-025 | Windows PowerShell | persistent prompt, history, resize | Not run |
 | MAN-026 | cmd | persistent prompt, Unicode 한계가 명시됨 | Not run |
@@ -486,20 +502,20 @@ build hash를 함께 기록한다.
 | MAN-029 | clipboard shortcuts | selection copy, paste와 Ctrl+C interrupt 구분 | Blocked — terminal UI input automation policy |
 | MAN-029a | safety confirmation UI | 살아 있는 tab close 취소/승인, multiline paste preview·Escape·clipboard 변경 뒤 승인 확인 | Blocked — terminal UI input automation policy |
 | MAN-030 | WebView2 Runtime missing simulation | local error와 설치 안내 | Not run |
-| MAN-031 | login startup | 일반 user 권한으로 한 instance만 실행 | Not run |
+| MAN-031 | login startup | 일반 user 권한으로 한 instance만 실행 | Blocked — 현재 HKCU Run `Starboard` 값은 없음을 읽기 전용으로 확인했으나, 설정 UI가 노출되지 않아 등록·재로그인·single-instance 결과를 검증할 수 없었음 |
 | MAN-032 | Release folder offline | renderer가 network 없이 로드 | Not run |
 | MAN-033 | multi-tab renderer | 비활성 탭 output/scrollback/state 유지, 대상 session routing | Blocked — terminal UI input automation policy |
 | MAN-034 | tab 접근성·overflow·shortcut | 상태/이름/focus-visible, 8개 overflow, 탭 단축키와 Ctrl+W 전달 | Blocked — terminal UI input automation policy |
 | MAN-034a | inactive-tab new output | 비활성 tab의 점, 접근성 이름, 선택 시 해제와 자동 activation 없음 | Blocked — terminal UI input automation policy |
 | MAN-035 | schema 4 collapsed height | 200 DIP에서 tab strip 아래 약 8행, 사용자 높이 보존 | Blocked — terminal UI input automation policy |
 | MAN-036 | terminal focus surface | terminal click 후 노란 외곽선 없이 caret과 입력 동작 유지 | Blocked — terminal UI input automation policy |
-| MAN-037 | tray 설정 창 수명·focus | 연속 요청 시 한 창, 닫은 뒤 이전 foreground를 강제 변경하지 않음 | Not run |
-| MAN-038 | 실제 설정 live apply/rollback | theme/font/높이 적용 중 PID·cwd 유지, hotkey 충돌과 저장 실패 UI 확인 | Not run |
+| MAN-037 | tray 설정 창 수명·focus | 연속 요청 시 한 창, 닫은 뒤 이전 foreground를 강제 변경하지 않음 | Blocked — Starboard tray/panel window를 자동화 대상에서 찾지 못해 연속 tray 요청·창 닫기·foreground 보존을 조작/관찰할 수 없었음 |
+| MAN-038 | 실제 설정 live apply/rollback | theme/font/높이 적용 중 PID·cwd 유지, hotkey 충돌과 저장 실패 UI 확인 | Blocked — theme/font/height save 및 rollback UI를 열 수 없었음. 실행 중 app PID만 관찰했고 CIM process 조회가 access denied여서 기존 terminal PID·cwd 보존은 측정하지 못했음 |
 | MAN-039 | portable WebView2/terminal UI | 새 폴더에서 실제 WebView2 Runtime 초기화, local renderer와 interactive shell 확인 | Not run |
 | MAN-040 | portable update/rollback | 기존 설정 유지, startup 경로 변경과 이전 폴더 복귀 확인 | Not run |
-| MAN-041 | workspace restore UI | 복원 opt-in 뒤 재시작에서 탭 이름·순서·선택·시작 폴더가 보존되고 각 tab이 새 PID인지 확인 | Not run |
-| MAN-042 | workspace IME and partial failure | 한글 IME 이름 편집, 없는/권한 없는 폴더 또는 shell 한 tab 실패가 다른 tab을 막지 않는지 확인 | Not run |
-| MAN-043 | workspace opt-out | 옵션 해제 뒤 구성 파일 삭제와 다음 시작의 기본 tab 하나를 확인 | Not run |
+| MAN-041 | workspace restore UI | 복원 opt-in 뒤 재시작에서 탭 이름·순서·선택·시작 폴더가 보존되고 각 tab이 새 PID인지 확인 | Blocked — 현재 `workspace.json`/`.bak`은 없었고 restore opt-in 설정 UI를 조작할 수 없었음; 따라서 재시작 뒤 새 shell PID와 tab metadata 복원을 확인하지 못했음 |
+| MAN-042 | workspace IME and partial failure | 한글 IME 이름 편집, 없는/권한 없는 폴더 또는 shell 한 tab 실패가 다른 tab을 막지 않는지 확인 | Blocked — terminal UI 자동화 대상이 없어 한글 이름 편집 및 실패 tab을 만든 뒤 다른 tab의 계속 시작을 관찰할 수 없었음 |
+| MAN-043 | workspace opt-out | 옵션 해제 뒤 구성 파일 삭제와 다음 시작의 기본 tab 하나를 확인 | Blocked — 초기 workspace primary/backup 부재만 읽기 전용으로 확인했음; opt-out 저장으로 파일을 삭제하고 다음 시작 기본 tab을 확인하는 destructive UI 시나리오는 수행하지 못했음 |
 
 ## Focus 검증 절차
 

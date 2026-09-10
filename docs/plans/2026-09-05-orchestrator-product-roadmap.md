@@ -379,6 +379,21 @@ P4 Windows 창 통합, P5~P9 설정 적용·복구와 P10~P11 portable package �
 제공한다. 실제 display/fullscreen, tray/focus/settings failure, WebView2/terminal UI와
 portable update/rollback hardware matrix는 아직 남아 있다.
 
+### 2026-09-10 설정 수동 검증 인수인계
+
+- 실행 중인 portable `Starboard.exe`(PID 102920)와 96 DPI 환경은 확인했지만,
+  Computer Use에 panel/tray window가 targetable window로 노출되지 않았다. tray 설정 창,
+  저장/취소 및 global hotkey conflict UI를 조작할 수 없어 MAN-023, MAN-031,
+  MAN-037 및 MAN-038은 `Blocked`로 갱신했다.
+- `%LOCALAPPDATA%\Starboard`에 `settings.json`이 없고 HKCU Run `Starboard` 값도 없는
+  상태만 읽기 전용으로 확인했다. theme·font·height apply 또는 rollback 중 terminal PID와
+  working directory가 보존되는지는 아직 실측하지 못했다. process CIM 조회도 access
+  denied였다.
+- 다음 interactive desktop 검증은 설정 창을 두 번 열어 단일 instance와 foreground
+  보존을 확인하고, tab shell PID/cwd를 기록한 뒤 theme·font·height save 및 실패 rollback,
+  hotkey conflict, startup 등록/해제 순으로 수행해야 한다. 자세한 matrix와 환경 제약은
+  [테스트 계획](../test-plan.md)을 따른다.
+
 ## 오케스트레이터 전달 프롬프트
 
 ```text
