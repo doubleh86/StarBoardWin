@@ -394,6 +394,25 @@ portable update/rollback hardware matrix는 아직 남아 있다.
   hotkey conflict, startup 등록/해제 순으로 수행해야 한다. 자세한 matrix와 환경 제약은
   [테스트 계획](../test-plan.md)을 따른다.
 
+### 2026-09-10 release recovery 수동 검증 인수인계
+
+- current HEAD package는 Release 경고·오류 0개, 301개 test, 499-file ZIP과 추출 smoke를
+  통과했고 SHA-256은
+  `29222a0d423870430cd3a2b1b67f668ba85cef80e51658fd085e96d27372b546`다. 최초 restore는
+  sandbox의 NuGet vulnerability source 차단으로 실패했고 허용된 network에서 재실행했다.
+- 바탕화면 PID 102920을 유지하기 위해 이전/current 복사본의 mutex 문자열 한 곳만
+  같은 길이의 test 이름으로 바꿨다. 계측 current의 renderer PID만 종료해도 host와 shell이
+  유지되고 `RenderProcessExited`가 기록됐고, shell PID만 종료해도 host와 `ShellExit`가
+  유지됐다. UI 오류 표시·restart click과 다른 tab 상태는 미확인이다.
+- 이전 build commit `a225da3b9c34ea0a264c095dbb73404efeb20b6e` → current
+  `456049b862b6bfdf60c58722a2c223fe680c1d62` → 이전 smoke는 모두 exit code 0이었다.
+  settings/workspace와 HKCU Run 값은 원래부터 없고 전후 그대로여서 실제 설정 보존,
+  startup 경로 갱신/복귀와 schema downgrade는 검증하지 못했다.
+- 세 기본 shell은 별도 지속 process probe에서 환경/cwd를 유지했고 두 PowerShell은
+  history도 유지했다. 제품 UI resize·cmd Unicode·WSL/custom은 통과로 판단하지 않았다.
+  Runtime 누락 override와 실제 network-disabled WebView2도 미완료다. 항목별 Partial,
+  Blocked, Not run 상태와 재개 조건은 [테스트 계획](../test-plan.md)에 기록했다.
+
 ## 오케스트레이터 전달 프롬프트
 
 ```text

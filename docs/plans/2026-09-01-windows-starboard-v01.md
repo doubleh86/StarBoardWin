@@ -1101,6 +1101,30 @@ manual test로 분리한다.
   `docs/test-plan.md`에 `Blocked`로 기록했다. 특히 taskbar 비겹침, background focus 보존,
   exclusive fullscreen 비강제 표시는 이번 실행에서 검증되지 않았다.
 
+### 2026-09-10 — release recovery 수동 검증
+
+- 기존 바탕화면 배포본 PID 102920과 폴더를 유지한 채 ignored worktree 출력에 이전
+  commit `a225da3b9c34ea0a264c095dbb73404efeb20b6e`와 current
+  `456049b862b6bfdf60c58722a2c223fe680c1d62`를 각각 499-file 격리본으로 준비했다.
+  single-instance mutex 문자열만 같은 길이의 test 이름으로 계측해 이전→현재→이전
+  smoke를 서로 다른 PID에서 모두 exit code 0으로 실행했고, absent settings/workspace와
+  HKCU Run 값 및 기존 배포 PID가 전후 동일함을 확인했다.
+- current package는 Release build 경고·오류 0개, 전체 301개 test, ZIP/SHA-256과 추출
+  smoke를 통과했다. hash는
+  `29222a0d423870430cd3a2b1b67f668ba85cef80e51658fd085e96d27372b546`다.
+- 실제 renderer PID만 종료한 뒤 계측 host와 PowerShell PID가 유지되고
+  `RenderProcessExited`가 기록됐으며, shell PID만 종료한 뒤에도 host와 `ShellExit`가
+  유지됐다. 실제 오류 UI, retry와 다른 tab 상태는 terminal UI 자동화 제한으로
+  확인하지 못했다.
+- PowerShell 7, Windows PowerShell과 cmd는 각각 별도 단일 process probe에서 환경과
+  working directory를 명령 사이에 유지했고 두 PowerShell은 history도 유지했다.
+  Starboard 화면 resize와 cmd Unicode는 미검증이다. WSL/custom shell은 v0.1 선택 계약에
+  포함되지 않는다.
+- WebView2 Runtime 누락 child override는 기대한 오류/설치 안내를 일관되게 관찰하지
+  못했고 실제 network-disabled UI, 설정이 존재하는 update와 enabled startup 경로 복귀도
+  남았다. 상세 상태와 재개 조건은 `docs/test-plan.md` MAN-024~027, 030, 032, 039, 040을
+  정본으로 따른다.
+
 ## 미결정 사항
 
 다음 항목은 사용자 결정을 요구하는 blocker가 아니라 Phase 1/2에서 실제 검증해
