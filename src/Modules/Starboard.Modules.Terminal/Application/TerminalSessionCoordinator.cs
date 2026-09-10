@@ -222,6 +222,49 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
+    internal async Task<TerminalSessionReference?> AddSavedTabAsync(TerminalSavedTab savedTab,
+                                                                    ShellLaunchSpec shell,
+                                                                    CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(savedTab);
+        ArgumentNullException.ThrowIfNull(shell);
+        await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfUnavailable();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            TerminalTab tab;
+            TerminalWorkspaceSnapshot snapshot;
+            lock (stateLock)
+            {
+                if (tabRegistry.IsAtCapacity == true)
+                {
+                    return null;
+                }
+
+                tab = tabRegistry.Add(savedTab.StartingDirectory, savedTab.ShellKind, savedTab.Name);
+                tabShells.Add(tab.SessionId, shell with { WorkingDirectory = savedTab.StartingDirectory });
+                InitializeSessionLifetimeLocked(tab.SessionId);
+                CancelPendingPasteLocked();
+                snapshot = tabRegistry.CreateSnapshot();
+            }
+
+            WorkspaceChanged?.Invoke(snapshot);
+            await StartSessionAsync(tab.SessionId).ConfigureAwait(false);
+
+            lock (stateLock)
+            {
+                var generation = sessionGenerations[tab.SessionId];
+                return new TerminalSessionReference(tab.SessionId.Value, generation);
+            }
+        }
+        finally
+        {
+            operationLock.Release();
+        }
+    }
+
     private async Task<bool> CloseCoreAsync(TerminalSessionId sessionId)
     {
         SessionEntry? closedSession;

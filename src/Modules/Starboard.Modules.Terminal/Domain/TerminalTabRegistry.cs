@@ -32,9 +32,16 @@ internal sealed class TerminalTabRegistry
 
     internal TerminalSessionId? ActiveSessionId { get; private set; }
 
+    internal bool IsAtCapacity => tabs.Count >= maximumTabs;
+
     internal TerminalTab Add(string startingDirectory, TerminalShellKind? shellKind = TerminalShellKind.Automatic)
     {
-        if (tabs.Count >= maximumTabs)
+        return Add(startingDirectory, shellKind, null);
+    }
+
+    internal TerminalTab Add(string startingDirectory, TerminalShellKind? shellKind, string? name)
+    {
+        if (IsAtCapacity == true)
         {
             throw new InvalidOperationException($"Terminal tab limit ({maximumTabs}) has been reached.");
         }
@@ -61,7 +68,13 @@ internal sealed class TerminalTabRegistry
             throw new InvalidOperationException("The terminal tab configuration identifier must be unique.");
         }
 
-        var tab = new TerminalTab(sessionId, configurationId, $"PowerShell {nextTabNumber}", startingDirectory,
+        var tabName = name ?? $"PowerShell {nextTabNumber}";
+        if (TryNormalizeName(tabName, out var normalizedName) == false)
+        {
+            throw new ArgumentException("The terminal tab name is invalid.", nameof(name));
+        }
+
+        var tab = new TerminalTab(sessionId, configurationId, normalizedName, startingDirectory,
                                   shellKind, TerminalSessionState.Starting, null);
         nextTabNumber++;
         tabs.Add(tab);
