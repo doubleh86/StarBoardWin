@@ -36,6 +36,25 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-10 (안전 기능·패널/탭 UI 바탕화면 재배포)
+- `becbd18cb170920757df4f73373e3ecc7d731b22`의 Release restore/build와 전체 301개
+  test가 통과했다(Architecture 7, Terminal 153, DesktopIntegration 75,
+  Preferences 31, Integration 35). build 경고·오류와 test skip은 0개다.
+- self-contained publish, ZIP 재현성·SHA-256·추출 검증을 통과했다. package SHA-256은
+  `3b5b5eac807e3badc16dee18e3e975b5c6e694778defdca457a86cc7f3f41ea9`다.
+- 기존 바탕화면 instance는 정상 종료 요청 후 20초 내 종료되지 않아 사용자 지시에
+  따라 강제 종료했다. 이후 단일 instance guard로 생략되지 않는 별도 portable smoke를
+  실행해 exit code 0과 version/commit 검증을 통과했다.
+- 사용자 요청대로 새 backup 없이 `C:/Users/round1studio_14/Desktop/Starboard-win-x64`를
+  덮어썼고 publish 원본과 배포 파일 499개의 hash 일치를 확인했다. 사용자 설정은
+  삭제하지 않았다. Explorer를 통해 재실행한 PID 88760의 응답 상태와
+  PowerShell·ConHost·WebView2 자식 process를 확인했다.
+- 재배포 후 사용자 요청으로 이전 backup 폴더 `Starboard-win-x64-backup-20260909-102608`과
+  `Starboard-win-x64-backup-20260909-175512`를 휴지통으로 옮겼다. 최신 배포 폴더와
+  실행 중인 앱은 보존했으며 이전 backup은 휴지통에서 복원할 수 있다.
+- 실제 확인 dialog·clipboard·IME·focus·다중 monitor/DPI 조작은 수행하지 않았다.
+  프로세스 기동 확인을 아래 수동 UI 시나리오의 통과로 취급하지 않는다.
+
 - 실행일: 2026-09-09 (안전 기능·패널/탭 UI 최종 검증)
 - 지정 SDK의 Debug restore와 build는 경고·오류 0개로 통과했다. filter/skip 없는 전체
   test는 `--blame-hang-timeout 3m`으로 Architecture 7, Preferences 31, Terminal 153,
