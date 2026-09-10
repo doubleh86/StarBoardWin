@@ -13,7 +13,12 @@ type GlobalRendererMessageType =
   | "new-tab"
   | "select-next"
   | "select-previous"
-  | "renderer-error";
+  | "renderer-error"
+  | "create-saved-tab"
+  | "update-saved-tab"
+  | "delete-saved-tab"
+  | "launch-saved-tab"
+  | "cancel-saved-tab-launch";
 
 type SessionRendererMessageType =
   | "select-session"
@@ -46,7 +51,10 @@ type RendererMessage =
 type GlobalHostMessageType =
   | "initialize"
   | "apply-appearance"
-  | "workspace-save-status";
+  | "workspace-save-status"
+  | "saved-tabs-snapshot"
+  | "saved-tab-operation-result"
+  | "saved-tab-launch-result";
 
 type SessionHostMessageType =
   | "session-upsert"
@@ -75,6 +83,24 @@ type HostMessage =
     }
   | {
       version: number;
+      type: "saved-tabs-snapshot";
+      sessionId?: never;
+      payload: SavedTabsSnapshotPayload;
+    }
+  | {
+      version: number;
+      type: "saved-tab-operation-result";
+      sessionId?: never;
+      payload: SavedTabOperationResultPayload;
+    }
+  | {
+      version: number;
+      type: "saved-tab-launch-result";
+      sessionId?: never;
+      payload: SavedTabLaunchResultPayload;
+    }
+  | {
+      version: number;
       type: SessionHostMessageType;
       sessionId: string;
       payload: Record<string, unknown>;
@@ -97,6 +123,40 @@ type AppearancePayload = {
 type WorkspaceSaveStatusPayload = {
   state: "saved" | "failed" | "deleted" | "disabled";
   message: string | null;
+};
+
+type SavedTab = {
+  savedTabId: string;
+  name: string;
+  startingDirectory: string;
+  shellKind: "automatic" | "pwsh" | "powershell" | "cmd";
+};
+
+type SavedTabsSnapshotPayload = {
+  schemaVersion: number;
+  maximumSavedTabs: number;
+  runningTabCount: number;
+  maximumRunningTabs: number;
+  tabs: SavedTab[];
+};
+
+type SavedTabOperationResultPayload = {
+  requestId: string;
+  operation: "create" | "update" | "delete";
+  status: string;
+  failureMessage: string | null;
+  snapshot: SavedTabsSnapshotPayload | null;
+};
+
+type SavedTabLaunchResultPayload = {
+  requestId: string;
+  savedTabId: string;
+  status: string;
+  sessionId: string | null;
+  sessionGeneration: number | null;
+  failureMessage: string | null;
+  runningTabCount: number;
+  maximumRunningTabs: number;
 };
 
 type SessionState = "starting" | "running" | "restarting" | "exited" | "failed";
@@ -192,6 +252,7 @@ function getRequiredElement<T extends Element>(selector: string): T {
 
 const tabList = getRequiredElement<HTMLElement>("#session-tabs");
 const newTabButton = getRequiredElement<HTMLButtonElement>("#new-tab");
+const savedTabsButton = getRequiredElement<HTMLButtonElement>("#saved-tabs");
 const workspace = getRequiredElement<HTMLElement>("#terminal-workspace");
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -203,6 +264,11 @@ let requestedTerminalFocusSessionId: string | undefined;
 let requestedTabFocusSessionId: string | undefined;
 let focusTerminalOnNextActivation = false;
 let contextMenu: HTMLElement | undefined;
+let savedTabsMenu: HTMLElement | undefined;
+let savedTabsDialog: HTMLDialogElement | undefined;
+let savedTabsSnapshot: SavedTabsSnapshotPayload | undefined;
+let savedTabsFeedback = "";
+let pendingSavedTabLaunchRequestId: string | undefined;
 let pendingConfirmation: PendingConfirmation | undefined;
 const suppressedConfirmationKeys = new Set<string>();
 
@@ -277,6 +343,27 @@ function parseHostMessage(value: unknown): HostMessage | undefined {
       type: value.type,
       payload,
     };
+  }
+
+  if (value.type === "saved-tabs-snapshot") {
+    if (value.sessionId !== undefined || isSavedTabsSnapshotPayload(payload) === false) {
+      return undefined;
+    }
+    return { version: ProtocolVersion, type: value.type, payload };
+  }
+
+  if (value.type === "saved-tab-operation-result") {
+    if (value.sessionId !== undefined || isSavedTabOperationResultPayload(payload) === false) {
+      return undefined;
+    }
+    return { version: ProtocolVersion, type: value.type, payload };
+  }
+
+  if (value.type === "saved-tab-launch-result") {
+    if (value.sessionId !== undefined || isSavedTabLaunchResultPayload(payload) === false) {
+      return undefined;
+    }
+    return { version: ProtocolVersion, type: value.type, payload };
   }
 
   if (isGlobalHostMessageType(value.type) === true) {
@@ -702,6 +789,10 @@ function startRename(sessionId: string): void {
   input.select();
 }
 
+function createRequestId(): string {
+  return crypto.randomUUID().replaceAll("-", "");
+}
+
 function showStartingDirectoryEditor(sessionId: string): void {
   const entry = sessions.get(sessionId);
   if (entry === undefined) {
@@ -835,6 +926,232 @@ function dismissTabMenu(): void {
 
   contextMenu.remove();
   contextMenu = undefined;
+}
+
+function shellLabel(shellKind: SavedTab["shellKind"]): string {
+  return shellKind === "automatic" ? "자동" : shellKind;
+}
+
+function savedTabStatusLabel(status: string, failureMessage: string | null): string {
+  if (failureMessage !== null && failureMessage.trim().length > 0) {
+    return failureMessage;
+  }
+  const labels: Record<string, string> = {
+    "saved-tab-limit-reached": "저장 탭 한도(20개)에 도달했습니다.",
+    "running-tab-limit-reached": "실행 탭 한도(8개)에 도달했습니다.",
+    "starting-directory-unavailable": "시작 폴더를 사용할 수 없습니다.",
+    "shell-unavailable": "선택한 셸을 사용할 수 없습니다.",
+    "saved-tab-not-found": "저장한 탭을 찾을 수 없습니다.",
+    "invalid-name": "탭 이름을 확인해 주세요.",
+    "invalid-starting-directory": "시작 폴더를 확인해 주세요.",
+    "unsupported-shell": "지원하지 않는 셸입니다.",
+    failed: "저장한 탭 작업에 실패했습니다.",
+  };
+  return labels[status] ?? "저장한 탭 작업에 실패했습니다.";
+}
+
+function dismissSavedTabsMenu(): void {
+  if (savedTabsMenu !== undefined) {
+    savedTabsMenu.remove();
+    savedTabsMenu = undefined;
+  }
+  savedTabsButton.setAttribute("aria-expanded", "false");
+}
+
+function launchSavedTab(tab: SavedTab): void {
+  if (savedTabsSnapshot === undefined || savedTabsSnapshot.runningTabCount >= savedTabsSnapshot.maximumRunningTabs) {
+    savedTabsFeedback = "실행 탭 한도(8개)에 도달했습니다.";
+    renderSavedTabsDialog();
+    return;
+  }
+
+  const requestId = createRequestId();
+  pendingSavedTabLaunchRequestId = requestId;
+  savedTabsFeedback = `${tab.name} 탭을 시작하는 중입니다.`;
+  postGlobal("launch-saved-tab", { requestId, savedTabId: tab.savedTabId });
+  dismissSavedTabsMenu();
+  renderSavedTabsDialog();
+}
+
+function showSavedTabsMenu(): void {
+  dismissSavedTabsMenu();
+  const menu = document.createElement("div");
+  menu.className = "saved-tabs-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "저장한 탭 메뉴");
+  const anchor = savedTabsButton.getBoundingClientRect();
+  menu.style.right = `${Math.max(8, window.innerWidth - anchor.right)}px`;
+  menu.style.top = `${anchor.bottom}px`;
+
+  const snapshot = savedTabsSnapshot;
+  if (snapshot === undefined || snapshot.tabs.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "saved-tabs-empty";
+    empty.textContent = "저장한 탭이 없습니다.";
+    menu.append(empty);
+  } else {
+    for (const tab of snapshot.tabs) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "saved-tab-launch";
+      button.setAttribute("role", "menuitem");
+      button.title = `${tab.name}\n${tab.startingDirectory}`;
+      button.disabled = snapshot.runningTabCount >= snapshot.maximumRunningTabs;
+      const name = document.createElement("span");
+      name.className = "saved-tab-launch-name";
+      name.textContent = tab.name;
+      const shell = document.createElement("span");
+      shell.textContent = shellLabel(tab.shellKind);
+      const path = document.createElement("span");
+      path.className = "saved-tab-launch-path";
+      path.textContent = tab.startingDirectory;
+      button.append(name, shell, path);
+      button.addEventListener("click", () => launchSavedTab(tab));
+      menu.append(button);
+    }
+  }
+
+  const limit = document.createElement("p");
+  limit.className = "saved-tabs-limit";
+  limit.textContent = `${snapshot?.tabs.length ?? 0}/20개 저장 · ${snapshot?.runningTabCount ?? sessions.size}/8개 실행`;
+  menu.append(limit);
+  const manage = document.createElement("button");
+  manage.type = "button";
+  manage.className = "saved-tabs-manage";
+  manage.setAttribute("role", "menuitem");
+  manage.textContent = "저장한 탭 관리…";
+  manage.addEventListener("click", () => {
+    dismissSavedTabsMenu();
+    showSavedTabsDialog();
+  });
+  menu.append(manage);
+  document.body.append(menu);
+  savedTabsMenu = menu;
+  savedTabsButton.setAttribute("aria-expanded", "true");
+  menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+}
+
+function appendSavedTabEditor(dialog: HTMLDialogElement, tab?: SavedTab): void {
+  const editor = document.createElement("form");
+  editor.className = "saved-tab-editor";
+  const heading = document.createElement("h3");
+  heading.textContent = tab === undefined ? "새 저장 탭" : "저장 탭 편집";
+  const name = document.createElement("input");
+  name.type = "text";
+  name.value = tab?.name ?? "";
+  name.maxLength = 128;
+  const path = document.createElement("input");
+  path.type = "text";
+  path.value = tab?.startingDirectory ?? "";
+  path.maxLength = 32_767;
+  const shell = document.createElement("select");
+  for (const value of ["automatic", "pwsh", "powershell", "cmd"] as const) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = shellLabel(value);
+    option.selected = value === (tab?.shellKind ?? "automatic");
+    shell.append(option);
+  }
+  const addLabel = (text: string, control: HTMLElement): void => {
+    const label = document.createElement("label");
+    label.textContent = text;
+    label.append(control);
+    editor.append(label);
+  };
+  editor.append(heading);
+  addLabel("이름", name);
+  addLabel("시작 폴더", path);
+  addLabel("셸", shell);
+  const actions = document.createElement("div");
+  actions.className = "saved-tab-editor-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "취소";
+  cancel.addEventListener("click", () => renderSavedTabsDialog());
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.className = "saved-tab-primary";
+  save.textContent = tab === undefined ? "추가" : "저장";
+  actions.append(cancel, save);
+  editor.append(actions);
+  editor.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const requestId = createRequestId();
+    const payload = { requestId, name: name.value.trim(), startingDirectory: path.value.trim(), shellKind: shell.value };
+    if (tab === undefined) {
+      postGlobal("create-saved-tab", payload);
+    } else {
+      postGlobal("update-saved-tab", { ...payload, savedTabId: tab.savedTabId });
+    }
+  });
+  dialog.append(editor);
+  name.focus();
+}
+
+function renderSavedTabsDialog(editTab?: SavedTab, create = false): void {
+  const dialog = savedTabsDialog;
+  if (dialog === undefined) {
+    return;
+  }
+  dialog.replaceChildren();
+  const heading = document.createElement("h2");
+  heading.textContent = "저장한 탭 관리";
+  dialog.append(heading);
+  const feedback = document.createElement("p");
+  feedback.className = "saved-tabs-feedback";
+  feedback.textContent = savedTabsFeedback;
+  feedback.classList.toggle("is-error", savedTabsFeedback.length > 0 && pendingSavedTabLaunchRequestId === undefined);
+  dialog.append(feedback);
+  if (editTab !== undefined || create === true) {
+    appendSavedTabEditor(dialog, editTab);
+    return;
+  }
+  const list = document.createElement("div");
+  list.className = "saved-tabs-list";
+  const snapshot = savedTabsSnapshot;
+  if (snapshot === undefined || snapshot.tabs.length === 0) {
+    const empty = document.createElement("p");
+    empty.textContent = "저장한 탭이 없습니다. 새 탭을 추가해 보세요.";
+    list.append(empty);
+  } else {
+    for (const tab of snapshot.tabs) {
+      const item = document.createElement("div");
+      item.className = "saved-tab-editor";
+      const title = document.createElement("strong");
+      title.textContent = tab.name;
+      const details = document.createElement("p");
+      details.textContent = `${tab.startingDirectory} · ${shellLabel(tab.shellKind)}`;
+      const actions = document.createElement("div");
+      actions.className = "saved-tab-editor-actions";
+      const edit = document.createElement("button"); edit.type = "button"; edit.textContent = "편집";
+      edit.addEventListener("click", () => renderSavedTabsDialog(tab));
+      const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "삭제";
+      remove.addEventListener("click", () => postGlobal("delete-saved-tab", { requestId: createRequestId(), savedTabId: tab.savedTabId }));
+      actions.append(edit, remove); item.append(title, details, actions); list.append(item);
+    }
+  }
+  dialog.append(list);
+  const actions = document.createElement("div"); actions.className = "saved-tabs-actions";
+  const add = document.createElement("button"); add.type = "button"; add.className = "saved-tab-primary"; add.textContent = "새 저장 탭";
+  add.disabled = snapshot !== undefined && snapshot.tabs.length >= snapshot.maximumSavedTabs;
+  add.addEventListener("click", () => renderSavedTabsDialog(undefined, true));
+  const close = document.createElement("button"); close.type = "button"; close.textContent = "닫기"; close.addEventListener("click", () => dialog.close());
+  actions.append(add, close); dialog.append(actions);
+}
+
+function showSavedTabsDialog(): void {
+  if (savedTabsDialog !== undefined) { renderSavedTabsDialog(); return; }
+  const dialog = document.createElement("dialog");
+  dialog.className = "saved-tabs-dialog";
+  dialog.addEventListener("cancel", (event) => { event.preventDefault(); dialog.close(); });
+  dialog.addEventListener("close", () => {
+    if (pendingSavedTabLaunchRequestId !== undefined) {
+      postGlobal("cancel-saved-tab-launch", { requestId: pendingSavedTabLaunchRequestId });
+      pendingSavedTabLaunchRequestId = undefined;
+    }
+    savedTabsDialog = undefined; dialog.remove(); savedTabsButton.focus();
+  });
+  savedTabsDialog = dialog; document.body.append(dialog); renderSavedTabsDialog(); dialog.showModal();
 }
 
 function isRequestIdentifier(value: unknown): value is string {
@@ -1336,6 +1653,58 @@ function isWorkspaceSaveStatusPayload(
   );
 }
 
+function isSavedTab(value: unknown): value is SavedTab {
+  return (
+    isRecord(value) === true &&
+    isRequestIdentifier(value.savedTabId) === true &&
+    typeof value.name === "string" &&
+    typeof value.startingDirectory === "string" &&
+    (value.shellKind === "automatic" || value.shellKind === "pwsh" ||
+      value.shellKind === "powershell" || value.shellKind === "cmd")
+  );
+}
+
+function isSavedTabsSnapshotPayload(
+  payload: Record<string, unknown>,
+): payload is Record<string, unknown> & SavedTabsSnapshotPayload {
+  return (
+    Number.isInteger(payload.schemaVersion) === true &&
+    typeof payload.maximumSavedTabs === "number" && payload.maximumSavedTabs === 20 &&
+    typeof payload.runningTabCount === "number" && Number.isInteger(payload.runningTabCount) === true &&
+    typeof payload.maximumRunningTabs === "number" && payload.maximumRunningTabs === 8 &&
+    payload.runningTabCount >= 0 && payload.runningTabCount <= payload.maximumRunningTabs &&
+    Array.isArray(payload.tabs) === true && payload.tabs.length <= payload.maximumSavedTabs &&
+    payload.tabs.every(isSavedTab)
+  );
+}
+
+function isSavedTabOperationResultPayload(
+  payload: Record<string, unknown>,
+): payload is Record<string, unknown> & SavedTabOperationResultPayload {
+  return (
+    isRequestIdentifier(payload.requestId) === true &&
+    (payload.operation === "create" || payload.operation === "update" || payload.operation === "delete") &&
+    typeof payload.status === "string" &&
+    (typeof payload.failureMessage === "string" || payload.failureMessage === null) &&
+    (payload.snapshot === null || (isRecord(payload.snapshot) === true && isSavedTabsSnapshotPayload(payload.snapshot) === true))
+  );
+}
+
+function isSavedTabLaunchResultPayload(
+  payload: Record<string, unknown>,
+): payload is Record<string, unknown> & SavedTabLaunchResultPayload {
+  return (
+    isRequestIdentifier(payload.requestId) === true &&
+    isRequestIdentifier(payload.savedTabId) === true &&
+    typeof payload.status === "string" &&
+    (typeof payload.sessionId === "string" || payload.sessionId === null) &&
+    (typeof payload.sessionGeneration === "number" || payload.sessionGeneration === null) &&
+    (typeof payload.failureMessage === "string" || payload.failureMessage === null) &&
+    typeof payload.runningTabCount === "number" && Number.isInteger(payload.runningTabCount) === true &&
+    typeof payload.maximumRunningTabs === "number" && payload.maximumRunningTabs === 8
+  );
+}
+
 function isSessionPayload(
   payload: Record<string, unknown>,
 ): payload is Record<string, unknown> & SessionPayload {
@@ -1372,6 +1741,35 @@ function handleHostMessage(value: unknown): void {
   if (message.type === "workspace-save-status") {
     // The status is global: it describes workspace persistence, not a live shell.
     // The tab-management UI added in W2 presents this value without changing a session.
+    return;
+  }
+
+  if (message.type === "saved-tabs-snapshot") {
+    savedTabsSnapshot = message.payload;
+    renderSavedTabsDialog();
+    return;
+  }
+
+  if (message.type === "saved-tab-operation-result") {
+    if (message.payload.snapshot !== null) {
+      savedTabsSnapshot = message.payload.snapshot;
+    }
+    savedTabsFeedback = message.payload.status === "succeeded" ? "저장했습니다." :
+      savedTabStatusLabel(message.payload.status, message.payload.failureMessage);
+    renderSavedTabsDialog();
+    return;
+  }
+
+  if (message.type === "saved-tab-launch-result") {
+    if (pendingSavedTabLaunchRequestId === message.payload.requestId) {
+      pendingSavedTabLaunchRequestId = undefined;
+    }
+    if (savedTabsSnapshot !== undefined) {
+      savedTabsSnapshot = { ...savedTabsSnapshot, runningTabCount: message.payload.runningTabCount };
+    }
+    savedTabsFeedback = message.payload.status === "started" ? "탭을 시작했습니다." :
+      savedTabStatusLabel(message.payload.status, message.payload.failureMessage);
+    renderSavedTabsDialog();
     return;
   }
 
@@ -1458,7 +1856,7 @@ function handleHostMessage(value: unknown): void {
 }
 
 function handleApplicationShortcut(event: KeyboardEvent): void {
-  if (pendingConfirmation !== undefined && event.ctrlKey === true) {
+  if ((pendingConfirmation !== undefined || savedTabsDialog !== undefined) && event.ctrlKey === true) {
     event.preventDefault();
     event.stopPropagation();
     return;
@@ -1507,6 +1905,14 @@ newTabButton.addEventListener("click", () => {
   }
 });
 
+savedTabsButton.addEventListener("click", () => {
+  if (savedTabsMenu === undefined) {
+    showSavedTabsMenu();
+  } else {
+    dismissSavedTabsMenu();
+  }
+});
+
 reducedMotion.addEventListener("change", (event) => {
   for (const entry of sessions.values()) {
     entry.terminal.options.cursorBlink = event.matches === false;
@@ -1527,11 +1933,19 @@ document.addEventListener("pointerdown", (event) => {
   if (contextMenu !== undefined && contextMenu.contains(event.target as Node) === false) {
     dismissTabMenu();
   }
+  if (savedTabsMenu !== undefined && savedTabsMenu.contains(event.target as Node) === false && event.target !== savedTabsButton) {
+    dismissSavedTabsMenu();
+  }
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && contextMenu !== undefined) {
     event.preventDefault();
     dismissTabMenu();
+  }
+  if (event.key === "Escape" && savedTabsMenu !== undefined) {
+    event.preventDefault();
+    dismissSavedTabsMenu();
+    savedTabsButton.focus();
   }
 });
 window.chrome?.webview?.addEventListener("message", (event) => {

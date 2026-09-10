@@ -315,6 +315,163 @@ button:focus-visible {
   font: 12px var(--font-ui);
 }
 
+.saved-tabs {
+  width: 32px;
+  height: 31px;
+  flex: 0 0 32px;
+  border: var(--rule-width) solid transparent;
+  background: transparent;
+  color: var(--color-neutral);
+  cursor: pointer;
+  font: 14px var(--font-ui);
+}
+
+.saved-tabs:hover,
+.saved-tabs:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-ink);
+}
+
+.saved-tabs-menu {
+  position: fixed;
+  z-index: 11;
+  display: grid;
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(360px, calc(100vh - 44px));
+  gap: var(--space-3xs);
+  padding: var(--space-3xs);
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: var(--color-canvas-raised);
+  box-shadow: 0 4px 12px color-mix(in srgb, black 34%, transparent);
+  overflow: auto;
+}
+
+.saved-tabs-menu button {
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  cursor: pointer;
+  font: 11px var(--font-ui);
+  text-align: left;
+}
+
+.saved-tab-launch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-xs);
+  padding: var(--space-2xs);
+}
+
+.saved-tab-launch-name,
+.saved-tab-launch-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-tab-launch-path,
+.saved-tabs-empty,
+.saved-tabs-feedback,
+.saved-tabs-limit {
+  color: var(--color-neutral);
+  font-size: 10px;
+}
+
+.saved-tabs-feedback.is-error {
+  color: var(--color-error);
+}
+
+.saved-tabs-menu button:hover:not(:disabled),
+.saved-tabs-menu button:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.saved-tabs-menu button:disabled {
+  color: var(--color-muted);
+  cursor: default;
+}
+
+.saved-tabs-manage {
+  padding: 0 var(--space-2xs);
+  border-top: var(--rule-width) solid var(--color-rule);
+  color: var(--color-accent) !important;
+}
+
+.saved-tabs-dialog {
+  width: min(620px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  padding: var(--space-sm);
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: var(--color-canvas-raised);
+  color: var(--color-ink);
+  font: 12px var(--font-ui);
+  overflow: auto;
+}
+
+.saved-tabs-dialog::backdrop {
+  background: color-mix(in srgb, black 58%, transparent);
+}
+
+.saved-tabs-dialog h2,
+.saved-tabs-dialog h3,
+.saved-tabs-dialog p {
+  margin: 0;
+}
+
+.saved-tabs-dialog form,
+.saved-tab-editor {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.saved-tabs-dialog label {
+  display: grid;
+  gap: 2px;
+}
+
+.saved-tabs-dialog input,
+.saved-tabs-dialog select {
+  min-height: 30px;
+  min-width: 0;
+  padding: 0 var(--space-xs);
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: 12px var(--font-ui);
+}
+
+.saved-tabs-list {
+  display: grid;
+  gap: var(--space-xs);
+  margin: var(--space-sm) 0;
+}
+
+.saved-tab-editor {
+  padding-top: var(--space-xs);
+  border-top: var(--rule-width) solid var(--color-rule);
+}
+
+.saved-tab-editor-actions,
+.saved-tabs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2xs);
+}
+
+.saved-tabs-dialog button {
+  min-height: 28px;
+  padding: 0 var(--space-xs);
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.saved-tabs-dialog .saved-tab-primary {
+  border-color: var(--color-accent);
+}
+
 .tab-name-dialog {
   width: min(400px, calc(100% - 32px));
   padding: var(--space-sm);

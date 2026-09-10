@@ -108,6 +108,32 @@ public sealed class RendererDistributionTests
         Assert.IsFalse(styles.Contains(".xterm.focus::after", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void BundledRendererContainsSavedTabMenuAndManagementRuntime()
+    {
+        var html = ReadRendererAsset("index.html");
+        var script = ReadRendererAsset("app.js");
+        var styles = ReadRendererAsset("app.css");
+
+        StringAssert.Contains(html, "id=\"saved-tabs\"");
+        Assert.IsTrue(html.IndexOf("id=\"new-tab\"", StringComparison.Ordinal) <
+                      html.IndexOf("id=\"saved-tabs\"", StringComparison.Ordinal));
+        StringAssert.Contains(script, "saved-tabs-snapshot");
+        StringAssert.Contains(script, "saved-tab-operation-result");
+        StringAssert.Contains(script, "saved-tab-launch-result");
+        StringAssert.Contains(script, "create-saved-tab");
+        StringAssert.Contains(script, "update-saved-tab");
+        StringAssert.Contains(script, "delete-saved-tab");
+        StringAssert.Contains(script, "launch-saved-tab");
+        StringAssert.Contains(script, "cancel-saved-tab-launch");
+        StringAssert.Contains(script, "running-tab-limit-reached");
+        StringAssert.Contains(script, "starting-directory-unavailable");
+        StringAssert.Contains(script, "shell-unavailable");
+        StringAssert.Contains(styles, ".saved-tabs-menu");
+        StringAssert.Contains(styles, ".saved-tabs-dialog");
+        StringAssert.Contains(styles, "max-height:min(360px,calc(100vh - 44px))");
+    }
+
     private static string ReadRendererAsset(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Renderer", fileName);
