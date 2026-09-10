@@ -36,6 +36,18 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-10 (터미널 UI 수동 검증 시도)
+- 대상은 실제 WPF/WebView2 화면에서 terminal click, Korean IME, clipboard/interrupt,
+  안전 확인창, 다중 탭·접근성·단축키와 축소 panel 본문 여백을 검증하는 것이었다.
+  이 실행 환경의 Windows UI 자동화 정책은 terminal application의 click, text input,
+  clipboard 및 keyboard shortcut 조작을 금지하므로 실제 화면에 입력을 전달하지
+  않았다. 자동 test, process 기동 또는 renderer source 검사는 이 수동 검증을 대체하지
+  않는다.
+- 아래 MAN-002, MAN-028, MAN-029, MAN-029a, MAN-033, MAN-034, MAN-034a,
+  MAN-035 및 MAN-036은 이 정책 제약 때문에 `Blocked`다. 테스트 재개에는 실제
+  사용자 소유 desktop에서 각 절차를 수동 수행할 수 있는 입력 권한이 필요하다.
+  terminal command, output 및 clipboard 원문은 기록하지 않았다.
+
 - 실행일: 2026-09-10 (안전 기능·패널/탭 UI 바탕화면 재배포)
 - `becbd18cb170920757df4f73373e3ecc7d731b22`의 Release restore/build와 전체 301개
   test가 통과했다(Architecture 7, Terminal 153, DesktopIntegration 75,
@@ -415,7 +427,7 @@ build hash를 함께 기록한다.
 | ID | Scenario | 확인 내용 | 상태 |
 |---|---|---|---|
 | MAN-001 | cold launch while editor focused | editor focus 유지, panel 표시 | Not run |
-| MAN-002 | terminal click | 한 번의 click으로 caret/IME 입력 가능 | Not run |
+| MAN-002 | terminal click | 한 번의 click으로 caret/IME 입력 가능 | Blocked — terminal UI input automation policy |
 | MAN-003 | background reposition | foreground HWND 변화 없음 | Not run |
 | MAN-004 | bottom taskbar | 겹침과 1px gap/overlap 오류 없음 | Not run |
 | MAN-005 | top taskbar | 올바른 edge에 표시 | Not run |
@@ -441,17 +453,17 @@ build hash를 함께 기록한다.
 | MAN-025 | Windows PowerShell | persistent prompt, history, resize | Not run |
 | MAN-026 | cmd | persistent prompt, Unicode 한계가 명시됨 | Not run |
 | MAN-027 | WSL/custom shell | 선택한 경우 argument/resize/exit 검증 | Not run |
-| MAN-028 | 한글 IME composition | 조합 중복·누락·caret 이탈 없음 | Not run |
-| MAN-029 | clipboard shortcuts | selection copy, paste와 Ctrl+C interrupt 구분 | Not run |
-| MAN-029a | safety confirmation UI | 살아 있는 tab close 취소/승인, multiline paste preview·Escape·clipboard 변경 뒤 승인 확인 | Not run |
+| MAN-028 | 한글 IME composition | 조합 중복·누락·caret 이탈 없음 | Blocked — terminal UI input automation policy |
+| MAN-029 | clipboard shortcuts | selection copy, paste와 Ctrl+C interrupt 구분 | Blocked — terminal UI input automation policy |
+| MAN-029a | safety confirmation UI | 살아 있는 tab close 취소/승인, multiline paste preview·Escape·clipboard 변경 뒤 승인 확인 | Blocked — terminal UI input automation policy |
 | MAN-030 | WebView2 Runtime missing simulation | local error와 설치 안내 | Not run |
 | MAN-031 | login startup | 일반 user 권한으로 한 instance만 실행 | Not run |
 | MAN-032 | Release folder offline | renderer가 network 없이 로드 | Not run |
-| MAN-033 | multi-tab renderer | 비활성 탭 output/scrollback/state 유지, 대상 session routing | Not run |
-| MAN-034 | tab 접근성·overflow·shortcut | 상태/이름/focus-visible, 8개 overflow, 탭 단축키와 Ctrl+W 전달 | Not run |
-| MAN-034a | inactive-tab new output | 비활성 tab의 점, 접근성 이름, 선택 시 해제와 자동 activation 없음 | Not run |
-| MAN-035 | schema 4 collapsed height | 200 DIP에서 tab strip 아래 약 8행, 사용자 높이 보존 | Not run |
-| MAN-036 | terminal focus surface | terminal click 후 노란 외곽선 없이 caret과 입력 동작 유지 | Not run |
+| MAN-033 | multi-tab renderer | 비활성 탭 output/scrollback/state 유지, 대상 session routing | Blocked — terminal UI input automation policy |
+| MAN-034 | tab 접근성·overflow·shortcut | 상태/이름/focus-visible, 8개 overflow, 탭 단축키와 Ctrl+W 전달 | Blocked — terminal UI input automation policy |
+| MAN-034a | inactive-tab new output | 비활성 tab의 점, 접근성 이름, 선택 시 해제와 자동 activation 없음 | Blocked — terminal UI input automation policy |
+| MAN-035 | schema 4 collapsed height | 200 DIP에서 tab strip 아래 약 8행, 사용자 높이 보존 | Blocked — terminal UI input automation policy |
+| MAN-036 | terminal focus surface | terminal click 후 노란 외곽선 없이 caret과 입력 동작 유지 | Blocked — terminal UI input automation policy |
 | MAN-037 | tray 설정 창 수명·focus | 연속 요청 시 한 창, 닫은 뒤 이전 foreground를 강제 변경하지 않음 | Not run |
 | MAN-038 | 실제 설정 live apply/rollback | theme/font/높이 적용 중 PID·cwd 유지, hotkey 충돌과 저장 실패 UI 확인 | Not run |
 | MAN-039 | portable WebView2/terminal UI | 새 폴더에서 실제 WebView2 Runtime 초기화, local renderer와 interactive shell 확인 | Not run |
