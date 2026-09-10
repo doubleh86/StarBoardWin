@@ -36,6 +36,16 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-10 (단축키 안내 창 닫기 수정)
+- `ShortcutGuideWindowIntegrationTests`에서 modeless WPF 창의 버튼·Escape 실패를
+  수정 전에 재현했다. 명시적 Close 연결 후 버튼·Escape·일반 Window.Close 세 경우가
+  통과했으며 다른 창 유지와 일반 키 미소비도 검사했다.
+- Debug solution restore/build와 filter/skip 없는 전체 304개 test가 통과했다
+  (Architecture 7, Terminal 153, DesktopIntegration 75, Preferences 31, Integration 38).
+  build 경고·오류 0개이며 build-server 비활성·단일 MSBuild node를 사용했다.
+- 실제 STA WPF 창에 routed event를 전달한 자동 integration 검증이다. 물리 입력,
+  tray 재열기·focus와 앱 전체 종료 지연은 검증하지 않았으며 바탕화면 재배포도 하지 않았다.
+
 - 실행일: 2026-09-10 (안전 기능·패널/탭 UI 바탕화면 재배포)
 - `becbd18cb170920757df4f73373e3ecc7d731b22`의 Release restore/build와 전체 301개
   test가 통과했다(Architecture 7, Terminal 153, DesktopIntegration 75,

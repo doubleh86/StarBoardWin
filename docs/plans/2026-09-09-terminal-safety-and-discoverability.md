@@ -224,3 +224,21 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
 - [x] 2026-09-09: 최종 Debug restore/build와 filter/skip 없는 전체 301개 test, renderer
   offline rebuild, `git diff --check`를 통과했다. 실제 WebView2 dialog, clipboard, IME,
   focus와 DPI/hardware 시나리오는 `docs/test-plan.md`의 `Not run` 수동 항목으로 남겼다.
+
+### 2026-09-10 — HELP-01 안내 창 닫기 회귀 수정
+
+- 사용자 제보: 단축키 안내 창의 하단 `닫기` 버튼이 동작하지 않는다.
+- 원인: host는 `Show()`로 modeless 창을 열지만 버튼은 `IsCancel`에만 의존했고
+  `Close()` 호출이 없었다. [WPF 닫기 동작 문서](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/windows/how-to-close-window-dialog-box)에
+  따른 자동 취소 닫기는 `ShowDialog()`로 연 대화상자용이다.
+- 안내 창의 XAML과 code-behind에 버튼 Click·Escape 처리를 명시적으로 연결했다.
+  modeless 정책을 유지하며 다른 키는 소비하지 않고 terminal·host 종료 경로는 바꾸지 않는다.
+- `ShortcutGuideWindowIntegrationTests`는 실제 STA WPF 창에 routed event를 전달한다.
+  수정 전 버튼·Escape 두 경우의 실패를 재현했고 수정 후 세 경우(버튼·Escape·일반
+  Window.Close)가 통과했다. 별도 창이 계속 열려 있는지도 검증한다. 물리 마우스·키보드
+  조작과 tray 재열기·focus 검증은 이 자동화 결과에 포함하지 않는다.
+- 앱 전체의 종료 지연은 이 버튼 연결 누락과 같은 원인이라고 확인되지 않았다.
+  별도 수명 주기 진단 대상으로 남기며 이번 수정 범위를 확장하지 않는다.
+- Debug solution restore/build 경고·오류 0개, 전체 304개 test와 `git diff --check`를
+  통과했다. 후속 사용자 요청으로 수정분을 commit/push 대상에 포함한다.
+  바탕화면 재배포와 오케스트레이터 상태·작업 브랜치 변경은 하지 않는다.
