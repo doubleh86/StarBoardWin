@@ -77,10 +77,27 @@ public sealed class RendererDistributionTests
 
         Assert.IsTrue(html.IndexOf("id=\"session-tabs\"", StringComparison.Ordinal) <
                       html.IndexOf("id=\"new-tab\"", StringComparison.Ordinal));
-        StringAssert.Contains(styles, ".tab-list{display:flex;flex:0 1 auto");
+        StringAssert.Contains(styles, ".tab-list{display:flex;flex:1 1 auto");
         StringAssert.Contains(styles, ".tab-item[data-selected=true]");
         StringAssert.Contains(styles, ".terminal-mount{background-color:var(--color-canvas)");
         StringAssert.Contains(styles, ".xterm{height:100%;padding:var(--space-xs) var(--space-sm) calc(var(--space-xs) + 6px)}");
+    }
+
+    [TestMethod]
+    public void BundledRendererUsesModalTabNameEditorAndKeepsCloseAreaSeparate()
+    {
+        var script = ReadRendererAsset("app.js");
+        var styles = ReadRendererAsset("app.css");
+
+        StringAssert.Contains(script, "tab-name-dialog");
+        StringAssert.Contains(script, "showModal()");
+        StringAssert.Contains(script, "compositionstart");
+        StringAssert.Contains(script, "isComposing");
+        StringAssert.Contains(script, "\\uD0ED \\uC774\\uB984 \\uBCC0\\uACBD");
+        StringAssert.Contains(styles, ".tab-list{display:flex;flex:1 1 auto");
+        StringAssert.Contains(styles, ".tab-item{display:grid;flex:0 0 auto;grid-template-columns:minmax(0,138px) 28px");
+        StringAssert.Contains(styles, ".tab-name-dialog");
+        Assert.IsFalse(styles.Contains(".tab-rename-input", StringComparison.Ordinal));
     }
 
     [TestMethod]

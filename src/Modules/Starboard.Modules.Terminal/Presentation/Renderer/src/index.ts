@@ -156,7 +156,6 @@ type SessionEntry = {
   homeDirectoryButton: HTMLButtonElement;
   tabItem: HTMLElement;
   tabButton: HTMLButtonElement;
-  tabRenameInput: HTMLInputElement;
   tabLabel: HTMLElement;
   tabStatus: HTMLElement;
   newOutputIndicator: HTMLElement;
@@ -479,40 +478,15 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
   const closeButton = document.createElement("button");
   closeButton.className = "tab-close";
   closeButton.type = "button";
+  closeButton.setAttribute("aria-label", `${payload.name} 탭 닫기`);
+  closeButton.title = "탭 닫기";
   closeButton.textContent = "×";
   closeButton.addEventListener("click", () => {
     focusTerminalOnNextActivation = true;
     postSession("close-session", sessionId);
   });
 
-  const tabRenameInput = document.createElement("input");
-  tabRenameInput.className = "tab-rename-input";
-  tabRenameInput.type = "text";
-  tabRenameInput.maxLength = 128;
-  tabRenameInput.hidden = true;
-  tabRenameInput.setAttribute("aria-label", "탭 이름 변경");
-  let isComposing = false;
-  tabRenameInput.addEventListener("compositionstart", () => {
-    isComposing = true;
-  });
-  tabRenameInput.addEventListener("compositionend", () => {
-    isComposing = false;
-  });
-  tabRenameInput.addEventListener("keydown", (event) => {
-    if (event.isComposing === true || isComposing === true) {
-      return;
-    }
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      finishRename(sessionId, true);
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      finishRename(sessionId, false);
-    }
-  });
-  tabRenameInput.addEventListener("blur", () => finishRename(sessionId, false));
-  tabItem.append(tabButton, tabRenameInput, closeButton);
+  tabItem.append(tabButton, closeButton);
 
   const terminal = createTerminal();
   const fitAddon = new FitAddon();
@@ -568,7 +542,6 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
     homeDirectoryButton,
     tabItem,
     tabButton,
-    tabRenameInput,
     tabLabel,
     tabStatus,
     newOutputIndicator,
@@ -663,26 +636,70 @@ function startRename(sessionId: string): void {
   }
 
   dismissTabMenu();
-  entry.tabRenameInput.value = entry.name;
-  entry.tabButton.hidden = true;
-  entry.tabRenameInput.hidden = false;
-  entry.tabRenameInput.focus();
-  entry.tabRenameInput.select();
-}
+  const dialog = document.createElement("dialog");
+  dialog.className = "tab-name-dialog";
+  dialog.setAttribute("aria-labelledby", `tab-name-title-${sessionId}`);
 
-function finishRename(sessionId: string, commit: boolean): void {
-  const entry = sessions.get(sessionId);
-  if (entry === undefined || entry.tabRenameInput.hidden === true) {
-    return;
-  }
+  const title = document.createElement("h2");
+  title.id = `tab-name-title-${sessionId}`;
+  title.textContent = "탭 이름 변경";
 
-  const name = entry.tabRenameInput.value;
-  entry.tabRenameInput.hidden = true;
-  entry.tabButton.hidden = false;
-  if (commit === true) {
-    postSession("rename-session", sessionId, { name });
-  }
-  entry.tabButton.focus();
+  const label = document.createElement("label");
+  label.textContent = "이름";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = entry.name;
+  input.maxLength = 128;
+  input.spellcheck = false;
+  input.autocomplete = "off";
+  label.append(input);
+
+  const actions = document.createElement("div");
+  actions.className = "tab-name-actions";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", () => dialog.close());
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.textContent = "저장";
+  const save = (): void => {
+    postSession("rename-session", sessionId, { name: input.value });
+    dialog.close();
+  };
+  saveButton.addEventListener("click", save);
+
+  let isComposing = false;
+  input.addEventListener("compositionstart", () => {
+    isComposing = true;
+  });
+  input.addEventListener("compositionend", () => {
+    isComposing = false;
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.isComposing === true || isComposing === true) {
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      save();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      dialog.close();
+    }
+  });
+
+  actions.append(cancelButton, saveButton);
+  dialog.append(title, label, actions);
+  dialog.addEventListener("close", () => {
+    dialog.remove();
+    sessions.get(sessionId)?.tabButton.focus();
+  });
+  document.body.append(dialog);
+  dialog.showModal();
+  input.focus();
+  input.select();
 }
 
 function showStartingDirectoryEditor(sessionId: string): void {
@@ -1155,6 +1172,7 @@ function upsertSession(sessionId: string, payload: SessionPayload): void {
 
   canAddSession = payload.canAddSession;
   entry.mount.setAttribute("aria-label", `${payload.name} terminal`);
+  entry.closeButton.setAttribute("aria-label", `${payload.name} 탭 닫기`);
   updateSessionStatus(entry);
   renderTabs();
 }

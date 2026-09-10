@@ -49,7 +49,7 @@ button:focus-visible {
 
 .tab-list {
   display: flex;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -61,9 +61,9 @@ button:focus-visible {
 .tab-item {
   display: grid;
   flex: 0 0 auto;
-  grid-template-columns: minmax(64px, 138px) 28px;
-  min-width: 108px;
-  max-width: 166px;
+  grid-template-columns: minmax(0, 138px) 28px;
+  min-width: 112px;
+  max-width: 170px;
   height: 31px;
   border-right: var(--rule-width) solid var(--color-rule);
   border-radius: 4px 4px 0 0;
@@ -91,19 +91,6 @@ button:focus-visible {
   font-family: var(--font-ui);
   font-size: 11px;
   text-align: left;
-}
-
-.tab-rename-input {
-  width: 100%;
-  min-width: 0;
-  height: 100%;
-  padding: 0 var(--space-2xs);
-  border: 0;
-  outline: var(--focus-width) solid var(--color-focus);
-  outline-offset: -2px;
-  background: var(--color-canvas);
-  color: var(--color-ink);
-  font: inherit;
 }
 
 .tab-context-menu {
@@ -326,6 +313,57 @@ button:focus-visible {
   background: var(--color-canvas-raised);
   color: var(--color-ink);
   font: 12px var(--font-ui);
+}
+
+.tab-name-dialog {
+  width: min(400px, calc(100% - 32px));
+  padding: var(--space-sm);
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: var(--color-canvas-raised);
+  color: var(--color-ink);
+  font: 12px var(--font-ui);
+}
+
+.tab-name-dialog::backdrop {
+  background: color-mix(in srgb, black 58%, transparent);
+}
+
+.tab-name-dialog h2 {
+  margin: 0 0 var(--space-sm);
+  font-size: 14px;
+}
+
+.tab-name-dialog label {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.tab-name-dialog input {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 var(--space-xs);
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: 12px var(--font-ui);
+}
+
+.tab-name-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2xs);
+  margin-top: var(--space-xs);
+}
+
+.tab-name-actions button {
+  min-height: 28px;
+  padding: 0 var(--space-xs);
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: transparent;
+}
+
+.tab-name-actions button:last-child {
+  border-color: var(--color-accent);
 }
 
 .starting-directory-dialog::backdrop {
