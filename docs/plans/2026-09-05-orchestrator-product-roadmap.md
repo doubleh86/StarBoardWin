@@ -333,6 +333,16 @@ ConPTY, visible window가 정상이라고 보고하지 않는다. Explorer 재�
   package에서 거부된다. 실제 WebView2 UI/interactive shell, multi-monitor/mixed-DPI,
   fullscreen/auto-hide/IME와 portable update/startup/rollback은 수행하지 않았고 test plan에
   `Not run`으로 유지했다.
+- 2026-09-10 (window-platform-manual-validation): 실제 Windows 11 Pro build 26200
+  장비에서 1920×1080 LG monitor 2대, 왼쪽 secondary의 X=-1920 음수 좌표, 두 화면의
+  Y=0부터 높이 1032px인 work area와 각 monitor의 100% 배율을 확인했다. 그러나 기준
+  app UI 제어가 승인되지 않았고 terminal application인 Starboard의
+  launch/input/hotkey 자동화도 정책상 금지됐다.
+  명령 세션은 interactive Explorer taskbar HWND를 볼 수 없어 focus/rectangle/z-order를
+  별도 측정할 수도 없었다. MAN-001과 MAN-003~MAN-022는 항목별 장비·권한 제약 및 재개
+  조건을 적어 `Blocked`로 갱신했으며, 실제 taskbar 비겹침, background focus 보존과
+  exclusive fullscreen 억제를 통과로 판단하지 않았다. P0의 실제 UI 기준선과 Windows
+  hardware matrix는 계속 미완료다.
 
 ## 미결정 사항
 

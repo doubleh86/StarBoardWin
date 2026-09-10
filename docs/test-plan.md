@@ -30,11 +30,40 @@ mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증�
 | PowerShell | PowerShell 7과 Windows PowerShell 설치됨 |
 | WebView2 Runtime | `151.0.4129.107` 발견 |
 | Git 상태 | orchestrator가 준비한 격리 Git worktree |
+| 2026-09-10 display probe | NVIDIA GeForce RTX 3060, LG ULTRAGEAR 2대, 각각 1920×1080 @ 143Hz |
+| 2026-09-10 topology | `DISPLAY1=(-1920,0,1920,1080)` 보조, `DISPLAY2=(0,0,1920,1080)` primary |
+| 2026-09-10 work area / scale | 두 화면 모두 `(Y=0,height=1032)`; per-monitor DPI 각각 96(100%) |
 
 위 환경 값은 2026-09-01에 확인했다. 실제 monitor 수, taskbar 위치, scaling과
 fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
+
+- 실행일: 2026-09-10 (run `20260910-055029-889715-ee5de9ac`, Windows platform 수동 검증 시도)
+- 실제 장비의 OS, GPU, 연결된 monitor와 현재 topology를 읽기 전용으로 조회했다.
+  Windows 11 Pro `10.0.26200` x64, RTX 3060, 동일한 LG ULTRAGEAR 2대이며, 1920×1080
+  화면을 좌우로 배치해 왼쪽 보조 화면은 X=-1920, 오른쪽 primary는 X=0이다. 두 화면의
+  work area는 Y=0부터 높이 1032px라 48px bottom taskbar 영역을 남긴다. per-monitor
+  DPI API는 두 화면 모두 96(100%)를 반환했다. 이 값은 실제 장비·배치
+  근거지만 Starboard panel의 표시, text 선명도 또는 focus 정책 통과 근거는 아니다.
+- 현재 worktree HEAD는 `8c172dc870f4da53947d8fd8a839d398103b0a8a`다. 바탕화면 portable
+  배포 metadata는 제품 `0.1.0`, build commit
+  `a225da3b9c34ea0a264c095dbb73404efeb20b6e`이며, 실행 중인 Starboard process는 없었다.
+  두 commit의 제품 차이는 shortcut 안내 window 수정뿐이지만, 이번 실행에서 portable
+  executable을 시작하거나 panel을 실제 관찰하지 않았으므로 현재 제품 동작으로 간주하지
+  않는다.
+- UI 자동화는 안전한 foreground 기준 창인 Rider와 Calculator에 대해서도 각각
+  `Computer Use was not approved`로 거부됐다. 또한 Starboard는 terminal application이므로
+  이 환경의 Windows UI 자동화 정책상 launch/click/key input/hotkey 조작 대상이 될 수 없다.
+  명령 세션에서 읽기 전용으로 조회한 `Shell_TrayWnd`도 HWND `0x0`으로 반환돼 interactive
+  desktop의 foreground, panel rectangle과 z-order를 별도 probe로 관찰할 수 없었다.
+- 이 때문에 MAN-001, MAN-003~MAN-022는 아래 실행 기록대로 `Blocked`다. monitor 2대와
+  음수 좌표, bottom work area 및 100% 환경이 실제로 존재한다는 것만 확인했으며, panel이
+  taskbar를 덮지 않는지, background event가 focus를 빼앗지 않는지, exclusive fullscreen
+  위에 강제로 나타나지 않는지는 확인하지 못했다. 재개하려면 사용자 소유 interactive
+  desktop에서 Starboard와 기준 app에 입력·화면 관찰 권한이 있어야 하며, 125/150/200%와
+  mixed-DPI 변경, taskbar 위치/auto-hide 변경, monitor 물리 분리, Explorer 재시작 및
+  controlled exclusive-fullscreen app 실행 권한이 추가로 필요하다.
 
 - 실행일: 2026-09-10 (터미널 UI 수동 검증 시도)
 - 대상은 실제 WPF/WebView2 화면에서 terminal click, Korean IME, clipboard/interrupt,
@@ -426,28 +455,28 @@ build hash를 함께 기록한다.
 
 | ID | Scenario | 확인 내용 | 상태 |
 |---|---|---|---|
-| MAN-001 | cold launch while editor focused | editor focus 유지, panel 표시 | Not run |
+| MAN-001 | cold launch while editor focused | editor focus 유지, panel 표시 | Blocked — 기준 editor UI 제어 미승인 및 terminal app 자동화 금지; cold launch/화면 관찰 불가 |
 | MAN-002 | terminal click | 한 번의 click으로 caret/IME 입력 가능 | Blocked — terminal UI input automation policy |
-| MAN-003 | background reposition | foreground HWND 변화 없음 | Not run |
-| MAN-004 | bottom taskbar | 겹침과 1px gap/overlap 오류 없음 | Not run |
-| MAN-005 | top taskbar | 올바른 edge에 표시 | Not run |
-| MAN-006 | left taskbar | geometry와 usable content 확인 | Not run |
-| MAN-007 | right taskbar | geometry와 usable content 확인 | Not run |
-| MAN-008 | taskbar auto-hide reveal/conceal | idle은 따라가고 active는 유지 | Not run |
-| MAN-009 | taskbar monitor 이동 | panel이 새 monitor로 이동 | Not run |
-| MAN-010 | secondary monitor negative coordinate | 잘못된 primary clamp 없음 | Not run |
-| MAN-011 | monitor disconnect/reconnect | visible monitor의 안전 frame으로 복구 | Not run |
-| MAN-012 | 100% scaling | 선명한 text와 정확한 geometry | Not run |
-| MAN-013 | 125% scaling | 선명한 text와 정확한 geometry | Not run |
-| MAN-014 | 150% scaling | 선명한 text와 정확한 geometry | Not run |
-| MAN-015 | 200% scaling | 최소 terminal row와 geometry 유지 | Not run |
-| MAN-016 | mixed-DPI monitor 이동 | DPI 변경 후 즉시 선명하게 reflow | Not run |
-| MAN-017 | Explorer restart | taskbar tracking과 z-order 복구 | Not run |
-| MAN-018 | maximized application | panel visible, app focus 유지 | Not run |
-| MAN-019 | borderless fullscreen | 같은 monitor에서 panel이 방해하지 않음 | Not run |
-| MAN-020 | exclusive fullscreen game/video | 강제 overlay 없음 | Not run |
-| MAN-021 | virtual desktop switch | 지원 capability와 실제 visibility 일치 | Not run |
-| MAN-022 | expand/collapse hotkey | 현재 monitor work area 확장과 정확한 복원 | Not run |
+| MAN-003 | background reposition | foreground HWND 변화 없음 | Blocked — interactive foreground/HWND 관찰 불가; `Shell_TrayWnd=0x0` |
+| MAN-004 | bottom taskbar | 겹침과 1px gap/overlap 오류 없음 | Blocked — 1080px 화면/1032px work area는 확인; panel 시각 관찰 불가 |
+| MAN-005 | top taskbar | 올바른 edge에 표시 | Blocked — 현재 bottom 환경뿐이며 taskbar 위치 변경/관찰 권한 없음 |
+| MAN-006 | left taskbar | geometry와 usable content 확인 | Blocked — 현재 bottom 환경뿐이며 taskbar 위치 변경/관찰 권한 없음 |
+| MAN-007 | right taskbar | geometry와 usable content 확인 | Blocked — 현재 bottom 환경뿐이며 taskbar 위치 변경/관찰 권한 없음 |
+| MAN-008 | taskbar auto-hide reveal/conceal | idle은 따라가고 active는 유지 | Blocked — auto-hide 설정 변경과 terminal active/idle 입력·관찰 불가 |
+| MAN-009 | taskbar monitor 이동 | panel이 새 monitor로 이동 | Blocked — monitor 2대는 확인; taskbar 이동과 panel 관찰 권한 없음 |
+| MAN-010 | secondary monitor negative coordinate | 잘못된 primary clamp 없음 | Blocked — `DISPLAY1` X=-1920은 확인; panel을 보조 화면에 배치·관찰 불가 |
+| MAN-011 | monitor disconnect/reconnect | visible monitor의 안전 frame으로 복구 | Blocked — monitor 2대는 확인; 원격 실행에서 물리 분리·재연결 불가 |
+| MAN-012 | 100% scaling | 선명한 text와 정확한 geometry | Blocked — 현재 DPI 96(100%)은 확인; panel/text 시각 관찰 불가 |
+| MAN-013 | 125% scaling | 선명한 text와 정확한 geometry | Blocked — 125%로 변경 가능한 interactive display 권한 없음 |
+| MAN-014 | 150% scaling | 선명한 text와 정확한 geometry | Blocked — 150%로 변경 가능한 interactive display 권한 없음 |
+| MAN-015 | 200% scaling | 최소 terminal row와 geometry 유지 | Blocked — 200%로 변경 가능한 interactive display 권한 없음 |
+| MAN-016 | mixed-DPI monitor 이동 | DPI 변경 후 즉시 선명하게 reflow | Blocked — 두 화면 모두 현재 100%; per-monitor 변경과 panel 이동 불가 |
+| MAN-017 | Explorer restart | taskbar tracking과 z-order 복구 | Blocked — interactive taskbar HWND/Starboard 관찰 불가 상태에서 사용자 shell 재시작 미수행 |
+| MAN-018 | maximized application | panel visible, app focus 유지 | Blocked — 기준 app UI 제어 미승인 및 foreground/panel 관찰 불가 |
+| MAN-019 | borderless fullscreen | 같은 monitor에서 panel이 방해하지 않음 | Blocked — 제어 가능한 borderless-fullscreen app과 화면 관찰 권한 없음 |
+| MAN-020 | exclusive fullscreen game/video | 강제 overlay 없음 | Blocked — 제어 가능한 exclusive-fullscreen app과 화면 관찰 권한 없음 |
+| MAN-021 | virtual desktop switch | 지원 capability와 실제 visibility 일치 | Blocked — virtual desktop UI 제어 권한 없음; Windows-key 자동화 금지 |
+| MAN-022 | expand/collapse hotkey | 현재 monitor work area 확장과 정확한 복원 | Blocked — terminal application 대상 keyboard shortcut 자동화 금지 |
 | MAN-023 | hotkey conflict | settings에서 실패가 설명되고 app 유지 | Not run |
 | MAN-024 | PowerShell 7 | persistent prompt, history, resize | Not run |
 | MAN-025 | Windows PowerShell | persistent prompt, history, resize | Not run |

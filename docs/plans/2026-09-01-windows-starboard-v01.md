@@ -1086,6 +1086,21 @@ manual test로 분리한다.
   `[클라이언트, doubleh86] - 다중 터미널 탭 구현`으로 commit한 뒤 hash를 기록하고,
   별도 후속 단계에서만 `feature/terminal-tabs`를 main에 merge해야 한다.
 
+### 2026-09-10 — Windows platform 수동 검증 시도
+
+- Windows 11 Pro build 26200 x64, RTX 3060과 동일한 LG ULTRAGEAR 1920×1080
+  monitor 2대를 확인했다. primary는 X=0, 왼쪽 secondary는 X=-1920이며 두 화면의
+  work area는 Y=0부터 높이 1032px로 48px bottom taskbar 영역을 남기며 per-monitor
+  DPI는 각각 96(100%)다.
+- foreground 기준 app인 Rider와 Calculator의 Windows UI 제어가 승인되지 않았고,
+  Starboard는 terminal application 자동화 금지 대상이다. 명령 세션에서도 interactive
+  Explorer의 `Shell_TrayWnd`가 HWND `0x0`으로 반환돼 panel rectangle, focus와 z-order를
+  우회 관찰할 수 없었다.
+- 따라서 실제 bottom/negative-coordinate/100% 장비 존재만 근거로 기록하고 MAN-001,
+  MAN-003~MAN-022를 통과로 올리지 않았다. 각 항목은 장비 또는 권한 제약과 재개 조건을
+  `docs/test-plan.md`에 `Blocked`로 기록했다. 특히 taskbar 비겹침, background focus 보존,
+  exclusive fullscreen 비강제 표시는 이번 실행에서 검증되지 않았다.
+
 ## 미결정 사항
 
 다음 항목은 사용자 결정을 요구하는 blocker가 아니라 Phase 1/2에서 실제 검증해
