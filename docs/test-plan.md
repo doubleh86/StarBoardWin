@@ -36,6 +36,21 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-09 (작업공간 기능 바탕화면 재배포)
+- `d40f826b69e12e77bfe3026cb419b5f7ed6901af`의 Release restore/build/test를 수행했다.
+  경고·오류 0개, 전체 262개 통과(Architecture 5, Terminal 121, DesktopIntegration 71,
+  Preferences 31, Integration 34). self-contained publish, ZIP/SHA-256·추출 검증 통과.
+- package SHA-256: `e76ee80039a5230bac59d16ee2060bfbaf8c8b7f3acd0b08d808370b1ec7b03c`.
+  publish와 배포 후보 499개 파일의 hash를 대조했다. 기존 instance 종료 후 별도 smoke를
+  실행해 single-instance 조기 종료 없이 exit code 0과 version/commit 일치를 확인했다.
+- `C:/Users/round1studio_14/Desktop/Starboard-win-x64`를 교체하고 Explorer로 재실행했다.
+  이전 배포본은 `Starboard-win-x64-backup-20260909-175512`에 보존했다.
+  PID 71664의 응답 상태와 PowerShell·ConHost·WebView2 자식 process를 확인했다.
+- settings/workspace JSON은 배포 전후 존재하지 않으며 복원 옵션 기본 꺼짐을 유지한다.
+  이번 실행 시점의 새 로그는 smoke 종료의 정보 수준 ShutdownFlush뿐이며 시작 오류는 없다.
+- 실제 탭 편집·옵션 저장·앱 재실행 구성 복원과 IME/다중 monitor 수동 검증은 수행하지
+  않았다. 프로세스 실행 확인을 해당 UI 시나리오 통과로 취급하지 않는다.
+
 - 실행일: 2026-09-09 (workspace release verification)
 - 지정된 user-local .NET SDK로 Debug restore/build/test를 다시 실행해 경고·오류 0개와
   전체 262개 test 통과를 확인했다(Architecture 5, Preferences 31, Terminal 121,

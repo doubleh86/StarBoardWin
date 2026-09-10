@@ -376,3 +376,16 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
 - 자동화 검증은 공유 MSBuild server 경합을 피하는 `--disable-build-servers -m:1`을 추가해 수행했다.
   Terminal module tests 119개와 Integration tests 29개, C# alignment 검사와 `git diff --check`가 통과했다.
   실제 앱 재실행·폴더 권한 실패 UI는 W6 수동 검증 범위다.
+
+### 2026-09-09 바탕화면 배포 후속
+
+- 사용자 요청으로 최신 통합 commit `d40f826`을 Release package로 만들었다.
+  전체 262개 테스트와 build 경고·오류 0개, ZIP/hash/추출 검증을 통과했다.
+- 바탕화면 기존 instance 종료 후 별도 portable smoke를 통과하고 499개 파일 hash가
+  일치하는 배포본으로 교체했다. 이전 폴더는 `Starboard-win-x64-backup-20260909-175512`로
+  보존했으며 최신본은 기존 `Starboard-win-x64` 경로에서 재실행했다.
+- 배포 metadata의 commit 일치, 앱 응답과 PowerShell·ConHost·WebView2 process를 확인했다.
+  설정 파일이 없어 복원 옵션은 기본 꺼짐이다. 실제 구성 복원·탭 UI 수동 검증은 미수행이다.
+- package hash와 자세한 결과는 [테스트 계획](../test-plan.md)을 따른다.
+  TAB-UX-01 버튼 재배치·PANEL-UX-02 외부 밀착과 별도 실수 방지 기획은 이번 배포에
+  구현된 것으로 취급하지 않는다. 제품 코드 수정·commit/push는 이번 배포에서 하지 않았다.
