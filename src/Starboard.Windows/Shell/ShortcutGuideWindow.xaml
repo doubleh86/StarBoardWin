@@ -8,14 +8,15 @@
         MinWidth="520"
         MinHeight="480"
         ShowInTaskbar="True"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="HandlePreviewKeyDown">
     <DockPanel Background="#1A1B26" KeyboardNavigation.TabNavigation="Cycle">
         <Button x:Name="CloseButton"
                 DockPanel.Dock="Bottom"
                 Width="88"
                 Margin="24,0,24,24"
                 HorizontalAlignment="Right"
-                IsCancel="True"
+                Click="HandleCloseClick"
                 Content="닫기" />
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="24">

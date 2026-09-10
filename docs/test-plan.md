@@ -85,6 +85,29 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
   사용자 소유 desktop에서 각 절차를 수동 수행할 수 있는 입력 권한이 필요하다.
   terminal command, output 및 clipboard 원문은 기록하지 않았다.
 
+- 실행일: 2026-09-10 (단축키 안내 창 닫기 수정본 바탕화면 배포)
+- `a225da3b9c34ea0a264c095dbb73404efeb20b6e`의 Release restore/build와 전체 304개
+  test가 통과했다. build 경고·오류, test 실패·skip은 0개다.
+- self-contained publish, ZIP 재현성·SHA-256·추출 smoke가 통과했다. package SHA-256은
+  `44bf5decfbc6a7f5d1b778e64ac3b9d6819f4b562c3e73c587d3210e1661b8bb`다.
+- 기존 PID 88760은 정상 종료 요청 후 15초 내 종료되지 않아 해당 process tree를
+  강제 종료했다. 기존 instance가 없는 상태에서 package smoke가 완료됐다.
+- 사용자 요청대로 backup 없이 바탕화면 `Starboard-win-x64`에 덮어쓰고 원본과 499개
+  파일 hash 일치를 확인했다. Explorer로 재실행한 PID 102920의 응답과 PowerShell,
+  ConHost, WebView2 자식 process를 확인했다. 새 backup 폴더는 만들지 않았다.
+- 닫기·Escape의 WPF routed-event 자동 검증은 포함되지만 배포본의 물리 입력·tray
+  재열기·focus 수동 검증은 미수행이다. 앱 전체 종료 지연의 원인과 수정은 별도 과제다.
+
+- 실행일: 2026-09-10 (단축키 안내 창 닫기 수정)
+- `ShortcutGuideWindowIntegrationTests`에서 modeless WPF 창의 버튼·Escape 실패를
+  수정 전에 재현했다. 명시적 Close 연결 후 버튼·Escape·일반 Window.Close 세 경우가
+  통과했으며 다른 창 유지와 일반 키 미소비도 검사했다.
+- Debug solution restore/build와 filter/skip 없는 전체 304개 test가 통과했다
+  (Architecture 7, Terminal 153, DesktopIntegration 75, Preferences 31, Integration 38).
+  build 경고·오류 0개이며 build-server 비활성·단일 MSBuild node를 사용했다.
+- 실제 STA WPF 창에 routed event를 전달한 자동 integration 검증이다. 물리 입력,
+  tray 재열기·focus와 앱 전체 종료 지연은 검증하지 않았으며 바탕화면 재배포도 하지 않았다.
+
 - 실행일: 2026-09-10 (안전 기능·패널/탭 UI 바탕화면 재배포)
 - `becbd18cb170920757df4f73373e3ecc7d731b22`의 Release restore/build와 전체 301개
   test가 통과했다(Architecture 7, Terminal 153, DesktopIntegration 75,

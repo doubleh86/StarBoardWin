@@ -1,5 +1,7 @@
 using System.Windows;
+using System.Windows.Input;
 using Starboard.Modules.DesktopIntegration.Contracts;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace Starboard.Windows.Shell;
 
@@ -16,6 +18,26 @@ internal partial class ShortcutGuideWindow : Window
         ArgumentNullException.ThrowIfNull(registrationSnapshot);
         ActivationShortcutText.Text = FormatRegistration(registrationSnapshot.Activation);
         ExpandShortcutText.Text = FormatRegistration(registrationSnapshot.Expand);
+    }
+
+    private void HandleCloseClick(object sender, RoutedEventArgs eventArguments)
+    {
+        _ = sender;
+        _ = eventArguments;
+        Close();
+    }
+
+    private void HandlePreviewKeyDown(object sender, KeyEventArgs eventArguments)
+    {
+        _ = sender;
+        if (eventArguments.Key != Key.Escape)
+        {
+            return;
+        }
+
+        // This modeless window cannot rely on a modal dialog's IsCancel behavior.
+        eventArguments.Handled = true;
+        Close();
     }
 
     private static string FormatRegistration(GlobalShortcutRegistrationState state)
