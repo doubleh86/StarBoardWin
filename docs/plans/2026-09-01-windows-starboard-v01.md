@@ -922,7 +922,11 @@ portable 배포이며 가상 데스크톱 pinning과 WSL/custom shell은 후속 
 완료 gate:
 
 - clean restore/build/test/publish가 성공한다.
-- release folder에서 renderer asset과 shell이 정상 동작한다.
+- release folder에서 renderer asset과 shell이 정상 동작한다. (기존 자동·격리
+  기록; 이번 수동 배포 검증 완료 판단에서는 제외)
+- portable 패키징, 오프라인 Release 실행, 업데이트와 rollback은 이번 수동
+  검증 작업의 필수 범위와 완료 판단에서 제외한다. 기존 자동·격리 결과는
+  보존 자료로만 남긴다.
 - runtime network/telemetry가 없다.
 - 자동 테스트와 실제 수행한 manual test 결과가 문서와 일치한다.
 - 알려진 Windows API 위험과 virtual desktop 제약이 숨김없이 기록돼 있다.
@@ -965,6 +969,12 @@ UI/Explorer/display에 의존하는 test는 CI에서 불안정하면 자동 test
 manual test로 분리한다.
 
 ### Manual test
+
+이번 작업의 수동 검증 완료 판단에서는 portable 패키징, 오프라인 Release 실행,
+업데이트와 rollback을 제외한다. 기존 package·Release·격리 smoke 결과는 진행
+기록으로 보존하되 배포 검증의 `Passed` 근거로 사용하지 않는다. 셸 선택·지속
+세션과 renderer·셸·ConPTY 실패 후 host/session 유지 및 재시작 결과만 이번
+범위에서 유효한 recovery 검증 결과다.
 
 - launch focus preservation
 - terminal click activation
@@ -1085,6 +1095,45 @@ manual test로 분리한다.
   merge와 push를 수행하지 않는다. orchestrator가 최종 diff를
   `[클라이언트, doubleh86] - 다중 터미널 탭 구현`으로 commit한 뒤 hash를 기록하고,
   별도 후속 단계에서만 `feature/terminal-tabs`를 main에 merge해야 한다.
+
+### 2026-09-10 — Windows platform 수동 검증 시도
+
+- Windows 11 Pro build 26200 x64, RTX 3060과 동일한 LG ULTRAGEAR 1920×1080
+  monitor 2대를 확인했다. primary는 X=0, 왼쪽 secondary는 X=-1920이며 두 화면의
+  work area는 Y=0부터 높이 1032px로 48px bottom taskbar 영역을 남기며 per-monitor
+  DPI는 각각 96(100%)다.
+- foreground 기준 app인 Rider와 Calculator의 Windows UI 제어가 승인되지 않았고,
+  Starboard는 terminal application 자동화 금지 대상이다. 명령 세션에서도 interactive
+  Explorer의 `Shell_TrayWnd`가 HWND `0x0`으로 반환돼 panel rectangle, focus와 z-order를
+  우회 관찰할 수 없었다.
+- 따라서 실제 bottom/negative-coordinate/100% 장비 존재만 근거로 기록하고 MAN-001,
+  MAN-003~MAN-022를 통과로 올리지 않았다. 각 항목은 장비 또는 권한 제약과 재개 조건을
+  `docs/test-plan.md`에 `Blocked`로 기록했다. 특히 taskbar 비겹침, background focus 보존,
+  exclusive fullscreen 비강제 표시는 이번 실행에서 검증되지 않았다.
+
+### 2026-09-10 — release recovery 수동 검증
+
+- 기존 바탕화면 배포본 PID 102920과 폴더를 유지한 채 ignored worktree 출력에 이전
+  commit `a225da3b9c34ea0a264c095dbb73404efeb20b6e`와 current
+  `456049b862b6bfdf60c58722a2c223fe680c1d62`를 각각 499-file 격리본으로 준비했다.
+  single-instance mutex 문자열만 같은 길이의 test 이름으로 계측해 이전→현재→이전
+  smoke를 서로 다른 PID에서 모두 exit code 0으로 실행했고, absent settings/workspace와
+  HKCU Run 값 및 기존 배포 PID가 전후 동일함을 확인했다.
+- current package는 Release build 경고·오류 0개, 전체 301개 test, ZIP/SHA-256과 추출
+  smoke를 통과했다. hash는
+  `29222a0d423870430cd3a2b1b67f668ba85cef80e51658fd085e96d27372b546`다.
+- 실제 renderer PID만 종료한 뒤 계측 host와 PowerShell PID가 유지되고
+  `RenderProcessExited`가 기록됐으며, shell PID만 종료한 뒤에도 host와 `ShellExit`가
+  유지됐다. 실제 오류 UI, retry와 다른 tab 상태는 terminal UI 자동화 제한으로
+  확인하지 못했다.
+- PowerShell 7, Windows PowerShell과 cmd는 각각 별도 단일 process probe에서 환경과
+  working directory를 명령 사이에 유지했고 두 PowerShell은 history도 유지했다.
+  Starboard 화면 resize와 cmd Unicode는 미검증이다. WSL/custom shell은 v0.1 선택 계약에
+  포함되지 않는다.
+- WebView2 Runtime 누락 child override는 기대한 오류/설치 안내를 일관되게 관찰하지
+  못했고 실제 network-disabled UI, 설정이 존재하는 update와 enabled startup 경로 복귀도
+  남았다. 상세 상태와 재개 조건은 `docs/test-plan.md` MAN-024~027, 030, 032, 039, 040을
+  정본으로 따른다.
 
 ## 미결정 사항
 

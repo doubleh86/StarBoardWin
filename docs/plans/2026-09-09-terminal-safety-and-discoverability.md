@@ -224,6 +224,12 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
 - [x] 2026-09-09: 최종 Debug restore/build와 filter/skip 없는 전체 301개 test, renderer
   offline rebuild, `git diff --check`를 통과했다. 실제 WebView2 dialog, clipboard, IME,
   focus와 DPI/hardware 시나리오는 `docs/test-plan.md`의 `Not run` 수동 항목으로 남겼다.
+- [x] 2026-09-10: SAFE-01/02와 NOTICE-01의 실제 WebView2 수동 검증을 시도했으나,
+  이 실행 환경의 Windows UI 자동화 정책이 terminal application의 click·입력·clipboard·shortcut
+  조작을 금지했다. 실제 dialog, preview, clipboard 또는 shell 입력은 조작하지 않았고
+  MAN-029a, MAN-033, MAN-034 및 MAN-034a를 포함한 관련 항목은
+  `docs/test-plan.md`에서 `Blocked`로 갱신했다. 자동 test 결과를 실제 UI 통과로
+  대체하지 않았으며 terminal command, output 또는 clipboard 원문을 문서화하지 않았다.
 
 ### 2026-09-10 — HELP-01 안내 창 닫기 회귀 수정
 

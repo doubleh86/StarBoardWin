@@ -91,7 +91,9 @@ dependency 입력에서 파일 순서와 ZIP entry 시각을 고정해 다시 �
 
 portable package는 .NET Runtime을 포함하므로 별도 .NET 설치가 필요 없지만,
 **Microsoft Edge WebView2 Evergreen Runtime은 별도 필수 요구사항**이다. WebView2가
-없으면 Microsoft의 Evergreen Runtime을 설치한 뒤 다시 실행한다.
+없으면 Microsoft의 Evergreen Runtime을 설치한 뒤 다시 실행한다. 현재 앱 내부 오류
+surface는 Runtime 시작 실패와 재시도만 안내하며 offline installer를 직접 포함하거나
+실행하지 않는다.
 
 ## Portable 설치·업데이트·복귀
 
@@ -114,6 +116,13 @@ Starboard는 설치 프로그램 없이 버전별 새 폴더에 압축을 풀어
 먼저 백업하고, 필요할 때 `settings.json.bak`을 복원한다. 두 버전 폴더는 복귀 확인이
 끝날 때까지 유지한다.
 
+2026-09-10 격리 검증에서는 서로 다른 build commit의 499-file 폴더로
+`이전 → 현재 → 이전` smoke를 통과했고 기존 배포 PID를 종료하거나 폴더를 덮어쓰지
+않았다. 다만 해당 계정에는 settings/workspace와 HKCU Run `Starboard` 값이 없었으므로
+실제 설정 migration 및 활성화된 자동 실행 경로의 변경·복귀는 아직 수동 확인이
+필요하다. 업데이트는 시작 프로그램 경로를 자동 이동하지 않으므로 위 5단계를
+생략하면 로그인 시 이전 폴더가 계속 실행될 수 있다.
+
 ## Renderer 갱신
 
 일반 build와 runtime에는 Node.js나 network가 필요 없다. xterm.js source 또는
@@ -126,6 +135,8 @@ npm run build
 ```
 
 renderer는 runtime CDN, 외부 font, remote script를 사용하지 않는다.
+package의 local asset/CSP 계약은 자동 검증됐지만, system network를 끈 실제 WebView2
+화면 실행은 아직 수동 검증 대상이다.
 
 ## 입력 규칙
 

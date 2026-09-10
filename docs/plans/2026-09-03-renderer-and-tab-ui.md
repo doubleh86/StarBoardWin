@@ -272,3 +272,9 @@ schema 4의 200 DIP로 올렸고 schema 3 이하의 148 DIP 기본값만 migrati
 301개 test를 통과했다. renderer source/dist offline 계약, 탭 action 분리, 안전 확인과
 새 출력 runtime도 자동 검사한다. 실제 WebView2/monitor에서의 tab overflow, IME·clipboard,
 focus-visible, 새 출력 점과 panel gap/약 8행 geometry는 `docs/test-plan.md`의 수동 항목으로 남겼다.
+
+- 2026-09-10: MAN-002, MAN-028, MAN-029, MAN-033~MAN-036의 실제 WPF/WebView2
+  검증을 시작했으나, 이 실행 환경의 Windows UI 자동화 정책이 terminal application의
+  click·입력·clipboard·shortcut 조작을 금지했다. 실제 renderer 화면에는 입력하지 않았고,
+  해당 항목은 `docs/test-plan.md`에서 `Blocked`로 기록했다. 자동 test나 process smoke는
+  이 상태를 통과로 대체하지 않았으며 terminal command, output 또는 clipboard 원문도 남기지 않았다.

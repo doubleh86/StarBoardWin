@@ -142,6 +142,13 @@ topmost를 강제하지 않는다. 다른 모니터의 전체화면과 일반 �
 CI workflow는 기존 환경을 확인한 후 별도로 제안할 수 있으나 이번 필수 배포는
 로컬 Windows 스크립트다. 앱 runtime network·telemetry는 계속 사용하지 않는다.
 
+이번 수동 검증 작업의 필수 범위와 완료 판단에서는 portable 패키징, 오프라인
+Release 실행, 업데이트 및 rollback을 제외한다. 기존 자동 package/Release와
+격리 smoke 기록은 삭제하지 않고 참고 자료로 보존하며, 배포 검증을 수행하지
+않았다는 이유로 `Passed`로 승격하지 않는다. 셸 선택·지속 세션과
+renderer·셸·ConPTY 실패 복구 및 재시작 결과만 유효한 recovery 검증 결과로
+취급한다.
+
 ## 영향 파일과 아키텍처 결정
 
 단일 애플리케이션 host와 기존 세 module을 유지한다. shell과 WebView2의 자식
@@ -245,7 +252,8 @@ Windows API 동작은 이 기획만으로 검증 완료된 것으로 취급하�
 - [ ] P0 기준선·환경·실제 UI 확인
 - [x] P1~P4 Windows 안정화 코드와 자동 A gate (hardware matrix는 pending)
 - [x] P5~P9 설정 기능과 자동 B gate (실제 tray/focus·실패 UI 수동 matrix는 pending)
-- [x] P10~P11 portable 배포와 자동 C gate (실제 UI·update hardware matrix는 pending)
+- [x] P10~P11 portable 배포와 자동 C gate (기존 자동 결과 기록; 이번 수동
+  배포 완료 판단에서는 제외)
 
 각 gate는 기능 구현과 자동 검증이 완료되고, 실제 실행으로 확인 가능한 핵심 동작이
 확인돼야 통과한다. 장비가 없어 수행하지 못한 항목은 예상 결과·실행 절차와 함께
@@ -264,6 +272,8 @@ pending으로 남긴다. 해당 플랫폼의 release 검증 완료로 표시하�
    탭 활성화 시 올바른 geometry와 색상, 새 탭에만 새 셸 적용을 확인한다.
 5. Packaging: 깨끗한 출력에서 ZIP 생성, 필수 asset/license 포함, 사용자 데이터
    미포함, SHA-256 일치 및 추출된 실행 파일의 실제 renderer/shell 동작을 확인한다.
+   이 packaging 검증과 오프라인 Release, update/rollback은 이번 수동 검증
+   작업의 범위 밖이며 완료 판단에 포함하지 않는다.
 
 표준 전체 검증 명령(저장소 루트):
 
@@ -333,6 +343,16 @@ ConPTY, visible window가 정상이라고 보고하지 않는다. Explorer 재�
   package에서 거부된다. 실제 WebView2 UI/interactive shell, multi-monitor/mixed-DPI,
   fullscreen/auto-hide/IME와 portable update/startup/rollback은 수행하지 않았고 test plan에
   `Not run`으로 유지했다.
+- 2026-09-10 (window-platform-manual-validation): 실제 Windows 11 Pro build 26200
+  장비에서 1920×1080 LG monitor 2대, 왼쪽 secondary의 X=-1920 음수 좌표, 두 화면의
+  Y=0부터 높이 1032px인 work area와 각 monitor의 100% 배율을 확인했다. 그러나 기준
+  app UI 제어가 승인되지 않았고 terminal application인 Starboard의
+  launch/input/hotkey 자동화도 정책상 금지됐다.
+  명령 세션은 interactive Explorer taskbar HWND를 볼 수 없어 focus/rectangle/z-order를
+  별도 측정할 수도 없었다. MAN-001과 MAN-003~MAN-022는 항목별 장비·권한 제약 및 재개
+  조건을 적어 `Blocked`로 갱신했으며, 실제 taskbar 비겹침, background focus 보존과
+  exclusive fullscreen 억제를 통과로 판단하지 않았다. P0의 실제 UI 기준선과 Windows
+  hardware matrix는 계속 미완료다.
 
 ## 미결정 사항
 
@@ -367,7 +387,48 @@ P4 Windows 창 통합, P5~P9 설정 적용·복구와 P10~P11 portable package �
 완료했다. 중앙 version과 build commit이 executable, 설정 화면과 release metadata에서
 일치하며 version staging 밖을 정리하지 않는 self-contained ZIP/SHA-256 흐름과 추출 smoke를
 제공한다. 실제 display/fullscreen, tray/focus/settings failure, WebView2/terminal UI와
-portable update/rollback hardware matrix는 아직 남아 있다.
+portable update/rollback hardware matrix는 이번 수동 검증 범위에서 제외한다.
+portable 패키징과 오프라인 Release 실행도 같은 범위에서 제외하며, 기존 자동·
+격리 결과는 배포 검증 완료가 아닌 보존 기록으로 취급한다.
+
+### 2026-09-10 설정 수동 검증 인수인계
+
+- 실행 중인 portable `Starboard.exe`(PID 102920)와 96 DPI 환경은 확인했지만,
+  Computer Use에 panel/tray window가 targetable window로 노출되지 않았다. tray 설정 창,
+  저장/취소 및 global hotkey conflict UI를 조작할 수 없어 MAN-023, MAN-031,
+  MAN-037 및 MAN-038은 `Blocked`로 갱신했다.
+- `%LOCALAPPDATA%\Starboard`에 `settings.json`이 없고 HKCU Run `Starboard` 값도 없는
+  상태만 읽기 전용으로 확인했다. theme·font·height apply 또는 rollback 중 terminal PID와
+  working directory가 보존되는지는 아직 실측하지 못했다. process CIM 조회도 access
+  denied였다.
+- 다음 interactive desktop 검증은 설정 창을 두 번 열어 단일 instance와 foreground
+  보존을 확인하고, tab shell PID/cwd를 기록한 뒤 theme·font·height save 및 실패 rollback,
+  hotkey conflict, startup 등록/해제 순으로 수행해야 한다. 자세한 matrix와 환경 제약은
+  [테스트 계획](../test-plan.md)을 따른다.
+
+### 2026-09-10 release recovery 수동 검증 인수인계
+
+- current HEAD package는 Release 경고·오류 0개, 301개 test, 499-file ZIP과 추출 smoke를
+  통과했고 SHA-256은
+  `29222a0d423870430cd3a2b1b67f668ba85cef80e51658fd085e96d27372b546`다. 최초 restore는
+  sandbox의 NuGet vulnerability source 차단으로 실패했고 허용된 network에서 재실행했다.
+- 바탕화면 PID 102920을 유지하기 위해 이전/current 복사본의 mutex 문자열 한 곳만
+  같은 길이의 test 이름으로 바꿨다. 계측 current의 renderer PID만 종료해도 host와 shell이
+  유지되고 `RenderProcessExited`가 기록됐고, shell PID만 종료해도 host와 `ShellExit`가
+  유지됐다. UI 오류 표시·restart click과 다른 tab 상태는 미확인이다.
+- 이전 build commit `a225da3b9c34ea0a264c095dbb73404efeb20b6e` → current
+   `456049b862b6bfdf60c58722a2c223fe680c1d62` → 이전 smoke는 모두 exit code 0이었다.
+  settings/workspace와 HKCU Run 값은 원래부터 없고 전후 그대로여서 실제 설정 보존,
+  startup 경로 갱신/복귀와 schema downgrade는 검증하지 못했다.
+- 세 기본 shell은 별도 지속 process probe에서 환경/cwd를 유지했고 두 PowerShell은
+  history도 유지했다. 제품 UI resize·cmd Unicode·WSL/custom은 통과로 판단하지 않았다.
+  Runtime 누락 override와 실제 network-disabled WebView2도 미완료다. 항목별 Partial,
+  Blocked, Not run 상태와 재개 조건은 [테스트 계획](../test-plan.md)에 기록했다.
+
+  portable 패키징·오프라인 Release·update/rollback 항목은 미완료 배포 검증으로
+  해석하지 않고 `Out of scope`로 관리한다. 이 기록에서 셸 선택·지속 세션과
+  renderer·셸·ConPTY 실패 후 host/session 유지 및 재시작만 이번 작업의 유효한
+  recovery 검증 결과다.
 
 ## 오케스트레이터 전달 프롬프트
 

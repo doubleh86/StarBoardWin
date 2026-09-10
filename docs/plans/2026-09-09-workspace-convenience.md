@@ -354,6 +354,15 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
   logs와 WebView2 user data를 거부하며, renderer source/dist offline 동기화와 Debug solution
   restore/build/test(전체 262개), `git diff --check`를 다시 검증했다. 실제 workspace 재시작 UI, 한글 IME,
   권한 제한 폴더, multi-monitor/DPI는 MAN-041~043 및 기존 MAN 항목에서 `Not run`으로 남긴다.
+- [ ] W7 설정·작업공간 실환경 검증 (2026-09-10 시도): 바탕화면 portable
+  `Starboard.exe`가 PID 102920로 실행 중이고 `%LOCALAPPDATA%\Starboard`에
+  `workspace.json`/`.bak`이 없는 초기 상태는 확인했다. 그러나 Computer Use의
+  targetable window/app 목록에 Starboard panel 또는 tray window가 없어 opt-in, 재시작,
+  partial failure 및 opt-out UI를 조작하지 못했다. CIM process 조회도 access denied여서
+  새/기존 shell PID와 cwd를 독립적으로 비교할 수 없었다. MAN-041~043은 `Blocked`로
+  기록했다. 다음 interactive desktop에서 정상 탭과 없는/권한 제한 folder 또는 shell
+  실패 탭을 함께 저장한 뒤 재시작해 새 PID·다른 탭 계속 시작을 확인하고, opt-out 후
+  `workspace.json`과 `.bak` 삭제 및 기본 탭 하나를 확인해야 한다.
 
 ### W1 완료 요약
 

@@ -573,11 +573,31 @@ WebView2 Runtime 실제 초기화와 terminal UI interaction은 별도 manual re
 - renderer content security policy는 local asset과 필요한 inline bootstrapping만
   허용하도록 최소화한다.
 
+2026-09-10 release recovery 검증은 실행 중인 사용자 배포본을 보호하기 위해 이전·현재
+복사본의 single-instance mutex 문자열 한 곳만 같은 길이의 test 전용 이름으로 바꾼
+계측본을 사용했다. 실제 WebView2 renderer process만 종료했을 때 host와 PowerShell
+process가 유지되고 `RenderProcessExited`가 기록됐으며, PowerShell process만 종료했을
+때도 host가 유지되고 `ShellExit`가 기록됐다. 이는 process 수명 격리 근거지만 WPF 오류
+surface 표시, renderer reconnect button과 다른 tab 화면 상태의 수동 통과 근거는 아니다.
+
+Runtime 누락 child override는 renderer/shell 미생성까지만 관찰됐고 local 오류 surface와
+installer 안내를 일관되게 확인하지 못했다. 현재 구현의 사용자 message는 Runtime 시작
+실패와 재시도를 알리고, 설치 절차는 README에만 있다. system Runtime 제거와 실제
+network-disabled 실행은 기존 사용자 WebView2/session 보호를 위해 수행하지 않았다.
+따라서 local asset/CSP/package smoke가 통과했더라도 실제 offline WebView2와 Runtime 누락
+fallback은 manual matrix에서 계속 부분 또는 blocked 상태로 관리한다.
+
+portable update는 파일을 제자리 교체하거나 시작 프로그램 경로를 자동 이동하지 않는다.
+서로 다른 build commit의 격리 폴더에서 이전→현재→이전 metadata smoke와 absent user state
+불변은 확인했지만, 설정이 존재하는 schema migration/downgrade와 enabled HKCU Run 경로는
+검증하지 않았다. 사용자는 README 절차대로 새 폴더에서 자동 실행을 껐다 켜고 rollback
+때 이전 폴더에서 반복해야 한다.
+
 ## 알려진 위험과 fallback
 
 | 위험 | 기본 대응 | fallback |
 |---|---|---|
-| WebView2 Runtime 없음 | startup availability check | WPF error surface와 offline installer 안내 |
+| WebView2 Runtime 없음 | startup initialization error surface와 재시도 | README 설치 절차; in-app offline installer 안내는 미구현·수동 검증 필요 |
 | standard WebView2 alpha 제약 | opaque/tinted background | composition control은 별도 검증 후만 고려 |
 | ConPTY shutdown deadlock | 별도 worker와 bounded drain | child kill, pipe close 후 app shutdown 계속 |
 | taskbar auto-hide event 누락 | event + reconciliation | last safe frame |

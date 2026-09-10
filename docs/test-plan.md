@@ -6,6 +6,13 @@ persistent terminal, taskbar geometry와 focus 정책을 반복 가능한 방식
 검증한다. 자동화로 증명한 항목과 실제 Windows desktop에서만 확인할 수 있는
 항목을 구분한다.
 
+이번 수동 검증 범위에서는 portable 패키징, 오프라인 Release 실행, 업데이트와
+rollback을 배포 검증 대상으로 삼지 않는다. 해당 흐름의 기존 자동/package 및
+격리 smoke 기록은 보존하지만 이번 완료 판단에는 사용하지 않으며, 수동 배포
+검증을 수행하지 않았다는 이유로 `Passed`로 표시하지 않는다. 이번 범위에서
+유효한 복구 결과는 셸 선택·지속 세션과 renderer·셸·ConPTY 실패 후 host/session
+유지 및 재시작 관찰이다.
+
 ## 상태 표기
 
 | 상태 | 의미 |
@@ -15,6 +22,7 @@ persistent terminal, taskbar geometry와 focus 정책을 반복 가능한 방식
 | `Failed` | 재현 가능한 실패가 남아 있음 |
 | `Blocked` | 필요한 환경·권한·장비가 없음 |
 | `Not run` | 실행하지 않음 |
+| `Out of scope` | 이번 작업의 필수 검증 범위와 완료 판단에서 제외 |
 
 mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증으로
 보고하지 않는다.
@@ -28,13 +36,54 @@ mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증�
 | .NET SDK | `10.0.301` at `C:/Users/round1studio_14/.dotnet/dotnet.exe` |
 | Node.js/npm | 설치됨 |
 | PowerShell | PowerShell 7과 Windows PowerShell 설치됨 |
-| WebView2 Runtime | `151.0.4129.107` 발견 |
+| WebView2 Runtime | `152.0.4191.66` 실행 process에서 확인 |
 | Git 상태 | orchestrator가 준비한 격리 Git worktree |
+| 2026-09-10 display probe | NVIDIA GeForce RTX 3060, LG ULTRAGEAR 2대, 각각 1920×1080 @ 143Hz |
+| 2026-09-10 topology | `DISPLAY1=(-1920,0,1920,1080)` 보조, `DISPLAY2=(0,0,1920,1080)` primary |
+| 2026-09-10 work area / scale | 두 화면 모두 `(Y=0,height=1032)`; per-monitor DPI 각각 96(100%) |
 
 위 환경 값은 2026-09-01에 확인했다. 실제 monitor 수, taskbar 위치, scaling과
 fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
+
+- 실행일: 2026-09-10 (run `20260910-055029-889715-ee5de9ac`, Windows platform 수동 검증 시도)
+- 실제 장비의 OS, GPU, 연결된 monitor와 현재 topology를 읽기 전용으로 조회했다.
+  Windows 11 Pro `10.0.26200` x64, RTX 3060, 동일한 LG ULTRAGEAR 2대이며, 1920×1080
+  화면을 좌우로 배치해 왼쪽 보조 화면은 X=-1920, 오른쪽 primary는 X=0이다. 두 화면의
+  work area는 Y=0부터 높이 1032px라 48px bottom taskbar 영역을 남긴다. per-monitor
+  DPI API는 두 화면 모두 96(100%)를 반환했다. 이 값은 실제 장비·배치
+  근거지만 Starboard panel의 표시, text 선명도 또는 focus 정책 통과 근거는 아니다.
+- 현재 worktree HEAD는 `8c172dc870f4da53947d8fd8a839d398103b0a8a`다. 바탕화면 portable
+  배포 metadata는 제품 `0.1.0`, build commit
+  `a225da3b9c34ea0a264c095dbb73404efeb20b6e`이며, 실행 중인 Starboard process는 없었다.
+  두 commit의 제품 차이는 shortcut 안내 window 수정뿐이지만, 이번 실행에서 portable
+  executable을 시작하거나 panel을 실제 관찰하지 않았으므로 현재 제품 동작으로 간주하지
+  않는다.
+- UI 자동화는 안전한 foreground 기준 창인 Rider와 Calculator에 대해서도 각각
+  `Computer Use was not approved`로 거부됐다. 또한 Starboard는 terminal application이므로
+  이 환경의 Windows UI 자동화 정책상 launch/click/key input/hotkey 조작 대상이 될 수 없다.
+  명령 세션에서 읽기 전용으로 조회한 `Shell_TrayWnd`도 HWND `0x0`으로 반환돼 interactive
+  desktop의 foreground, panel rectangle과 z-order를 별도 probe로 관찰할 수 없었다.
+- 이 때문에 MAN-001, MAN-003~MAN-022는 아래 실행 기록대로 `Blocked`다. monitor 2대와
+  음수 좌표, bottom work area 및 100% 환경이 실제로 존재한다는 것만 확인했으며, panel이
+  taskbar를 덮지 않는지, background event가 focus를 빼앗지 않는지, exclusive fullscreen
+  위에 강제로 나타나지 않는지는 확인하지 못했다. 재개하려면 사용자 소유 interactive
+  desktop에서 Starboard와 기준 app에 입력·화면 관찰 권한이 있어야 하며, 125/150/200%와
+  mixed-DPI 변경, taskbar 위치/auto-hide 변경, monitor 물리 분리, Explorer 재시작 및
+  controlled exclusive-fullscreen app 실행 권한이 추가로 필요하다.
+
+- 실행일: 2026-09-10 (터미널 UI 수동 검증 시도)
+- 대상은 실제 WPF/WebView2 화면에서 terminal click, Korean IME, clipboard/interrupt,
+  안전 확인창, 다중 탭·접근성·단축키와 축소 panel 본문 여백을 검증하는 것이었다.
+  이 실행 환경의 Windows UI 자동화 정책은 terminal application의 click, text input,
+  clipboard 및 keyboard shortcut 조작을 금지하므로 실제 화면에 입력을 전달하지
+  않았다. 자동 test, process 기동 또는 renderer source 검사는 이 수동 검증을 대체하지
+  않는다.
+- 아래 MAN-002, MAN-028, MAN-029, MAN-029a, MAN-033, MAN-034, MAN-034a,
+  MAN-035 및 MAN-036은 이 정책 제약 때문에 `Blocked`다. 테스트 재개에는 실제
+  사용자 소유 desktop에서 각 절차를 수동 수행할 수 있는 입력 권한이 필요하다.
+  terminal command, output 및 clipboard 원문은 기록하지 않았다.
 
 - 실행일: 2026-09-10 (단축키 안내 창 닫기 수정본 바탕화면 배포)
 - `a225da3b9c34ea0a264c095dbb73404efeb20b6e`의 Release restore/build와 전체 304개
@@ -427,61 +476,119 @@ ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan c
 | SMK-008 | global panel 호출 | 비활성→표시·foreground, 활성→숨김 | Passed |
 | SMK-009 | 실제 tray icon 왼쪽 클릭 | 숨긴 panel 표시·foreground, normal z-order 유지 | Passed |
 | SMK-010 | P4 build 전체 executable/tray 재검증 | 이번 build로 tray·호출·terminal 수명 확인 | Blocked (existing instance) |
-| SMK-011 | versioned portable package | ZIP/SHA-256 일치, 필수 renderer/license/metadata 포함, runtime/user/developer data 제외 | Passed (automated package) |
-| SMK-012 | extracted portable smoke mode | 추출 executable 시작, version/commit·renderer·기본 shell 확인 후 user settings 적용 없이 종료 | Passed (automated package) |
+| SMK-011 | versioned portable package | ZIP/SHA-256 일치, 필수 renderer/license/metadata 포함, runtime/user/developer data 제외 | Out of scope — 기존 automated package 기록은 보존하나 이번 수동 배포 완료 판단에서 제외 |
+| SMK-012 | extracted portable smoke mode | 추출 executable 시작, version/commit·renderer·기본 shell 확인 후 user settings 적용 없이 종료 | Out of scope — 기존 automated package 기록은 보존하나 이번 수동 배포 완료 판단에서 제외 |
 
 ## Manual desktop matrix
 
 각 실행에서 OS build, monitor topology, scaling, taskbar edge/auto-hide, shell과 app
 build hash를 함께 기록한다.
 
+### 2026-09-10 release·recovery 격리 검증
+
+- 대상: run `20260910-055029-889715-ee5de9ac`, worktree HEAD
+  `456049b862b6bfdf60c58722a2c223fe680c1d62`. 기존 바탕화면 배포본
+  `C:\Users\round1studio_14\Desktop\Starboard-win-x64\Starboard.exe` PID
+  102920은 모든 단계 전후 같은 경로와 PID로 살아 있었고 종료·교체하지 않았다.
+  테스트 파일은 ignored `out/manual-release-recovery/20260910-055029` 아래에만 만들었다.
+- package 흐름은 최초 sandbox restore에서 NuGet vulnerability source에 접근하지 못해
+  `NU1900`으로 중단됐고, 허용된 network에서 다시 실행해 Release build 경고·오류 0개,
+  301개 test(Architecture 7, Terminal 153, DesktopIntegration 75, Preferences 31,
+  Integration 35), 499-file ZIP, 추출 smoke를 통과했다. ZIP SHA-256은
+  `29222a0d423870430cd3a2b1b67f668ba85cef80e51658fd085e96d27372b546`다.
+- PowerShell 7 PID 86092와 Windows PowerShell PID 21984는 각각 같은 process에 여러
+  명령을 보내 환경 값, `%TEMP%` working directory와 `Get-History` count 5가 유지됨을
+  확인했다. cmd PID 92736도 환경 값과 `%TEMP%` working directory를 후속 명령에서
+  유지했다. 이 probe는 renderer/ConPTY UI가 아닌 redirected process이므로 terminal
+  resize, IME와 cmd Unicode 표시는 통과 근거가 아니다. Release suite의 실제 ConPTY
+  GUI-host test는 PowerShell tab의 exit/restart/close와 다른 tab 격리를 별도로 통과했다.
+- 실행 중인 사용자 instance와 `Local` mutex가 충돌하므로 현재·이전 배포 복사본의
+  `Starboard.dll`에서 mutex 문자열 한 곳만 같은 길이의 test 전용 이름으로 바꾼 계측본을
+  사용했다. 그 외 package 파일은 수정하지 않았다. 계측 current에서 실제 PowerShell 7,
+  ConHost와 WebView2 renderer가 생성됐다. 새 renderer PID 92216만 종료한 뒤 test host
+  PID 78416과 shell PID 96840이 계속 살아 있었고 log에는
+  `RendererProcess / RenderProcessExited`가 기록됐다. 별도 실행에서 shell PID 99316만
+  종료한 뒤에도 test host PID 97244가 유지되고 `ShellExit`가 기록됐다. 실제 오류 surface,
+  `다시 시작` click과 다른 UI tab 상태는 terminal UI 자동화 금지로 관찰하지 못했다.
+- WebView2 Runtime 누락은 계측 child에만 빈
+  `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`를 주입했다. 첫 실행은 6초 동안 host만 살아 있고
+  renderer/shell과 terminal 오류 log가 없었으며, 반복 실행은 20초 안에 종료되고
+  `ShutdownFlush`만 기록해 기대한 local 오류·설치 안내를 확인하지 못했다. system Runtime을
+  제거하거나 기존 WebView2 user data를 이동하지 않았으며 MAN-030은 통과가 아니다.
+- 바탕화면 배포 commit `a225da3b9c34ea0a264c095dbb73404efeb20b6e`와 current commit을
+  각각 499-file 격리 폴더로 복사했다. test 전용 mutex를 적용한 `이전 → 현재 → 이전`
+  smoke는 서로 다른 PID 67912, 45944, 65900에서 모두 exit code 0이었다. 전후
+  `settings.json`, backup, workspace primary/backup과 HKCU Run `Starboard`는 모두
+  absent로 동일했다. 따라서 side-by-side 교체·복귀와 user data 비생성만 확인했으며,
+  실제 설정 보존, enabled startup 경로 재등록과 schema downgrade는 미검증이다.
+- runtime network를 system 수준에서 차단하지 않았고 계측본은 기존 user data folder를
+  공유했다. package의 local renderer/CSP/no-remote-asset 자동 계약 기록은 보존하지만,
+  실제 network-disabled WebView2 화면은 이번 수동 배포 검증 범위에서 제외했으므로
+  MAN-032는 `Out of scope`다.
+
+### 2026-09-10 설정·작업공간 실환경 시도
+
+- 환경: Windows interactive session, 96 DPI(100%)로 보고됨. 바탕화면 portable
+  `C:\Users\round1studio_14\Desktop\Starboard-win-x64\Starboard.exe`가 PID 102920로
+  실행 중이었다. `%LOCALAPPDATA%\Starboard`에는 Logs와 WebView2 user data만 있었고
+  `settings.json`, `workspace.json`, `workspace.json.bak` 및 HKCU Run `Starboard` 값은
+  모두 없었다.
+- 실제 UI 제어 결과: Computer Use의 targetable window 목록과 app 목록에 Starboard
+  window가 나타나지 않았다. 따라서 tray 메뉴와 설정 창을 열거나 terminal UI를 입력할
+  수 없었다. OS/process CIM 조회도 access denied여서 child shell PID와 working
+  directory를 독립적으로 읽지 못했다.
+- 이 결과는 현재 실행본이 설정·복원 데이터를 아직 만들지 않았다는 읽기 전용 관찰일
+  뿐이다. 설정을 변경하거나 Run 값을 등록/해제하지 않았고, 기존 terminal session과
+  사용자 파일을 변경하지 않았다. 아래 항목은 UI 접근 가능한 interactive desktop에서
+  재수행해야 한다.
+
 | ID | Scenario | 확인 내용 | 상태 |
 |---|---|---|---|
-| MAN-001 | cold launch while editor focused | editor focus 유지, panel 표시 | Not run |
-| MAN-002 | terminal click | 한 번의 click으로 caret/IME 입력 가능 | Not run |
-| MAN-003 | background reposition | foreground HWND 변화 없음 | Not run |
-| MAN-004 | bottom taskbar | 겹침과 1px gap/overlap 오류 없음 | Not run |
-| MAN-005 | top taskbar | 올바른 edge에 표시 | Not run |
-| MAN-006 | left taskbar | geometry와 usable content 확인 | Not run |
-| MAN-007 | right taskbar | geometry와 usable content 확인 | Not run |
-| MAN-008 | taskbar auto-hide reveal/conceal | idle은 따라가고 active는 유지 | Not run |
-| MAN-009 | taskbar monitor 이동 | panel이 새 monitor로 이동 | Not run |
-| MAN-010 | secondary monitor negative coordinate | 잘못된 primary clamp 없음 | Not run |
-| MAN-011 | monitor disconnect/reconnect | visible monitor의 안전 frame으로 복구 | Not run |
-| MAN-012 | 100% scaling | 선명한 text와 정확한 geometry | Not run |
-| MAN-013 | 125% scaling | 선명한 text와 정확한 geometry | Not run |
-| MAN-014 | 150% scaling | 선명한 text와 정확한 geometry | Not run |
-| MAN-015 | 200% scaling | 최소 terminal row와 geometry 유지 | Not run |
-| MAN-016 | mixed-DPI monitor 이동 | DPI 변경 후 즉시 선명하게 reflow | Not run |
-| MAN-017 | Explorer restart | taskbar tracking과 z-order 복구 | Not run |
-| MAN-018 | maximized application | panel visible, app focus 유지 | Not run |
-| MAN-019 | borderless fullscreen | 같은 monitor에서 panel이 방해하지 않음 | Not run |
-| MAN-020 | exclusive fullscreen game/video | 강제 overlay 없음 | Not run |
-| MAN-021 | virtual desktop switch | 지원 capability와 실제 visibility 일치 | Not run |
-| MAN-022 | expand/collapse hotkey | 현재 monitor work area 확장과 정확한 복원 | Not run |
-| MAN-023 | hotkey conflict | settings에서 실패가 설명되고 app 유지 | Not run |
-| MAN-024 | PowerShell 7 | persistent prompt, history, resize | Not run |
-| MAN-025 | Windows PowerShell | persistent prompt, history, resize | Not run |
-| MAN-026 | cmd | persistent prompt, Unicode 한계가 명시됨 | Not run |
-| MAN-027 | WSL/custom shell | 선택한 경우 argument/resize/exit 검증 | Not run |
-| MAN-028 | 한글 IME composition | 조합 중복·누락·caret 이탈 없음 | Not run |
-| MAN-029 | clipboard shortcuts | selection copy, paste와 Ctrl+C interrupt 구분 | Not run |
-| MAN-029a | safety confirmation UI | 살아 있는 tab close 취소/승인, multiline paste preview·Escape·clipboard 변경 뒤 승인 확인 | Not run |
-| MAN-030 | WebView2 Runtime missing simulation | local error와 설치 안내 | Not run |
-| MAN-031 | login startup | 일반 user 권한으로 한 instance만 실행 | Not run |
-| MAN-032 | Release folder offline | renderer가 network 없이 로드 | Not run |
-| MAN-033 | multi-tab renderer | 비활성 탭 output/scrollback/state 유지, 대상 session routing | Not run |
-| MAN-034 | tab 접근성·overflow·shortcut | 상태/이름/focus-visible, 8개 overflow, 탭 단축키와 Ctrl+W 전달 | Not run |
-| MAN-034a | inactive-tab new output | 비활성 tab의 점, 접근성 이름, 선택 시 해제와 자동 activation 없음 | Not run |
-| MAN-035 | schema 4 collapsed height | 200 DIP에서 tab strip 아래 약 8행, 사용자 높이 보존 | Not run |
-| MAN-036 | terminal focus surface | terminal click 후 노란 외곽선 없이 caret과 입력 동작 유지 | Not run |
-| MAN-037 | tray 설정 창 수명·focus | 연속 요청 시 한 창, 닫은 뒤 이전 foreground를 강제 변경하지 않음 | Not run |
-| MAN-038 | 실제 설정 live apply/rollback | theme/font/높이 적용 중 PID·cwd 유지, hotkey 충돌과 저장 실패 UI 확인 | Not run |
-| MAN-039 | portable WebView2/terminal UI | 새 폴더에서 실제 WebView2 Runtime 초기화, local renderer와 interactive shell 확인 | Not run |
-| MAN-040 | portable update/rollback | 기존 설정 유지, startup 경로 변경과 이전 폴더 복귀 확인 | Not run |
-| MAN-041 | workspace restore UI | 복원 opt-in 뒤 재시작에서 탭 이름·순서·선택·시작 폴더가 보존되고 각 tab이 새 PID인지 확인 | Not run |
-| MAN-042 | workspace IME and partial failure | 한글 IME 이름 편집, 없는/권한 없는 폴더 또는 shell 한 tab 실패가 다른 tab을 막지 않는지 확인 | Not run |
-| MAN-043 | workspace opt-out | 옵션 해제 뒤 구성 파일 삭제와 다음 시작의 기본 tab 하나를 확인 | Not run |
+| MAN-001 | cold launch while editor focused | editor focus 유지, panel 표시 | Blocked — 기준 editor UI 제어 미승인 및 terminal app 자동화 금지; cold launch/화면 관찰 불가 |
+| MAN-002 | terminal click | 한 번의 click으로 caret/IME 입력 가능 | Blocked — terminal UI input automation policy |
+| MAN-003 | background reposition | foreground HWND 변화 없음 | Blocked — interactive foreground/HWND 관찰 불가; `Shell_TrayWnd=0x0` |
+| MAN-004 | bottom taskbar | 겹침과 1px gap/overlap 오류 없음 | Blocked — 1080px 화면/1032px work area는 확인; panel 시각 관찰 불가 |
+| MAN-005 | top taskbar | 올바른 edge에 표시 | Blocked — 현재 bottom 환경뿐이며 taskbar 위치 변경/관찰 권한 없음 |
+| MAN-006 | left taskbar | geometry와 usable content 확인 | Blocked — 현재 bottom 환경뿐이며 taskbar 위치 변경/관찰 권한 없음 |
+| MAN-007 | right taskbar | geometry와 usable content 확인 | Blocked — 현재 bottom 환경뿐이며 taskbar 위치 변경/관찰 권한 없음 |
+| MAN-008 | taskbar auto-hide reveal/conceal | idle은 따라가고 active는 유지 | Blocked — auto-hide 설정 변경과 terminal active/idle 입력·관찰 불가 |
+| MAN-009 | taskbar monitor 이동 | panel이 새 monitor로 이동 | Blocked — monitor 2대는 확인; taskbar 이동과 panel 관찰 권한 없음 |
+| MAN-010 | secondary monitor negative coordinate | 잘못된 primary clamp 없음 | Blocked — `DISPLAY1` X=-1920은 확인; panel을 보조 화면에 배치·관찰 불가 |
+| MAN-011 | monitor disconnect/reconnect | visible monitor의 안전 frame으로 복구 | Blocked — monitor 2대는 확인; 원격 실행에서 물리 분리·재연결 불가 |
+| MAN-012 | 100% scaling | 선명한 text와 정확한 geometry | Blocked — 현재 DPI 96(100%)은 확인; panel/text 시각 관찰 불가 |
+| MAN-013 | 125% scaling | 선명한 text와 정확한 geometry | Blocked — 125%로 변경 가능한 interactive display 권한 없음 |
+| MAN-014 | 150% scaling | 선명한 text와 정확한 geometry | Blocked — 150%로 변경 가능한 interactive display 권한 없음 |
+| MAN-015 | 200% scaling | 최소 terminal row와 geometry 유지 | Blocked — 200%로 변경 가능한 interactive display 권한 없음 |
+| MAN-016 | mixed-DPI monitor 이동 | DPI 변경 후 즉시 선명하게 reflow | Blocked — 두 화면 모두 현재 100%; per-monitor 변경과 panel 이동 불가 |
+| MAN-017 | Explorer restart | taskbar tracking과 z-order 복구 | Blocked — interactive taskbar HWND/Starboard 관찰 불가 상태에서 사용자 shell 재시작 미수행 |
+| MAN-018 | maximized application | panel visible, app focus 유지 | Blocked — 기준 app UI 제어 미승인 및 foreground/panel 관찰 불가 |
+| MAN-019 | borderless fullscreen | 같은 monitor에서 panel이 방해하지 않음 | Blocked — 제어 가능한 borderless-fullscreen app과 화면 관찰 권한 없음 |
+| MAN-020 | exclusive fullscreen game/video | 강제 overlay 없음 | Blocked — 제어 가능한 exclusive-fullscreen app과 화면 관찰 권한 없음 |
+| MAN-021 | virtual desktop switch | 지원 capability와 실제 visibility 일치 | Blocked — virtual desktop UI 제어 권한 없음; Windows-key 자동화 금지 |
+| MAN-022 | expand/collapse hotkey | 현재 monitor work area 확장과 정확한 복원 | Blocked — terminal application 대상 keyboard shortcut 자동화 금지 |
+| MAN-023 | hotkey conflict | settings에서 실패가 설명되고 app 유지 | Blocked — 2026-09-10 실행 중인 portable app은 Computer Use targetable window/app 목록에 노출되지 않아 tray 설정 창을 열고 충돌 등록을 유발할 수 없었음; app PID 102920는 관찰했으나 충돌 UI·session 유지 여부는 미확인 |
+| MAN-024 | PowerShell 7 | persistent prompt, history, resize | Partial — PID 86092의 redirected 단일 process에서 환경·cwd·history 유지, Release ConPTY GUI-host에서 PowerShell tab restart/격리 통과; 실제 renderer prompt와 resize 미확인 |
+| MAN-025 | Windows PowerShell | persistent prompt, history, resize | Partial — PID 21984의 redirected 단일 process에서 환경·cwd·history 유지; Starboard renderer/ConPTY resize 미확인 |
+| MAN-026 | cmd | persistent prompt, Unicode 한계가 명시됨 | Partial — PID 92736의 redirected 단일 process에서 환경·cwd 유지; Starboard renderer/resize와 Unicode 표시는 미확인 |
+| MAN-027 | WSL/custom shell | 선택한 경우 argument/resize/exit 검증 | Not run — v0.1 public 설정·workspace contract는 Automatic/Pwsh/PowerShell/Cmd만 지원하며 WSL/custom executable은 후속 범위로 deferred |
+| MAN-028 | 한글 IME composition | 조합 중복·누락·caret 이탈 없음 | Blocked — terminal UI input automation policy |
+| MAN-029 | clipboard shortcuts | selection copy, paste와 Ctrl+C interrupt 구분 | Blocked — terminal UI input automation policy |
+| MAN-029a | safety confirmation UI | 살아 있는 tab close 취소/승인, multiline paste preview·Escape·clipboard 변경 뒤 승인 확인 | Blocked — terminal UI input automation policy |
+| MAN-030 | WebView2 Runtime missing simulation | local error와 설치 안내 | Blocked — 계측 child의 빈 browser folder override에서 renderer/shell이 시작되지 않았지만 오류 surface를 관찰하지 못했고 결과도 6초 alive/20초 내 정상 종료로 일관되지 않음; system Runtime 제거는 기존 session 보호를 위해 미수행 |
+| MAN-031 | login startup | 일반 user 권한으로 한 instance만 실행 | Blocked — 현재 HKCU Run `Starboard` 값은 없음을 읽기 전용으로 확인했으나, 설정 UI가 노출되지 않아 등록·재로그인·single-instance 결과를 검증할 수 없었음 |
+| MAN-032 | Release folder offline | renderer가 network 없이 로드 | Out of scope — 오프라인 Release 실행은 이번 수동 배포 검증 범위에서 제외; 기존 local renderer/CSP/no-remote-asset 자동 계약 기록은 보존 |
+| MAN-033 | multi-tab renderer | 비활성 탭 output/scrollback/state 유지, 대상 session routing | Blocked — 실제 renderer PID 종료 뒤 host·shell 유지와 automated ConPTY tab 격리는 확인; 오류 surface, reconnect와 다른 UI tab 상태는 terminal UI input automation policy로 미확인 |
+| MAN-034 | tab 접근성·overflow·shortcut | 상태/이름/focus-visible, 8개 overflow, 탭 단축키와 Ctrl+W 전달 | Blocked — terminal UI input automation policy |
+| MAN-034a | inactive-tab new output | 비활성 tab의 점, 접근성 이름, 선택 시 해제와 자동 activation 없음 | Blocked — terminal UI input automation policy |
+| MAN-035 | schema 4 collapsed height | 200 DIP에서 tab strip 아래 약 8행, 사용자 높이 보존 | Blocked — terminal UI input automation policy |
+| MAN-036 | terminal focus surface | terminal click 후 노란 외곽선 없이 caret과 입력 동작 유지 | Blocked — terminal UI input automation policy |
+| MAN-037 | tray 설정 창 수명·focus | 연속 요청 시 한 창, 닫은 뒤 이전 foreground를 강제 변경하지 않음 | Blocked — Starboard tray/panel window를 자동화 대상에서 찾지 못해 연속 tray 요청·창 닫기·foreground 보존을 조작/관찰할 수 없었음 |
+| MAN-038 | 실제 설정 live apply/rollback | theme/font/높이 적용 중 PID·cwd 유지, hotkey 충돌과 저장 실패 UI 확인 | Blocked — theme/font/height save 및 rollback UI를 열 수 없었음. 실행 중 app PID만 관찰했고 CIM process 조회가 access denied여서 기존 terminal PID·cwd 보존은 측정하지 못했음 |
+| MAN-039 | portable WebView2/terminal UI | 새 폴더에서 실제 WebView2 Runtime 초기화, local renderer와 interactive shell 확인 | Out of scope — portable Release 실행은 이번 수동 배포 검증 범위에서 제외; 기존 renderer/ConHost/pwsh 및 실패 격리 관찰 기록은 보존 |
+| MAN-040 | portable update/rollback | 기존 설정 유지, startup 경로 변경과 이전 폴더 복귀 확인 | Out of scope — 업데이트 및 rollback은 이번 수동 배포 검증 범위에서 제외; 기존 이전→현재→이전 smoke 기록은 보존 |
+| MAN-041 | workspace restore UI | 복원 opt-in 뒤 재시작에서 탭 이름·순서·선택·시작 폴더가 보존되고 각 tab이 새 PID인지 확인 | Blocked — 현재 `workspace.json`/`.bak`은 없었고 restore opt-in 설정 UI를 조작할 수 없었음; 따라서 재시작 뒤 새 shell PID와 tab metadata 복원을 확인하지 못했음 |
+| MAN-042 | workspace IME and partial failure | 한글 IME 이름 편집, 없는/권한 없는 폴더 또는 shell 한 tab 실패가 다른 tab을 막지 않는지 확인 | Blocked — terminal UI 자동화 대상이 없어 한글 이름 편집 및 실패 tab을 만든 뒤 다른 tab의 계속 시작을 관찰할 수 없었음 |
+| MAN-043 | workspace opt-out | 옵션 해제 뒤 구성 파일 삭제와 다음 시작의 기본 tab 하나를 확인 | Blocked — 초기 workspace primary/backup 부재만 읽기 전용으로 확인했음; opt-out 저장으로 파일을 삭제하고 다음 시작 기본 tab을 확인하는 destructive UI 시나리오는 수행하지 못했음 |
 
 ## Focus 검증 절차
 
@@ -517,6 +624,12 @@ launch focus 보존과 terminal click activation은 서로 다른 요구사항�
 
 ## Release gate
 
+이번 작업의 수동 완료 판단에는 아래 배포 gate를 적용하지 않는다. portable
+패키징, 오프라인 Release 실행, 업데이트와 rollback은 `Out of scope`이며, 아래
+기록은 향후 별도 배포 검증을 위한 보존 자료다. 셸 선택·지속 세션 및
+renderer·셸·ConPTY 실패 복구/재시작 결과만 이번 범위의 유효한 recovery 결과로
+판정한다.
+
 - clean restore/build/test 성공
 - self-contained `win-x64` publish 성공
 - committed renderer `dist`와 license notice 존재
@@ -528,5 +641,6 @@ launch focus 보존과 terminal click activation은 서로 다른 요구사항�
 - workspace JSON, `.bak`, `.tmp`, command 또는 terminal output이 publish/ZIP/추출본에 없음
 - confirmation token/paste preview/new-output runtime state가 log, workspace, publish/ZIP/추출본에 없음
 - automated/integration 결과가 이 문서에 갱신됨
-- 실제로 실행한 manual case만 `Passed`로 표시
+- 실제로 실행한 manual case만 `Passed`로 표시하며, 배포 제외 항목은
+  `Out of scope`로 표시
 - 미실행 DPI, multi-monitor, fullscreen과 IME case가 숨김없이 남아 있음
