@@ -6,6 +6,13 @@ persistent terminal, taskbar geometry와 focus 정책을 반복 가능한 방식
 검증한다. 자동화로 증명한 항목과 실제 Windows desktop에서만 확인할 수 있는
 항목을 구분한다.
 
+이번 수동 검증 범위에서는 portable 패키징, 오프라인 Release 실행, 업데이트와
+rollback을 배포 검증 대상으로 삼지 않는다. 해당 흐름의 기존 자동/package 및
+격리 smoke 기록은 보존하지만 이번 완료 판단에는 사용하지 않으며, 수동 배포
+검증을 수행하지 않았다는 이유로 `Passed`로 표시하지 않는다. 이번 범위에서
+유효한 복구 결과는 셸 선택·지속 세션과 renderer·셸·ConPTY 실패 후 host/session
+유지 및 재시작 관찰이다.
+
 ## 상태 표기
 
 | 상태 | 의미 |
@@ -15,6 +22,7 @@ persistent terminal, taskbar geometry와 focus 정책을 반복 가능한 방식
 | `Failed` | 재현 가능한 실패가 남아 있음 |
 | `Blocked` | 필요한 환경·권한·장비가 없음 |
 | `Not run` | 실행하지 않음 |
+| `Out of scope` | 이번 작업의 필수 검증 범위와 완료 판단에서 제외 |
 
 mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증으로
 보고하지 않는다.
@@ -445,8 +453,8 @@ ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan c
 | SMK-008 | global panel 호출 | 비활성→표시·foreground, 활성→숨김 | Passed |
 | SMK-009 | 실제 tray icon 왼쪽 클릭 | 숨긴 panel 표시·foreground, normal z-order 유지 | Passed |
 | SMK-010 | P4 build 전체 executable/tray 재검증 | 이번 build로 tray·호출·terminal 수명 확인 | Blocked (existing instance) |
-| SMK-011 | versioned portable package | ZIP/SHA-256 일치, 필수 renderer/license/metadata 포함, runtime/user/developer data 제외 | Passed (automated package) |
-| SMK-012 | extracted portable smoke mode | 추출 executable 시작, version/commit·renderer·기본 shell 확인 후 user settings 적용 없이 종료 | Passed (automated package) |
+| SMK-011 | versioned portable package | ZIP/SHA-256 일치, 필수 renderer/license/metadata 포함, runtime/user/developer data 제외 | Out of scope — 기존 automated package 기록은 보존하나 이번 수동 배포 완료 판단에서 제외 |
+| SMK-012 | extracted portable smoke mode | 추출 executable 시작, version/commit·renderer·기본 shell 확인 후 user settings 적용 없이 종료 | Out of scope — 기존 automated package 기록은 보존하나 이번 수동 배포 완료 판단에서 제외 |
 
 ## Manual desktop matrix
 
@@ -491,8 +499,9 @@ build hash를 함께 기록한다.
   absent로 동일했다. 따라서 side-by-side 교체·복귀와 user data 비생성만 확인했으며,
   실제 설정 보존, enabled startup 경로 재등록과 schema downgrade는 미검증이다.
 - runtime network를 system 수준에서 차단하지 않았고 계측본은 기존 user data folder를
-  공유했다. package의 local renderer/CSP/no-remote-asset 자동 계약은 통과했지만 실제
-  network-disabled WebView2 화면은 관찰하지 못했으므로 MAN-032는 부분 결과다.
+  공유했다. package의 local renderer/CSP/no-remote-asset 자동 계약 기록은 보존하지만,
+  실제 network-disabled WebView2 화면은 이번 수동 배포 검증 범위에서 제외했으므로
+  MAN-032는 `Out of scope`다.
 
 ### 2026-09-10 설정·작업공간 실환경 시도
 
@@ -544,7 +553,7 @@ build hash를 함께 기록한다.
 | MAN-029a | safety confirmation UI | 살아 있는 tab close 취소/승인, multiline paste preview·Escape·clipboard 변경 뒤 승인 확인 | Blocked — terminal UI input automation policy |
 | MAN-030 | WebView2 Runtime missing simulation | local error와 설치 안내 | Blocked — 계측 child의 빈 browser folder override에서 renderer/shell이 시작되지 않았지만 오류 surface를 관찰하지 못했고 결과도 6초 alive/20초 내 정상 종료로 일관되지 않음; system Runtime 제거는 기존 session 보호를 위해 미수행 |
 | MAN-031 | login startup | 일반 user 권한으로 한 instance만 실행 | Blocked — 현재 HKCU Run `Starboard` 값은 없음을 읽기 전용으로 확인했으나, 설정 UI가 노출되지 않아 등록·재로그인·single-instance 결과를 검증할 수 없었음 |
-| MAN-032 | Release folder offline | renderer가 network 없이 로드 | Partial — local renderer/CSP/no-remote-asset package 계약과 추출 smoke 통과; system network-disabled 실제 WebView2 화면은 미확인 |
+| MAN-032 | Release folder offline | renderer가 network 없이 로드 | Out of scope — 오프라인 Release 실행은 이번 수동 배포 검증 범위에서 제외; 기존 local renderer/CSP/no-remote-asset 자동 계약 기록은 보존 |
 | MAN-033 | multi-tab renderer | 비활성 탭 output/scrollback/state 유지, 대상 session routing | Blocked — 실제 renderer PID 종료 뒤 host·shell 유지와 automated ConPTY tab 격리는 확인; 오류 surface, reconnect와 다른 UI tab 상태는 terminal UI input automation policy로 미확인 |
 | MAN-034 | tab 접근성·overflow·shortcut | 상태/이름/focus-visible, 8개 overflow, 탭 단축키와 Ctrl+W 전달 | Blocked — terminal UI input automation policy |
 | MAN-034a | inactive-tab new output | 비활성 tab의 점, 접근성 이름, 선택 시 해제와 자동 activation 없음 | Blocked — terminal UI input automation policy |
@@ -552,8 +561,8 @@ build hash를 함께 기록한다.
 | MAN-036 | terminal focus surface | terminal click 후 노란 외곽선 없이 caret과 입력 동작 유지 | Blocked — terminal UI input automation policy |
 | MAN-037 | tray 설정 창 수명·focus | 연속 요청 시 한 창, 닫은 뒤 이전 foreground를 강제 변경하지 않음 | Blocked — Starboard tray/panel window를 자동화 대상에서 찾지 못해 연속 tray 요청·창 닫기·foreground 보존을 조작/관찰할 수 없었음 |
 | MAN-038 | 실제 설정 live apply/rollback | theme/font/높이 적용 중 PID·cwd 유지, hotkey 충돌과 저장 실패 UI 확인 | Blocked — theme/font/height save 및 rollback UI를 열 수 없었음. 실행 중 app PID만 관찰했고 CIM process 조회가 access denied여서 기존 terminal PID·cwd 보존은 측정하지 못했음 |
-| MAN-039 | portable WebView2/terminal UI | 새 폴더에서 실제 WebView2 Runtime 초기화, local renderer와 interactive shell 확인 | Partial — test mutex만 바꾼 current 복사본에서 WebView2 renderer, ConHost와 pwsh 생성을 확인하고 실패 격리 관찰; 화면·interactive input 미확인 |
-| MAN-040 | portable update/rollback | 기존 설정 유지, startup 경로 변경과 이전 폴더 복귀 확인 | Partial — 서로 다른 commit의 499-file 격리본으로 이전→현재→이전 smoke 모두 exit 0, 기존 PID와 absent user state 불변; 실제 설정과 enabled startup 경로 갱신·복귀는 미확인 |
+| MAN-039 | portable WebView2/terminal UI | 새 폴더에서 실제 WebView2 Runtime 초기화, local renderer와 interactive shell 확인 | Out of scope — portable Release 실행은 이번 수동 배포 검증 범위에서 제외; 기존 renderer/ConHost/pwsh 및 실패 격리 관찰 기록은 보존 |
+| MAN-040 | portable update/rollback | 기존 설정 유지, startup 경로 변경과 이전 폴더 복귀 확인 | Out of scope — 업데이트 및 rollback은 이번 수동 배포 검증 범위에서 제외; 기존 이전→현재→이전 smoke 기록은 보존 |
 | MAN-041 | workspace restore UI | 복원 opt-in 뒤 재시작에서 탭 이름·순서·선택·시작 폴더가 보존되고 각 tab이 새 PID인지 확인 | Blocked — 현재 `workspace.json`/`.bak`은 없었고 restore opt-in 설정 UI를 조작할 수 없었음; 따라서 재시작 뒤 새 shell PID와 tab metadata 복원을 확인하지 못했음 |
 | MAN-042 | workspace IME and partial failure | 한글 IME 이름 편집, 없는/권한 없는 폴더 또는 shell 한 tab 실패가 다른 tab을 막지 않는지 확인 | Blocked — terminal UI 자동화 대상이 없어 한글 이름 편집 및 실패 tab을 만든 뒤 다른 tab의 계속 시작을 관찰할 수 없었음 |
 | MAN-043 | workspace opt-out | 옵션 해제 뒤 구성 파일 삭제와 다음 시작의 기본 tab 하나를 확인 | Blocked — 초기 workspace primary/backup 부재만 읽기 전용으로 확인했음; opt-out 저장으로 파일을 삭제하고 다음 시작 기본 tab을 확인하는 destructive UI 시나리오는 수행하지 못했음 |
@@ -592,6 +601,12 @@ launch focus 보존과 terminal click activation은 서로 다른 요구사항�
 
 ## Release gate
 
+이번 작업의 수동 완료 판단에는 아래 배포 gate를 적용하지 않는다. portable
+패키징, 오프라인 Release 실행, 업데이트와 rollback은 `Out of scope`이며, 아래
+기록은 향후 별도 배포 검증을 위한 보존 자료다. 셸 선택·지속 세션 및
+renderer·셸·ConPTY 실패 복구/재시작 결과만 이번 범위의 유효한 recovery 결과로
+판정한다.
+
 - clean restore/build/test 성공
 - self-contained `win-x64` publish 성공
 - committed renderer `dist`와 license notice 존재
@@ -603,5 +618,6 @@ launch focus 보존과 terminal click activation은 서로 다른 요구사항�
 - workspace JSON, `.bak`, `.tmp`, command 또는 terminal output이 publish/ZIP/추출본에 없음
 - confirmation token/paste preview/new-output runtime state가 log, workspace, publish/ZIP/추출본에 없음
 - automated/integration 결과가 이 문서에 갱신됨
-- 실제로 실행한 manual case만 `Passed`로 표시
+- 실제로 실행한 manual case만 `Passed`로 표시하며, 배포 제외 항목은
+  `Out of scope`로 표시
 - 미실행 DPI, multi-monitor, fullscreen과 IME case가 숨김없이 남아 있음

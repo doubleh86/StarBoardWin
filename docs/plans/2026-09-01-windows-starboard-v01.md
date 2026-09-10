@@ -922,7 +922,11 @@ portable 배포이며 가상 데스크톱 pinning과 WSL/custom shell은 후속 
 완료 gate:
 
 - clean restore/build/test/publish가 성공한다.
-- release folder에서 renderer asset과 shell이 정상 동작한다.
+- release folder에서 renderer asset과 shell이 정상 동작한다. (기존 자동·격리
+  기록; 이번 수동 배포 검증 완료 판단에서는 제외)
+- portable 패키징, 오프라인 Release 실행, 업데이트와 rollback은 이번 수동
+  검증 작업의 필수 범위와 완료 판단에서 제외한다. 기존 자동·격리 결과는
+  보존 자료로만 남긴다.
 - runtime network/telemetry가 없다.
 - 자동 테스트와 실제 수행한 manual test 결과가 문서와 일치한다.
 - 알려진 Windows API 위험과 virtual desktop 제약이 숨김없이 기록돼 있다.
@@ -965,6 +969,12 @@ UI/Explorer/display에 의존하는 test는 CI에서 불안정하면 자동 test
 manual test로 분리한다.
 
 ### Manual test
+
+이번 작업의 수동 검증 완료 판단에서는 portable 패키징, 오프라인 Release 실행,
+업데이트와 rollback을 제외한다. 기존 package·Release·격리 smoke 결과는 진행
+기록으로 보존하되 배포 검증의 `Passed` 근거로 사용하지 않는다. 셸 선택·지속
+세션과 renderer·셸·ConPTY 실패 후 host/session 유지 및 재시작 결과만 이번
+범위에서 유효한 recovery 검증 결과다.
 
 - launch focus preservation
 - terminal click activation
