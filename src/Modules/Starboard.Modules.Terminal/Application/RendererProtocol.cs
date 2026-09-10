@@ -11,6 +11,9 @@ internal static class RendererProtocol
         "initialize",
         "apply-appearance",
         "workspace-save-status",
+        "saved-tabs-snapshot",
+        "saved-tab-operation-result",
+        "saved-tab-launch-result",
     ];
 
     private static readonly HashSet<string> _sessionHostMessageTypes =
@@ -64,6 +67,51 @@ internal static class RendererProtocol
                                         JsonSerializerOptions.Web);
     }
 
+    internal static string SerializeSavedTabsSnapshot(TerminalSavedTabsSnapshot snapshot, int runningTabCount)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ValidateRunningTabCount(runningTabCount);
+
+        return SerializeGlobalMessage("saved-tabs-snapshot", CreateSavedTabsPayload(snapshot, runningTabCount));
+    }
+
+    internal static string SerializeSavedTabOperationResult(TerminalSavedTabOperationResult result,
+                                                            int runningTabCount)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ValidateRunningTabCount(runningTabCount);
+        var snapshot = result.Snapshot is null ? null : CreateSavedTabsPayload(result.Snapshot, runningTabCount);
+
+        return SerializeGlobalMessage("saved-tab-operation-result",
+                                      new
+                                      {
+                                          requestId = result.RequestId.ToString(),
+                                          operation = FormatOperation(result.Operation),
+                                          status = FormatOperationStatus(result.Status),
+                                          result.FailureMessage,
+                                          snapshot,
+                                      });
+    }
+
+    internal static string SerializeSavedTabLaunchResult(TerminalSavedTabLaunchResult result, int runningTabCount)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ValidateRunningTabCount(runningTabCount);
+
+        return SerializeGlobalMessage("saved-tab-launch-result",
+                                      new
+                                      {
+                                          requestId = result.RequestId.ToString(),
+                                          savedTabId = result.SavedTabId.ToString(),
+                                          status = FormatLaunchStatus(result.Status),
+                                          sessionId = result.Session?.SessionId.ToString("N"),
+                                          sessionGeneration = result.Session?.Generation,
+                                          result.FailureMessage,
+                                          runningTabCount,
+                                          maximumRunningTabs = TerminalSavedTabsContract.MaximumRunningTabs,
+                                      });
+    }
+
     internal static bool TryParse(string json, out RendererMessage? message)
     {
         message = null;
@@ -107,6 +155,11 @@ internal static class RendererProtocol
                 "session-error" => ParseSession(RendererMessageType.SessionError, root, payload),
                 "renderer-error" => ParseGlobal(RendererMessageType.RendererError, root, payload),
                 "confirmation-response" => ParseConfirmationResponse(root, payload),
+                "create-saved-tab" => ParseCreateSavedTab(root, payload),
+                "update-saved-tab" => ParseUpdateSavedTab(root, payload),
+                "delete-saved-tab" => ParseDeleteSavedTab(root, payload),
+                "launch-saved-tab" => ParseLaunchSavedTab(root, payload),
+                "cancel-saved-tab-launch" => ParseCancelSavedTabLaunch(root, payload),
                 _ => null,
             };
 
@@ -115,6 +168,264 @@ internal static class RendererProtocol
         catch (JsonException)
         {
             return false;
+        }
+    }
+
+    private static RendererMessage? ParseCreateSavedTab(JsonElement root, JsonElement payload)
+    {
+        if (TryParseGlobalSavedTabDefinition(root, payload, requireSavedTabId: false, out var requestId,
+                                             out _, out var name, out var startingDirectory,
+                                             out var shellKind) == false)
+        {
+            return null;
+        }
+
+        var request = new TerminalSavedTabCreateRequest(requestId, name, startingDirectory, shellKind);
+        return new RendererMessage(RendererMessageType.CreateSavedTab, SavedTabCreateRequest: request);
+    }
+
+    private static RendererMessage? ParseUpdateSavedTab(JsonElement root, JsonElement payload)
+    {
+        if (TryParseGlobalSavedTabDefinition(root, payload, requireSavedTabId: true, out var requestId,
+                                             out var savedTabId, out var name, out var startingDirectory,
+                                             out var shellKind) == false)
+        {
+            return null;
+        }
+
+        var savedTab = new TerminalSavedTab(savedTabId, name, startingDirectory, shellKind);
+        var request = new TerminalSavedTabUpdateRequest(requestId, savedTab);
+        return new RendererMessage(RendererMessageType.UpdateSavedTab, SavedTabUpdateRequest: request);
+    }
+
+    private static RendererMessage? ParseDeleteSavedTab(JsonElement root, JsonElement payload)
+    {
+        if (TryParseGlobalSavedTabTarget(root, payload, out var requestId, out var savedTabId) == false)
+        {
+            return null;
+        }
+
+        var request = new TerminalSavedTabDeleteRequest(requestId, savedTabId);
+        return new RendererMessage(RendererMessageType.DeleteSavedTab, SavedTabDeleteRequest: request);
+    }
+
+    private static RendererMessage? ParseLaunchSavedTab(JsonElement root, JsonElement payload)
+    {
+        if (TryParseGlobalSavedTabTarget(root, payload, out var requestId, out var savedTabId) == false)
+        {
+            return null;
+        }
+
+        var request = new TerminalSavedTabLaunchRequest(requestId, savedTabId);
+        return new RendererMessage(RendererMessageType.LaunchSavedTab, SavedTabLaunchRequest: request);
+    }
+
+    private static RendererMessage? ParseCancelSavedTabLaunch(JsonElement root, JsonElement payload)
+    {
+        if (TryParseGlobalRequestId(root, payload, out var requestId) == false)
+        {
+            return null;
+        }
+
+        var cancellation = new TerminalSavedTabLaunchCancellation(requestId);
+        return new RendererMessage(RendererMessageType.CancelSavedTabLaunch,
+                                   SavedTabLaunchCancellation: cancellation);
+    }
+
+    private static bool TryParseGlobalSavedTabDefinition(JsonElement root, JsonElement payload,
+                                                         bool requireSavedTabId,
+                                                         out TerminalSavedTabRequestId requestId,
+                                                         out TerminalSavedTabId savedTabId,
+                                                         out string name, out string startingDirectory,
+                                                         out TerminalShellKind shellKind)
+    {
+        requestId = default;
+        savedTabId = default;
+        name = string.Empty;
+        startingDirectory = string.Empty;
+        shellKind = default;
+        if (TryParseGlobalRequestId(root, payload, out requestId) == false ||
+            payload.TryGetProperty("name", out var nameElement) == false ||
+            nameElement.ValueKind != JsonValueKind.String ||
+            payload.TryGetProperty("startingDirectory", out var startingDirectoryElement) == false ||
+            startingDirectoryElement.ValueKind != JsonValueKind.String ||
+            payload.TryGetProperty("shellKind", out var shellKindElement) == false ||
+            shellKindElement.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        name = nameElement.GetString() ?? string.Empty;
+        startingDirectory = startingDirectoryElement.GetString() ?? string.Empty;
+        if (TryParseShellKind(shellKindElement.GetString(), out shellKind) == false)
+        {
+            return false;
+        }
+
+        if (requireSavedTabId == true && TryParseSavedTabId(payload, out savedTabId) == false)
+        {
+            return false;
+        }
+
+        try
+        {
+            TerminalSavedTabContractValidator.ValidateDefinition(name, startingDirectory, shellKind);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryParseGlobalSavedTabTarget(JsonElement root, JsonElement payload,
+                                                     out TerminalSavedTabRequestId requestId,
+                                                     out TerminalSavedTabId savedTabId)
+    {
+        savedTabId = default;
+        return TryParseGlobalRequestId(root, payload, out requestId) &&
+               TryParseSavedTabId(payload, out savedTabId);
+    }
+
+    private static bool TryParseGlobalRequestId(JsonElement root, JsonElement payload,
+                                                out TerminalSavedTabRequestId requestId)
+    {
+        requestId = default;
+        if (root.TryGetProperty("sessionId", out _) == true || payload.ValueKind != JsonValueKind.Object ||
+            payload.TryGetProperty("requestId", out var requestIdElement) == false ||
+            requestIdElement.ValueKind != JsonValueKind.String ||
+            TryParseCompactGuid(requestIdElement.GetString(), out var identifier) == false)
+        {
+            return false;
+        }
+
+        requestId = new TerminalSavedTabRequestId(identifier);
+        return true;
+    }
+
+    private static bool TryParseSavedTabId(JsonElement payload, out TerminalSavedTabId savedTabId)
+    {
+        savedTabId = default;
+        if (payload.TryGetProperty("savedTabId", out var savedTabIdElement) == false ||
+            savedTabIdElement.ValueKind != JsonValueKind.String ||
+            TryParseCompactGuid(savedTabIdElement.GetString(), out var identifier) == false)
+        {
+            return false;
+        }
+
+        savedTabId = new TerminalSavedTabId(identifier);
+        return true;
+    }
+
+    private static bool TryParseCompactGuid(string? value, out Guid identifier)
+    {
+        return Guid.TryParseExact(value, "N", out identifier) && identifier != Guid.Empty;
+    }
+
+    private static bool TryParseShellKind(string? value, out TerminalShellKind shellKind)
+    {
+        shellKind = value switch
+        {
+            "automatic" => TerminalShellKind.Automatic,
+            "pwsh" => TerminalShellKind.Pwsh,
+            "powershell" => TerminalShellKind.PowerShell,
+            "cmd" => TerminalShellKind.Cmd,
+            _ => default,
+        };
+
+        return value is "automatic" or "pwsh" or "powershell" or "cmd";
+    }
+
+    private static object CreateSavedTabsPayload(TerminalSavedTabsSnapshot snapshot, int runningTabCount)
+    {
+        var tabs = snapshot.Tabs
+            .Select(tab => new
+            {
+                savedTabId = tab.SavedTabId.ToString(),
+                tab.Name,
+                tab.StartingDirectory,
+                shellKind = FormatShellKind(tab.ShellKind),
+            })
+            .ToArray();
+
+        return new
+        {
+            snapshot.SchemaVersion,
+            maximumSavedTabs = TerminalSavedTabsContract.MaximumSavedTabs,
+            runningTabCount,
+            maximumRunningTabs = TerminalSavedTabsContract.MaximumRunningTabs,
+            tabs,
+        };
+    }
+
+    private static string FormatShellKind(TerminalShellKind shellKind)
+    {
+        return shellKind switch
+        {
+            TerminalShellKind.Automatic => "automatic",
+            TerminalShellKind.Pwsh => "pwsh",
+            TerminalShellKind.PowerShell => "powershell",
+            TerminalShellKind.Cmd => "cmd",
+            _ => throw new ArgumentOutOfRangeException(nameof(shellKind), shellKind,
+                                                       "The renderer cannot serialize an unsupported shell kind."),
+        };
+    }
+
+    private static string FormatOperation(TerminalSavedTabOperation operation)
+    {
+        return operation switch
+        {
+            TerminalSavedTabOperation.Create => "create",
+            TerminalSavedTabOperation.Update => "update",
+            TerminalSavedTabOperation.Delete => "delete",
+            _ => throw new ArgumentOutOfRangeException(nameof(operation), operation,
+                                                       "The renderer cannot serialize an unsupported " +
+                                                       "saved tab operation."),
+        };
+    }
+
+    private static string FormatOperationStatus(TerminalSavedTabOperationStatus status)
+    {
+        return status switch
+        {
+            TerminalSavedTabOperationStatus.Succeeded => "succeeded",
+            TerminalSavedTabOperationStatus.Cancelled => "cancelled",
+            TerminalSavedTabOperationStatus.SavedTabLimitReached => "saved-tab-limit-reached",
+            TerminalSavedTabOperationStatus.SavedTabNotFound => "saved-tab-not-found",
+            TerminalSavedTabOperationStatus.InvalidName => "invalid-name",
+            TerminalSavedTabOperationStatus.InvalidStartingDirectory => "invalid-starting-directory",
+            TerminalSavedTabOperationStatus.UnsupportedShell => "unsupported-shell",
+            TerminalSavedTabOperationStatus.Failed => "failed",
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status,
+                                                       "The renderer cannot serialize an unsupported " +
+                                                       "saved tab status."),
+        };
+    }
+
+    private static string FormatLaunchStatus(TerminalSavedTabLaunchStatus status)
+    {
+        return status switch
+        {
+            TerminalSavedTabLaunchStatus.Started => "started",
+            TerminalSavedTabLaunchStatus.DuplicateRequest => "duplicate-request",
+            TerminalSavedTabLaunchStatus.Cancelled => "cancelled",
+            TerminalSavedTabLaunchStatus.RunningTabLimitReached => "running-tab-limit-reached",
+            TerminalSavedTabLaunchStatus.SavedTabNotFound => "saved-tab-not-found",
+            TerminalSavedTabLaunchStatus.StartingDirectoryUnavailable => "starting-directory-unavailable",
+            TerminalSavedTabLaunchStatus.ShellUnavailable => "shell-unavailable",
+            TerminalSavedTabLaunchStatus.Failed => "failed",
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status,
+                                                       "The renderer cannot serialize an unsupported " +
+                                                       "saved tab launch status."),
+        };
+    }
+
+    private static void ValidateRunningTabCount(int runningTabCount)
+    {
+        if (runningTabCount < 0 || runningTabCount > TerminalSavedTabsContract.MaximumRunningTabs)
+        {
+            throw new ArgumentOutOfRangeException(nameof(runningTabCount), runningTabCount,
+                                                  "The renderer running tab count is outside the supported range.");
         }
     }
 

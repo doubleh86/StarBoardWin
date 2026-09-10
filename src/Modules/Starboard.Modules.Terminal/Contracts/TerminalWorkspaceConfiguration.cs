@@ -12,7 +12,8 @@ public sealed record TerminalWorkspaceTabConfiguration(TerminalTabConfigurationI
 
 /// <summary>
 /// The persisted terminal-only workspace. It never contains renderer session IDs,
-/// process IDs, terminal input, output, or shell runtime state.
+/// process IDs, terminal input, output, or shell runtime state. User-created saved tabs use
+/// <see cref="TerminalSavedTabsSnapshot"/> and have an independent persistence lifetime.
 /// </summary>
 public sealed record TerminalWorkspaceConfiguration(int SchemaVersion,
                                                     IReadOnlyList<TerminalWorkspaceTabConfiguration> Tabs,
