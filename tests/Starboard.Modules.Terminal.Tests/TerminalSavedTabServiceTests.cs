@@ -338,6 +338,12 @@ public sealed class TerminalSavedTabServiceTests
             remove { }
         }
 
+        public event Action<TerminalSessionCommandSignal>? CommandLifecycleChanged
+        {
+            add { }
+            remove { }
+        }
+
         internal int DisposeCount { get; private set; }
 
         public void BeginReading()

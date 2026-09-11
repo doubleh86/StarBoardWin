@@ -13,6 +13,7 @@ namespace Starboard.Modules.Terminal.Infrastructure;
 internal sealed class ConPtySession : ITerminalSession
 {
     private readonly IDiagnosticLog diagnosticLog;
+    private readonly IShellCommandLifecycleIntegration commandLifecycleIntegration;
     private readonly SafePseudoConsoleHandle pseudoConsole;
     private readonly SafeFileHandle pseudoConsoleInput;
     private readonly SafeFileHandle pseudoConsoleOutput;
@@ -23,17 +24,23 @@ internal sealed class ConPtySession : ITerminalSession
     private readonly FileStream outputStream;
     private readonly CancellationTokenSource lifetimeCancellation = new();
     private readonly SemaphoreSlim inputLock = new(1, 1);
+    private readonly TaskCompletionSource shellOutputStarted =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private Task? outputPump;
     private Task? processWait;
+    private Task? commandLifecycleInitialization;
     private bool isDisposed;
 
-    private ConPtySession(IDiagnosticLog diagnosticLog, SafePseudoConsoleHandle pseudoConsole,
+    private ConPtySession(IDiagnosticLog diagnosticLog,
+                          IShellCommandLifecycleIntegration commandLifecycleIntegration,
+                          SafePseudoConsoleHandle pseudoConsole,
                           SafeFileHandle pseudoConsoleInput, SafeFileHandle pseudoConsoleOutput,
                           ProcessAttributeList processAttributeList, SafeKernelHandle process,
                           SafeKernelHandle processThread, FileStream inputStream, FileStream outputStream)
     {
         this.diagnosticLog = diagnosticLog;
+        this.commandLifecycleIntegration = commandLifecycleIntegration;
         this.pseudoConsole = pseudoConsole;
         this.pseudoConsoleInput = pseudoConsoleInput;
         this.pseudoConsoleOutput = pseudoConsoleOutput;
@@ -42,11 +49,14 @@ internal sealed class ConPtySession : ITerminalSession
         this.processThread = processThread;
         this.inputStream = inputStream;
         this.outputStream = outputStream;
+        commandLifecycleIntegration.SignalReceived += HandleCommandLifecycleSignal;
     }
 
     public event Action<string>? OutputReceived;
 
     public event Action<uint>? Exited;
+
+    public event Action<TerminalSessionCommandSignal>? CommandLifecycleChanged;
 
     internal static ConPtySession Start(ShellLaunchSpec shell, int columns, int rows, IDiagnosticLog diagnosticLog)
     {
@@ -58,9 +68,12 @@ internal sealed class ConPtySession : ITerminalSession
         ProcessAttributeList? processAttributeList = null;
         SafeKernelHandle? process = null;
         SafeKernelHandle? processThread = null;
+        IShellCommandLifecycleIntegration? commandLifecycleIntegration = null;
 
         try
         {
+            commandLifecycleIntegration = ShellCommandLifecycleIntegrationFactory.Create(shell, diagnosticLog);
+            var launchSpec = commandLifecycleIntegration.LaunchSpec;
             CreatePipe(out pseudoConsoleInput, out hostInput);
             CreatePipe(out hostOutput, out pseudoConsoleOutput);
 
@@ -78,7 +91,7 @@ internal sealed class ConPtySession : ITerminalSession
                 },
                 AttributeList = processAttributeList.DangerousGetHandle(),
             };
-            var commandLine = new StringBuilder($"\"{shell.ExecutablePath}\" {shell.Arguments}".TrimEnd());
+            var commandLine = new StringBuilder($"\"{launchSpec.ExecutablePath}\" {launchSpec.Arguments}".TrimEnd());
             var securityAttributeSize = Marshal.SizeOf<SecurityAttributes>();
             var processAttributes = new SecurityAttributes
             {
@@ -89,9 +102,10 @@ internal sealed class ConPtySession : ITerminalSession
                 Length = securityAttributeSize,
             };
 
-            if (NativeMethods.CreateProcessW(shell.ExecutablePath, commandLine, ref processAttributes,
+            if (NativeMethods.CreateProcessW(launchSpec.ExecutablePath, commandLine, ref processAttributes,
                                              ref threadAttributes, false, NativeMethods.ExtendedStartupInfoPresent, 0,
-                                             shell.WorkingDirectory, ref startupInfo, out var processInformation) == false)
+                                             launchSpec.WorkingDirectory, ref startupInfo,
+                                             out var processInformation) == false)
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
@@ -104,7 +118,8 @@ internal sealed class ConPtySession : ITerminalSession
             var outputStream = new FileStream(hostOutput, FileAccess.Read, 4096, false);
             hostOutput = null;
 
-            return new ConPtySession(diagnosticLog, pseudoConsole, pseudoConsoleInput, pseudoConsoleOutput,
+            return new ConPtySession(diagnosticLog, commandLifecycleIntegration, pseudoConsole,
+                                     pseudoConsoleInput, pseudoConsoleOutput,
                                      processAttributeList, process, processThread, inputStream, outputStream);
         }
         catch
@@ -117,6 +132,10 @@ internal sealed class ConPtySession : ITerminalSession
             process?.Dispose();
             processAttributeList?.Dispose();
             pseudoConsole?.Dispose();
+            if (commandLifecycleIntegration is not null)
+            {
+                commandLifecycleIntegration.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
 
             throw;
         }
@@ -125,23 +144,34 @@ internal sealed class ConPtySession : ITerminalSession
     public void BeginReading()
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
+        commandLifecycleIntegration.Start();
         outputPump ??= PumpOutputAsync(lifetimeCancellation.Token);
         processWait ??= WaitForExitAsync(lifetimeCancellation.Token);
+        commandLifecycleInitialization ??= InitializeCommandLifecycleAsync(lifetimeCancellation.Token);
     }
 
     public async ValueTask WriteAsync(string data, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
+        if (commandLifecycleInitialization is not null)
+        {
+            await commandLifecycleInitialization.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         var bytes = Encoding.UTF8.GetBytes(data);
 
         await inputLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var writeSucceeded = false;
         try
         {
+            commandLifecycleIntegration.BeginInputWrite(data);
             await inputStream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
             await inputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            writeSucceeded = true;
         }
         finally
         {
+            commandLifecycleIntegration.CompleteInputWrite(writeSucceeded);
             inputLock.Release();
         }
     }
@@ -163,6 +193,9 @@ internal sealed class ConPtySession : ITerminalSession
         isDisposed = true;
         lifetimeCancellation.Cancel();
         inputStream.Dispose();
+        await ObserveBackgroundTaskAsync(commandLifecycleInitialization).ConfigureAwait(false);
+        commandLifecycleIntegration.SignalReceived -= HandleCommandLifecycleSignal;
+        await commandLifecycleIntegration.DisposeAsync().ConfigureAwait(false);
 
         if (NativeMethods.GetExitCodeProcess(process, out var exitCode) == true &&
             exitCode == NativeMethods.StillActive)
@@ -206,7 +239,12 @@ internal sealed class ConPtySession : ITerminalSession
                     break;
                 }
 
-                OutputReceived?.Invoke(new string(buffer, 0, count));
+                shellOutputStarted.TrySetResult();
+                var output = commandLifecycleIntegration.FilterOutput(new string(buffer, 0, count));
+                if (output.Length > 0)
+                {
+                    OutputReceived?.Invoke(output);
+                }
             }
         }
         catch (Exception exception) when (
@@ -229,7 +267,50 @@ internal sealed class ConPtySession : ITerminalSession
             exitCode = uint.MaxValue;
         }
 
+        commandLifecycleIntegration.NotifySessionExited();
         Exited?.Invoke(exitCode);
+    }
+
+    private async Task InitializeCommandLifecycleAsync(CancellationToken cancellationToken)
+    {
+        var bootstrapInput = commandLifecycleIntegration.BootstrapInput;
+        if (bootstrapInput is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await shellOutputStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken)
+                .ConfigureAwait(false);
+            var bytes = Encoding.UTF8.GetBytes(bootstrapInput);
+            await inputLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await inputStream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+                await inputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                inputLock.Release();
+            }
+        }
+        catch (Exception exception) when (
+            exception is OperationCanceledException or IOException or ObjectDisposedException or TimeoutException)
+        {
+            if (cancellationToken.IsCancellationRequested == false)
+            {
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "InitializeCommandLifecycle",
+                                    "The shell command lifecycle integration could not be initialized.", exception);
+            }
+
+            commandLifecycleIntegration.NotifySessionExited();
+        }
+    }
+
+    private void HandleCommandLifecycleSignal(TerminalSessionCommandSignal signal)
+    {
+        CommandLifecycleChanged?.Invoke(signal);
     }
 
     private static void CreatePipe(out SafeFileHandle readPipe, out SafeFileHandle writePipe)

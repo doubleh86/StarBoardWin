@@ -57,6 +57,12 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
     internal event Action<TerminalNewOutputStateSnapshot>? NewOutputStateChanged;
 
+    internal event Action<TerminalSessionCommandStarted>? CommandStarted;
+
+    internal event Action<TerminalSessionCommandFinished>? CommandFinished;
+
+    internal event Action<TerminalCommandCompletion>? CommandCompleted;
+
     internal TerminalWorkspaceSnapshot Snapshot
     {
         get
@@ -834,12 +840,15 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     private async Task StartSessionAsync(TerminalSessionId sessionId)
     {
         ShellLaunchSpec launchSpec;
+        TerminalSessionReference sessionReference;
         lock (stateLock)
         {
             if (tabShells.TryGetValue(sessionId, out launchSpec!) == false)
             {
                 throw new InvalidOperationException("The terminal tab has no captured shell configuration.");
             }
+
+            sessionReference = new TerminalSessionReference(sessionId.Value, sessionGenerations[sessionId]);
         }
 
         ITerminalSession? session = null;
@@ -851,11 +860,13 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             var workingDirectory = TerminalStartingDirectory.GetRequiredExisting(launchSpec.WorkingDirectory);
             launchSpec = launchSpec with { WorkingDirectory = workingDirectory };
             session = sessionFactory.Start(launchSpec, columns, rows);
-            entry = new SessionEntry(sessionId, session);
+            entry = new SessionEntry(sessionId, session, sessionReference);
             entry.OutputHandler = data => OnOutputReceived(entry, data);
             entry.ExitHandler = exitCode => OnExited(entry, exitCode);
+            entry.CommandLifecycleHandler = signal => OnCommandLifecycleChanged(entry, signal);
             session.OutputReceived += entry.OutputHandler;
             session.Exited += entry.ExitHandler;
+            session.CommandLifecycleChanged += entry.CommandLifecycleHandler;
 
             lock (stateLock)
             {
@@ -1136,12 +1147,94 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 return;
             }
 
+            _ = expectedEntry.CommandLifecycleTracker.TryApply(
+                TerminalShellIntegrationSignal.IntegrationLost(expectedEntry.SessionReference), out _);
+            expectedEntry.ActiveExecutionId = null;
             tabRegistry.SetState(expectedEntry.SessionId, TerminalSessionState.Exited, exitCode);
             snapshot = tabRegistry.CreateSnapshot();
         }
 
         WorkspaceChanged?.Invoke(snapshot);
         SessionExited?.Invoke(new TerminalSessionExit(expectedEntry.SessionId, exitCode));
+    }
+
+    private void OnCommandLifecycleChanged(SessionEntry expectedEntry, TerminalSessionCommandSignal signal)
+    {
+        TerminalSessionCommandStarted? started = null;
+        TerminalSessionCommandFinished? finished = null;
+        TerminalCommandCompletion? completion = null;
+
+        lock (stateLock)
+        {
+            if (sessions.TryGetValue(expectedEntry.SessionId, out var currentEntry) == false ||
+                ReferenceEquals(currentEntry, expectedEntry) == false)
+            {
+                return;
+            }
+
+            if (signal.Kind == TerminalSessionCommandSignalKind.IntegrationLost)
+            {
+                _ = expectedEntry.CommandLifecycleTracker.TryApply(
+                    TerminalShellIntegrationSignal.IntegrationLost(expectedEntry.SessionReference), out _);
+                expectedEntry.ActiveExecutionId = null;
+                return;
+            }
+
+            if (signal.Kind == TerminalSessionCommandSignalKind.Started)
+            {
+                var accepted = expectedEntry.CommandLifecycleTracker.TryApply(
+                    TerminalShellIntegrationSignal.CommandStarted(expectedEntry.SessionReference,
+                                                                  signal.ExecutionId), out _);
+                if (accepted == false)
+                {
+                    return;
+                }
+
+                expectedEntry.ActiveExecutionId = signal.ExecutionId;
+                started = new TerminalSessionCommandStarted(expectedEntry.SessionReference, signal.ExecutionId);
+            }
+            else if (signal.Kind == TerminalSessionCommandSignalKind.Finished &&
+                     expectedEntry.ActiveExecutionId == signal.ExecutionId)
+            {
+                if (signal.ExitCode.HasValue == true)
+                {
+                    var accepted = expectedEntry.CommandLifecycleTracker.TryApply(
+                        TerminalShellIntegrationSignal.CommandFinished(expectedEntry.SessionReference,
+                                                                       signal.ExecutionId,
+                                                                       signal.ExitCode.Value), out completion);
+                    if (accepted == false)
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    // cmd.exe can prove return to its prompt but exposes no dynamic ERRORLEVEL in PROMPT.
+                    // Reset the strict completion tracker without inventing a success or failure result.
+                    expectedEntry.CommandLifecycleTracker =
+                        new TerminalCommandLifecycleTracker(expectedEntry.SessionReference);
+                }
+
+                expectedEntry.ActiveExecutionId = null;
+                finished = new TerminalSessionCommandFinished(expectedEntry.SessionReference, signal.ExecutionId,
+                                                              signal.ExitCode);
+            }
+        }
+
+        if (started.HasValue == true)
+        {
+            CommandStarted?.Invoke(started.Value);
+        }
+
+        if (finished.HasValue == true)
+        {
+            CommandFinished?.Invoke(finished.Value);
+        }
+
+        if (completion is not null)
+        {
+            CommandCompleted?.Invoke(completion);
+        }
     }
 
     private TerminalConfirmationToken CreateConfirmationTokenLocked(TerminalSessionId sessionId)
@@ -1295,6 +1388,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
         entry.Session.OutputReceived -= entry.OutputHandler;
         entry.Session.Exited -= entry.ExitHandler;
+        entry.Session.CommandLifecycleChanged -= entry.CommandLifecycleHandler;
     }
 
     private void ThrowIfUnavailable()
@@ -1339,19 +1433,30 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
     private sealed class SessionEntry
     {
-        internal SessionEntry(TerminalSessionId sessionId, ITerminalSession session)
+        internal SessionEntry(TerminalSessionId sessionId, ITerminalSession session,
+                              TerminalSessionReference sessionReference)
         {
             SessionId = sessionId;
             Session = session;
+            SessionReference = sessionReference;
+            CommandLifecycleTracker = new TerminalCommandLifecycleTracker(sessionReference);
         }
 
         internal TerminalSessionId SessionId { get; }
 
         internal ITerminalSession Session { get; }
 
+        internal TerminalSessionReference SessionReference { get; }
+
+        internal TerminalCommandLifecycleTracker CommandLifecycleTracker { get; set; }
+
+        internal TerminalCommandExecutionId? ActiveExecutionId { get; set; }
+
         internal Action<string>? OutputHandler { get; set; }
 
         internal Action<uint>? ExitHandler { get; set; }
+
+        internal Action<TerminalSessionCommandSignal>? CommandLifecycleHandler { get; set; }
     }
 
     private enum ConfirmationKind

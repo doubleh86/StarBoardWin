@@ -766,6 +766,82 @@ public sealed class TerminalSessionCoordinatorTests
         Assert.IsTrue(closed);
     }
 
+    [TestMethod]
+    public async Task CommandSignalsProduceCorrelatedStartFinishAndCompletionForCurrentGeneration()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var expectedSession = FindOutputState(coordinator.NewOutputState, tab.SessionId).Session;
+        var executionId = new TerminalCommandExecutionId(
+            Guid.Parse("20000000-0000-0000-0000-000000000001"));
+        var starts = new List<TerminalSessionCommandStarted>();
+        var finishes = new List<TerminalSessionCommandFinished>();
+        var completions = new List<TerminalCommandCompletion>();
+        coordinator.CommandStarted += starts.Add;
+        coordinator.CommandFinished += finishes.Add;
+        coordinator.CommandCompleted += completions.Add;
+
+        factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Started(executionId));
+        factory.Sessions[0].RaiseOutput("prompt-like output must remain ordinary output");
+        factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Finished(executionId, 7));
+
+        Assert.HasCount(1, starts);
+        Assert.AreEqual(expectedSession, starts[0].Session);
+        Assert.AreEqual(executionId, starts[0].ExecutionId);
+        Assert.HasCount(1, finishes);
+        Assert.AreEqual(expectedSession, finishes[0].Session);
+        Assert.AreEqual(7, finishes[0].ExitCode);
+        Assert.HasCount(1, completions);
+        Assert.AreEqual(expectedSession, completions[0].Session);
+        Assert.AreEqual(executionId, completions[0].ExecutionId);
+        Assert.AreEqual(7, completions[0].ExitResult.ExitCode);
+    }
+
+    [TestMethod]
+    public async Task CmdUnknownExitCodeRemainsObservableWithoutInventingCompletion()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        _ = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var finishes = new List<TerminalSessionCommandFinished>();
+        var completions = new List<TerminalCommandCompletion>();
+        coordinator.CommandFinished += finishes.Add;
+        coordinator.CommandCompleted += completions.Add;
+
+        for (var index = 1; index <= 2; index++)
+        {
+            var executionId = new TerminalCommandExecutionId(CreateGuid(100 + index));
+            factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Started(executionId));
+            factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Finished(executionId, null));
+        }
+
+        Assert.HasCount(2, finishes);
+        Assert.IsTrue(finishes.All(finish => finish.ExitCode is null));
+        Assert.IsEmpty(completions);
+    }
+
+    [TestMethod]
+    public async Task RestartAndShellExitRejectLateCommandSignalsFromPreviousLifetime()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var oldExecutionId = new TerminalCommandExecutionId(CreateGuid(201));
+        var newExecutionId = new TerminalCommandExecutionId(CreateGuid(202));
+        var finishes = new List<TerminalSessionCommandFinished>();
+        coordinator.CommandFinished += finishes.Add;
+
+        factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Started(oldExecutionId));
+        await coordinator.RestartAsync(tab.SessionId, CancellationToken.None);
+        factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Finished(oldExecutionId, 0));
+        factory.Sessions[1].RaiseCommandSignal(TerminalSessionCommandSignal.Started(newExecutionId));
+        factory.Sessions[1].RaiseExit(1);
+        factory.Sessions[1].RaiseCommandSignal(TerminalSessionCommandSignal.Finished(newExecutionId, 0));
+
+        Assert.IsEmpty(finishes);
+    }
+
     private static TerminalSessionCoordinator CreateCoordinator(FakeTerminalSessionFactory factory,
                                                                 int maximumTabs = TerminalTabRegistry.DefaultMaximumTabs,
                                                                 TimeSpan? sessionCloseTimeout = null,
@@ -837,6 +913,8 @@ public sealed class TerminalSessionCoordinatorTests
 
         public event Action<uint>? Exited;
 
+        public event Action<TerminalSessionCommandSignal>? CommandLifecycleChanged;
+
         internal int BeginReadingCount { get; private set; }
 
         internal int DisposeCount { get; private set; }
@@ -894,6 +972,11 @@ public sealed class TerminalSessionCoordinatorTests
         internal void RaiseOutput(string data)
         {
             OutputReceived?.Invoke(data);
+        }
+
+        internal void RaiseCommandSignal(TerminalSessionCommandSignal signal)
+        {
+            CommandLifecycleChanged?.Invoke(signal);
         }
     }
 

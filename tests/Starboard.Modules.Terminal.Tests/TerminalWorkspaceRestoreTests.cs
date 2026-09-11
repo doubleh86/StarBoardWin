@@ -513,6 +513,12 @@ public sealed class TerminalWorkspaceRestoreTests
 
         public event Action<uint>? Exited;
 
+        public event Action<TerminalSessionCommandSignal>? CommandLifecycleChanged
+        {
+            add { }
+            remove { }
+        }
+
         public void BeginReading()
         {
         }
