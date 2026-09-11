@@ -47,6 +47,23 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-10 (최신 main `e252bd1` 사용자 요청 배포)
+- 이번 배포는 앞선 수동 검증 작업의 범위와 별개인 사용자 요청이다. Release restore/build와
+  전체 304개 test(7/153/75/31/38)가 통과했으며 경고·오류·실패·skip은 0개다.
+- 실행 중 오케스트레이터를 보호하기 위해 공용 build-server shutdown 없이 별도
+  `out/deploy-e252bd1` 출력에서 검증·self-contained publish했다. 기존 package content
+  검사 함수를 재사용해 필수 asset·고지와 개인정보/개발 파일 제외를 확인했다.
+- 종료 전 Starboard 하위에 ai_auto_work Electron·Python·작업 프로세스가 있음을 확인해
+  사용자에게 알렸고, 작업 중단을 감수하고 교체하라는 명시적 승인을 받았다. 기존 앱은
+  정상 종료 요청 후 15초 내 종료되지 않아 process tree를 강제 종료했다.
+- 기존 instance 종료 뒤 portable smoke exit code 0, version/commit 일치를 확인했다.
+  백업 없이 바탕화면 기존 폴더를 교체하고 원본과 배포 파일 499개의 hash를 대조했다.
+  이번에는 directory 배포이며 ZIP은 새로 생성하지 않았다.
+- Explorer로 재실행한 PID 89036의 응답과 PowerShell·ConHost·WebView2 자식 process를
+  확인했다. 기존 오케스트레이터와 작업 PID는 종료됐으며 자동 재시작하지 않았다.
+- 제품 코드는 기존 `a225da3`과 같고 새 아이콘 적용·저장한 탭·이름 편집 UI는 아직 기획이다.
+  실제 배포본 UI·IME·focus·DPI 조작 검증은 미수행이며 이번 기록은 기획 worktree에만 추가했다.
+
 - 실행일: 2026-09-10 (run `20260910-055029-889715-ee5de9ac`, Windows platform 수동 검증 시도)
 - 실제 장비의 OS, GPU, 연결된 monitor와 현재 topology를 읽기 전용으로 조회했다.
   Windows 11 Pro `10.0.26200` x64, RTX 3060, 동일한 LG ULTRAGEAR 2대이며, 1920×1080
