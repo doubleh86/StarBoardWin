@@ -664,6 +664,23 @@ overlay는 terminal pane 위의 compact absolute surface이며 200 DIP collapsed
 resize하거나 자동 확장하지 않는다. theme appearance의 canvas/accent/selection 색을 search
 decorations에 사용하고, 예상 밖의 색 형식에는 안정된 cyan fallback을 사용한다.
 
+## 터미널 출력 URL 열기
+
+renderer는 xterm.js와 호환되는 공식 `@xterm/addon-web-links` 0.12.0을 session별로 load한다.
+plain text 주소와 OSC 8 hyperlink 모두 HTTP/HTTPS만 후보로 두며, addon의 기본 `window.open`은
+사용하지 않는다. custom handler는 modifier 없는 click과 drag를 가로채지 않고 왼쪽 Ctrl+click일
+때만 active session ID·shell generation·renderer instance ID와 후보 주소를 host에 전달한다.
+renderer의 CSP `connect-src 'none'`, host의 navigation/new-window/download 차단은 그대로 유지하므로
+hover, detection과 confirmation 과정에서 대상 서버로 요청하지 않는다.
+
+host protocol은 2,048자 이하의 well-formed absolute URI, HTTP/HTTPS scheme, 비어 있지 않은 host와
+빈 user-info를 다시 검사한다. file, command, JavaScript와 custom scheme은 renderer message 단계에서
+거부한다. host가 정규화해 실제 실행할 문자열을 읽기 전용 confirmation dialog에 다시 보내며,
+사용자가 확인한 immutable target만 `UseShellExecute`로 Windows 기본 브라우저에 전달한다. tab 전환,
+session restart/remove, renderer reconnect나 세대 불일치 뒤의 응답은 폐기한다. 외부 실행은 UI thread
+밖에서 수행하고 실패는 shell/session을 변경하지 않는 local feedback으로 격리한다. URL 원문은
+settings, workspace, saved-tab 또는 diagnostic log에 기록하지 않는다.
+
 portable update는 파일을 제자리 교체하거나 시작 프로그램 경로를 자동 이동하지 않는다.
 서로 다른 build commit의 격리 폴더에서 이전→현재→이전 metadata smoke와 absent user state
 불변은 확인했지만, 설정이 존재하는 schema migration/downgrade와 enabled HKCU Run 경로는
@@ -704,3 +721,4 @@ portable update는 파일을 제자리 교체하거나 시작 프로그램 경�
 - [WebView2 development practices](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/developer-guide)
 - [xterm.js 6.0.0](https://github.com/xtermjs/xterm.js/releases/tag/6.0.0)
 - [xterm.js search addon 0.16.0](https://www.npmjs.com/package/@xterm/addon-search/v/0.16.0)
+- [xterm.js web-links addon 0.12.0](https://www.npmjs.com/package/@xterm/addon-web-links/v/0.12.0)

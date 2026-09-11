@@ -24,6 +24,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly TerminalSessionCoordinator sessionCoordinator;
     private readonly TerminalWorkspacePersistence workspacePersistence;
     private readonly TerminalSavedTabService savedTabService;
+    private readonly TerminalUrlOpenService urlOpenService;
     private readonly Lock outputLock = new();
     private readonly Dictionary<TerminalSessionId, PendingSessionOutput> pendingOutput = [];
     private readonly HashSet<TerminalSessionId> outputFlushScheduled = [];
@@ -55,6 +56,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         this.sessionCoordinator = sessionCoordinator;
         this.workspacePersistence = workspacePersistence;
         this.savedTabService = savedTabService;
+        urlOpenService = new TerminalUrlOpenService(new TerminalExternalUrlLauncher());
         sessionCoordinator.WorkspaceChanged += Session_WorkspaceChanged;
         sessionCoordinator.OutputReceived += Session_OutputReceived;
         sessionCoordinator.SessionExited += Session_Exited;
@@ -411,6 +413,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             case RendererMessageType.DropPaths:
                 HandlePathDrop(message, eventArgs);
                 break;
+            case RendererMessageType.OpenUrlRequest:
+                HandleUrlOpenRequest(message);
+                break;
             case RendererMessageType.CloseSession:
                 if (message.SessionId is { } closeSessionId)
                 {
@@ -703,6 +708,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private void Core_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs eventArgs)
     {
         _ = sender;
+        CancelPendingSafetyConfirmation(sendRendererCancellation: false);
         rendererInstanceId = Guid.Empty;
         Renderer.AllowExternalDrop = false;
         var allowedPrefix = $"https://{RendererHostName}/";
@@ -943,6 +949,22 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                            });
     }
 
+    private void PresentUrlOpenConfirmation(TerminalUrlOpenConfirmationRequest request)
+    {
+        var sessionId = new TerminalSessionId(request.Token.Session.SessionId);
+        pendingSafetyConfirmation = new PendingSafetyConfirmation(request.Token, ConfirmationKind.UrlOpen,
+                                                                  request.Target, rendererInstanceId);
+        SendSessionMessage("confirmation-request", sessionId,
+                           new
+                           {
+                               requestId = request.Token.RequestId.ToString(),
+                               sessionGeneration = request.Token.Session.Generation,
+                               kind = "url-open",
+                               request.SessionName,
+                               targetUrl = request.Target.AbsoluteUri,
+                           });
+    }
+
     private async Task ApplyConfirmationResponseAsync(TerminalConfirmationResponse response)
     {
         var pending = pendingSafetyConfirmation;
@@ -963,6 +985,12 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             if (pending.Kind == ConfirmationKind.Paste)
             {
                 _ = await sessionCoordinator.ApplyPasteConfirmationAsync(response, lifetimeCancellation.Token);
+                return;
+            }
+
+            if (pending.Kind == ConfirmationKind.UrlOpen)
+            {
+                await ApplyUrlOpenConfirmationAsync(pending, response);
                 return;
             }
 
@@ -1055,6 +1083,36 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
+    private async Task ApplyUrlOpenConfirmationAsync(PendingSafetyConfirmation pending,
+                                                     TerminalConfirmationResponse response)
+    {
+        if (pending.UrlTarget is null || pending.RendererInstanceId == Guid.Empty ||
+            pending.RendererInstanceId != rendererInstanceId ||
+            rendererSessionGenerations.TryGetValue(new TerminalSessionId(response.Token.Session.SessionId),
+                                                   out var currentGeneration) == false ||
+            currentGeneration != response.Token.Session.Generation ||
+            sessionCoordinator.Snapshot.ActiveSessionId?.Value != response.Token.Session.SessionId ||
+            response.Result != TerminalConfirmationResult.Confirmed)
+        {
+            return;
+        }
+
+        var opened = await urlOpenService.TryOpenAsync(pending.UrlTarget, lifetimeCancellation.Token);
+        if (opened == true || isDisposed == true)
+        {
+            return;
+        }
+
+        diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "OpenUrl",
+                            "The confirmed web address could not be handed to the default browser.");
+        var sessionId = new TerminalSessionId(response.Token.Session.SessionId);
+        if (ContainsSession(sessionId) == true && pending.RendererInstanceId == rendererInstanceId)
+        {
+            SendSessionMessage("url-open-result", sessionId,
+                               new { succeeded = false, message = "기본 브라우저에서 주소를 열지 못했습니다." });
+        }
+    }
+
     private void HandlePathDrop(RendererMessage message, CoreWebView2WebMessageReceivedEventArgs eventArgs)
     {
         if (message.SessionId is not { } sessionId || message.RendererInstanceId != rendererInstanceId ||
@@ -1103,6 +1161,26 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 SendPathDropFailure(sessionId, "드롭한 경로를 확인하지 못했습니다. Explorer에서 다시 시도해 주세요.");
             }
         }
+    }
+
+    private void HandleUrlOpenRequest(RendererMessage message)
+    {
+        var snapshot = sessionCoordinator.Snapshot;
+        if (message.SessionId is not { } sessionId || message.UrlOpenTarget is null ||
+            message.RendererInstanceId != rendererInstanceId || rendererInstanceId == Guid.Empty ||
+            message.SessionGeneration < 1 || pendingSafetyConfirmation is not null ||
+            rendererSessionGenerations.TryGetValue(sessionId, out var currentGeneration) == false ||
+            currentGeneration != message.SessionGeneration ||
+            snapshot.ActiveSessionId != sessionId)
+        {
+            return;
+        }
+
+        var session = new TerminalSessionReference(sessionId.Value, currentGeneration);
+        var token = new TerminalConfirmationToken(TerminalConfirmationRequestId.CreateNew(), session);
+        var sessionName = snapshot.Tabs.Single(tab => tab.SessionId == sessionId).Name;
+        PresentUrlOpenConfirmation(new TerminalUrlOpenConfirmationRequest(token, sessionName,
+                                                                          message.UrlOpenTarget));
     }
 
     private void SendPathDropFailure(TerminalSessionId sessionId, string message)
@@ -1755,9 +1833,12 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         Close,
         Paste,
         PathDrop,
+        UrlOpen,
     }
 
-    private sealed record PendingSafetyConfirmation(TerminalConfirmationToken Token, ConfirmationKind Kind);
+    private sealed record PendingSafetyConfirmation(TerminalConfirmationToken Token, ConfirmationKind Kind,
+                                                    TerminalUrlOpenTarget? UrlTarget = null,
+                                                    Guid RendererInstanceId = default);
 
     private sealed class PendingSessionOutput
     {

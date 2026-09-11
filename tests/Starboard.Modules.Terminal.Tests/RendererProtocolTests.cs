@@ -60,6 +60,52 @@ public sealed class RendererProtocolTests
     }
 
     [TestMethod]
+    public void TryParseUrlOpenCarriesValidatedTargetAndExactLifetime()
+    {
+        const string Json = """
+            {"version":2,"type":"open-url-request","sessionId":"10000000000000000000000000000001","payload":{"rendererInstanceId":"20000000000000000000000000000001","sessionGeneration":7,"activation":"ctrl-click","url":"https://example.com/path?q=one"}}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(RendererMessageType.OpenUrlRequest, message.Type);
+        Assert.AreEqual(SessionId, message.SessionId);
+        Assert.AreEqual(Guid.Parse("20000000-0000-0000-0000-000000000001"), message.RendererInstanceId);
+        Assert.AreEqual(7, message.SessionGeneration);
+        Assert.AreEqual("https://example.com/path?q=one", message.UrlOpenTarget?.AbsoluteUri);
+    }
+
+    [TestMethod]
+    [DataRow("click", "https://example.com")]
+    [DataRow("ctrl-click", "file:///C:/Windows/System32/calc.exe")]
+    [DataRow("ctrl-click", "starboard://settings")]
+    [DataRow("ctrl-click", "https://user@example.com/private")]
+    [DataRow("ctrl-click", "not a URL")]
+    public void TryParseUrlOpenWithoutExplicitSafeWebActivationRejectsMessage(string activation, string url)
+    {
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = 2,
+                                                type = "open-url-request",
+                                                sessionId = SessionId.ToString(),
+                                                payload = new
+                                                {
+                                                    rendererInstanceId = "20000000000000000000000000000001",
+                                                    sessionGeneration = 1,
+                                                    activation,
+                                                    url,
+                                                },
+                                            });
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(message);
+    }
+
+    [TestMethod]
     [DataRow("00000000000000000000000000000000", 1)]
     [DataRow("20000000000000000000000000000001", 0)]
     public void TryParsePathDropInvalidLifetimeIdentityRejectsMessage(string rendererInstanceId,
@@ -151,6 +197,7 @@ public sealed class RendererProtocolTests
     [DataRow("copy", "{\"data\":\"text\"}")]
     [DataRow("paste-request", "{}")]
     [DataRow("drop-paths", "{\"rendererInstanceId\":\"20000000000000000000000000000001\",\"sessionGeneration\":1}")]
+    [DataRow("open-url-request", "{\"rendererInstanceId\":\"20000000000000000000000000000001\",\"sessionGeneration\":1,\"activation\":\"ctrl-click\",\"url\":\"https://example.com\"}")]
     [DataRow("select-session", "{}")]
     [DataRow("close-session", "{}")]
     [DataRow("restart-session", "{}")]
@@ -389,6 +436,8 @@ public sealed class RendererProtocolTests
     [TestMethod]
     [DataRow("confirmation-request")]
     [DataRow("confirmation-cancel")]
+    [DataRow("path-drop-result")]
+    [DataRow("url-open-result")]
     [DataRow("new-output-state")]
     public void SerializeSafetyStateMessageUsesSessionScope(string type)
     {

@@ -76,6 +76,38 @@ Starboard는 작업표시줄에 붙어 빠르게 명령을 입력하고 결과�
 - [x] renderer `npm ci`/build, Terminal focused tests, solution restore/build/test, 정렬 및 diff 검사를
   수행한다. 실제 Explorer·WebView2 drop과 IME/focus 회귀는 자동 검증과 구분해 수동 항목으로 남긴다.
 
+## URL-OPEN-01 — 출력 웹 주소를 확인 후 외부 브라우저로 열기
+
+### 목표와 범위
+
+- xterm 출력의 HTTP/HTTPS 절대 주소만 링크 후보로 만들며 일반 클릭과 drag selection은 유지한다.
+  renderer는 Ctrl+클릭에만 session/renderer 세대와 URL 후보를 host로 보내고 자체 navigation,
+  새 창, 미리보기 또는 fetch를 수행하지 않는다.
+- host는 URL 길이, 절대 형식과 scheme을 다시 검증한 뒤 실제 대상 문자열을 읽기 전용 확인 dialog에
+  표시한다. 사용자가 같은 renderer 수명에서 확인한 경우에만 Windows 기본 브라우저에 전달한다.
+- file, command, custom protocol, 사용자 정보가 든 URL, 잘못되거나 과도하게 긴 값은 거부한다.
+  원문 URL은 설정이나 진단 로그에 저장하지 않으며 실패는 terminal session과 분리해 복구 가능한
+  renderer 상태 메시지로만 알린다.
+
+### 영향 파일과 위험
+
+- Terminal contract/application에는 URL 검증 결과와 renderer message parsing을 둔다.
+  `TerminalView.xaml.cs`는 pending URL 확인 수명과 외부 실행 실패 경계를 소유한다.
+- renderer `src/`는 xterm link provider와 확인 dialog를 연결하고 `dist/`는 build로 재생성한다.
+  Preferences와 DesktopIntegration은 변경하지 않는다.
+- 핵심 위험은 표시 문자열과 실행 대상의 불일치, 일반 selection 회귀, renderer reconnect 이후 늦은
+  확인, shell execute 실패다. host 재검증, immutable 확인 대상, renderer instance/generation 검사와
+  예외 격리로 차단한다.
+
+### 구현 및 검증
+
+- [x] HTTP/HTTPS 전용 URL 검증 계약과 renderer protocol/lifetime 검증을 구현하고 malformed,
+  unsupported scheme, user-info, 과도한 길이와 외부 실행 실패 경계를 테스트한다.
+- [x] renderer Ctrl+클릭 링크 provider와 실제 대상 확인 UI를 연결하고 일반 click/drag, no-fetch,
+  source/dist 일치 계약을 보강한다.
+- [x] renderer `npm ci`/build, Terminal focused tests, solution restore/build/test, 정렬 및 diff 검사를
+  수행한다. 실제 기본 브라우저 실행과 WebView2 selection/focus는 자동 검증과 구분해 수동 항목으로 남긴다.
+
 ## SETTINGS-UI-01 — 설정 창 글자 대비 보정
 
 ### 관찰과 범위
@@ -204,8 +236,11 @@ workspace/saved-tabs, logs와 WebView2 data는 거부한다.
   일반·비활성·오류 전경색 토큰과 popup 항목 스타일을 적용하고 UI 계약 테스트를 추가했다.
 - [ ] 2026-09-11: Dark, Light, One Dark, Tokyo Night를 실제 WPF 창에서 100/125/150/200%
   배율로 screenshot 확인한다. 자동 계약 검증과 실제 화면 확인은 별도 결과로 기록한다.
-- [ ] PATH-DROP-01 외 남은 후속 후보의 상세 기획·구현·검증.
+- [ ] 긴 작업 완료 알림 후보의 상세 기획·구현·검증.
 - [x] 2026-09-11: PATH-DROP-01의 shell별 인용, 확인 미리보기, renderer/session
   generation 경계와 WebView2 additional-object 연결을 구현했다. renderer build,
   Terminal 214개와 전체 377개 자동 테스트가 통과했고 실제 Explorer drop·IME·focus
   확인은 MAN-047에 `Not run`으로 남겼다.
+- [x] 2026-09-11: URL-OPEN-01의 HTTP/HTTPS 전용 검증, Ctrl+click/selection guard, 실제 target
+  확인과 renderer/session generation·외부 실행 실패 격리를 구현했다. renderer build와 전체
+  403개 test는 통과했고 실제 WebView2 pointer selection과 기본 브라우저 실행은 MAN-048로 남겼다.

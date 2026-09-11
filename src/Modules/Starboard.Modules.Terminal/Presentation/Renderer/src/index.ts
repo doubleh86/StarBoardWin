@@ -1,5 +1,6 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
@@ -8,6 +9,7 @@ const ProtocolVersion = 2;
 const MaximumTabs = 8;
 const SessionIdPattern = /^[0-9a-f]{32}$/i;
 const EmptySessionId = "00000000000000000000000000000000";
+const MaximumUrlLength = 2_048;
 const RendererInstanceId = crypto.randomUUID().replaceAll("-", "").toLowerCase();
 
 type GlobalRendererMessageType =
@@ -29,6 +31,7 @@ type SessionRendererMessageType =
   | "copy"
   | "paste-request"
   | "drop-paths"
+  | "open-url-request"
   | "close-session"
   | "restart-session"
   | "rename-session"
@@ -70,6 +73,7 @@ type SessionHostMessageType =
   | "confirmation-request"
   | "confirmation-cancel"
   | "path-drop-result"
+  | "url-open-result"
   | "new-output-state";
 
 type HostMessage =
@@ -176,7 +180,7 @@ type SessionPayload = {
   homeDirectory: string;
 };
 
-type ConfirmationKind = "close" | "paste" | "path-drop";
+type ConfirmationKind = "close" | "paste" | "path-drop" | "url-open";
 
 type ConfirmationRequestPayload = {
   requestId: string;
@@ -185,6 +189,7 @@ type ConfirmationRequestPayload = {
   sessionName: string;
   clipboardText?: string;
   quotedInput?: string;
+  targetUrl?: string;
 };
 
 type ConfirmationCancelPayload = {
@@ -332,6 +337,8 @@ function isSessionHostMessageType(value: string): value is SessionHostMessageTyp
     value === "session-error" ||
     value === "confirmation-request" ||
     value === "confirmation-cancel" ||
+    value === "path-drop-result" ||
+    value === "url-open-result" ||
     value === "new-output-state"
   );
 }
@@ -491,7 +498,7 @@ function toTerminalTheme(payload: AppearancePayload): ITheme {
   };
 }
 
-function createTerminal(): Terminal {
+function createTerminal(sessionId: string): Terminal {
   const rootStyle = getComputedStyle(document.documentElement);
   return new Terminal({
     allowProposedApi: false,
@@ -501,6 +508,10 @@ function createTerminal(): Terminal {
     fontFamily: rootStyle.getPropertyValue("--font-mono").trim(),
     fontSize: Number.parseFloat(rootStyle.getPropertyValue("--font-size-terminal")),
     lineHeight: Number.parseFloat(rootStyle.getPropertyValue("--line-height-terminal")),
+    linkHandler: {
+      activate: (event, targetUrl) => requestUrlOpen(event, sessionId, targetUrl),
+      allowNonHttpProtocols: false,
+    },
     scrollback: 10_000,
   });
 }
@@ -613,11 +624,15 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
 
   tabItem.append(tabButton, closeButton);
 
-  const terminal = createTerminal();
+  const terminal = createTerminal(sessionId);
   const fitAddon = new FitAddon();
   const searchAddon = new SearchAddon();
+  const webLinksAddon = new WebLinksAddon(
+    (event, targetUrl) => requestUrlOpen(event, sessionId, targetUrl),
+  );
   terminal.loadAddon(fitAddon);
   terminal.loadAddon(searchAddon);
+  terminal.loadAddon(webLinksAddon);
   terminal.open(mount);
   terminal.onData((data) => postSession("input", sessionId, { data }));
   terminal.attachCustomKeyEventHandler((event) => {
@@ -1224,13 +1239,68 @@ function isSessionGeneration(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) === true && value >= 1;
 }
 
+function isAllowedUrlTarget(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0 || value.length > MaximumUrlLength) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.length > 0 &&
+      parsed.username.length === 0 &&
+      parsed.password.length === 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+function requestUrlOpen(event: MouseEvent, sessionId: string, targetUrl: string): void {
+  if (
+    event.button !== 0 ||
+    event.ctrlKey !== true ||
+    event.shiftKey === true ||
+    event.altKey === true ||
+    event.metaKey === true ||
+    isAllowedUrlTarget(targetUrl) === false
+  ) {
+    return;
+  }
+
+  const entry = sessions.get(sessionId);
+  if (
+    entry === undefined ||
+    activeSessionId !== sessionId ||
+    entry.terminal.hasSelection() === true
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  if (pendingConfirmation !== undefined) {
+    showUrlOpenFeedback(entry, "먼저 열려 있는 확인 요청을 완료해 주세요.", true);
+    return;
+  }
+
+  postSession("open-url-request", sessionId, {
+    rendererInstanceId: RendererInstanceId,
+    sessionGeneration: entry.sessionGeneration,
+    activation: "ctrl-click",
+    url: targetUrl,
+  });
+}
+
 function parseConfirmationRequest(
   payload: Record<string, unknown>,
 ): ConfirmationRequestPayload | undefined {
   if (
     isRequestIdentifier(payload.requestId) === false ||
     isSessionGeneration(payload.sessionGeneration) === false ||
-    (payload.kind !== "close" && payload.kind !== "paste" && payload.kind !== "path-drop") ||
+    (payload.kind !== "close" && payload.kind !== "paste" && payload.kind !== "path-drop" &&
+      payload.kind !== "url-open") ||
     typeof payload.sessionName !== "string" ||
     payload.sessionName.trim().length === 0
   ) {
@@ -1254,6 +1324,10 @@ function parseConfirmationRequest(
     return undefined;
   }
 
+  if (payload.kind === "url-open" && isAllowedUrlTarget(payload.targetUrl) === false) {
+    return undefined;
+  }
+
   return {
     requestId: payload.requestId.toLowerCase(),
     sessionGeneration: payload.sessionGeneration,
@@ -1261,6 +1335,7 @@ function parseConfirmationRequest(
     sessionName: payload.sessionName,
     clipboardText: payload.kind === "paste" ? payload.clipboardText : undefined,
     quotedInput: payload.kind === "path-drop" ? payload.quotedInput : undefined,
+    targetUrl: payload.kind === "url-open" ? payload.targetUrl : undefined,
   };
 }
 
@@ -1302,6 +1377,22 @@ function showPathDropFeedback(entry: SessionEntry, message: string, isError: boo
   entry.pane.querySelector(".path-drop-feedback")?.remove();
   const feedback = document.createElement("div");
   feedback.className = "path-drop-feedback";
+  feedback.classList.toggle("is-error", isError);
+  feedback.setAttribute("role", isError === true ? "alert" : "status");
+  feedback.setAttribute("aria-live", isError === true ? "assertive" : "polite");
+  feedback.textContent = message;
+  entry.pane.append(feedback);
+  window.setTimeout(() => {
+    if (feedback.isConnected === true) {
+      feedback.remove();
+    }
+  }, 6_000);
+}
+
+function showUrlOpenFeedback(entry: SessionEntry, message: string, isError: boolean): void {
+  entry.pane.querySelector(".url-open-feedback")?.remove();
+  const feedback = document.createElement("div");
+  feedback.className = "url-open-feedback";
   feedback.classList.toggle("is-error", isError);
   feedback.setAttribute("role", isError === true ? "alert" : "status");
   feedback.setAttribute("aria-live", isError === true ? "assertive" : "polite");
@@ -1387,7 +1478,9 @@ function showConfirmation(sessionId: string, request: ConfirmationRequestPayload
   title.id = `confirmation-title-${request.requestId}`;
   title.textContent = request.kind === "close"
     ? `${request.sessionName} 탭 닫기`
-    : request.kind === "paste" ? "여러 줄 붙여넣기" : "경로 입력에 넣기";
+    : request.kind === "paste"
+      ? "여러 줄 붙여넣기"
+      : request.kind === "path-drop" ? "경로 입력에 넣기" : "웹 주소 열기";
   dialog.setAttribute("aria-labelledby", title.id);
 
   const guidance = document.createElement("p");
@@ -1397,7 +1490,9 @@ function showConfirmation(sessionId: string, request: ConfirmationRequestPayload
       ? "이 탭의 터미널과 실행 중인 작업이 종료됩니다."
       : request.kind === "paste"
         ? `${request.sessionName} 탭에 여러 줄을 붙여넣으면 명령이 바로 실행될 수 있습니다. 내용을 확인하세요.`
-        : `${request.sessionName} 탭의 현재 입력 위치에 인용한 경로만 넣습니다. shell prompt가 맞는지 확인하세요. Enter는 추가하지 않습니다.`;
+        : request.kind === "path-drop"
+          ? `${request.sessionName} 탭의 현재 입력 위치에 인용한 경로만 넣습니다. shell prompt가 맞는지 확인하세요. Enter는 추가하지 않습니다.`
+          : "표시된 실제 주소를 Windows 기본 브라우저로 전달합니다. Starboard는 링크 내용을 미리 불러오지 않습니다.";
 
   let preview: HTMLElement | undefined;
   let previewSummary: HTMLElement | undefined;
@@ -1426,6 +1521,18 @@ function showConfirmation(sessionId: string, request: ConfirmationRequestPayload
     preview.setAttribute("aria-readonly", "true");
     preview.setAttribute("aria-label", "shell 입력에 넣을 인용된 경로, 읽기 전용");
     preview.textContent = request.quotedInput;
+  } else if (request.kind === "url-open" && request.targetUrl !== undefined) {
+    previewSummary = document.createElement("p");
+    previewSummary.className = "confirmation-preview-summary";
+    previewSummary.textContent = "HTTP/HTTPS 주소 · 자동 미리보기 없음";
+
+    preview = document.createElement("pre");
+    preview.className = "confirmation-preview";
+    preview.tabIndex = 0;
+    preview.setAttribute("role", "textbox");
+    preview.setAttribute("aria-readonly", "true");
+    preview.setAttribute("aria-label", "브라우저에서 열 실제 웹 주소, 읽기 전용");
+    preview.textContent = request.targetUrl;
   }
 
   const actions = document.createElement("div");
@@ -1440,7 +1547,9 @@ function showConfirmation(sessionId: string, request: ConfirmationRequestPayload
   confirmButton.className = "confirmation-primary";
   confirmButton.textContent = request.kind === "close"
     ? "탭 닫기"
-    : request.kind === "paste" ? "붙여넣기" : "입력에 넣기";
+    : request.kind === "paste"
+      ? "붙여넣기"
+      : request.kind === "path-drop" ? "입력에 넣기" : "브라우저에서 열기";
   confirmButton.addEventListener("click", () => completeConfirmation("confirmed"));
   actions.append(cancelButton, confirmButton);
 
@@ -2104,6 +2213,14 @@ function handleHostMessage(value: unknown): void {
     typeof payload.message === "string"
   ) {
     showPathDropFeedback(entry, payload.message, true);
+    return;
+  }
+
+  if (
+    message.type === "url-open-result" && payload.succeeded === false &&
+    typeof payload.message === "string"
+  ) {
+    showUrlOpenFeedback(entry, payload.message, true);
     return;
   }
 

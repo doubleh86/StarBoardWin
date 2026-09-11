@@ -187,6 +187,35 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(styles, ".confirmation-dialog[data-kind=path-drop]");
     }
 
+    [TestMethod]
+    public void BundledRendererUrlOpenRequiresCtrlClickAndKeepsNavigationInHost()
+    {
+        var source = ReadRendererSource("index.ts");
+        var hostSource = ReadTerminalSource("Presentation", "TerminalView.xaml.cs");
+        var script = ReadRendererAsset("app.js");
+        var styles = ReadRendererAsset("app.css");
+        var webLinksLicense = ReadRendererAsset("xterm-addon-web-links-LICENSE.txt");
+
+        StringAssert.Contains(source, "new WebLinksAddon(");
+        StringAssert.Contains(source, "event.button !== 0");
+        StringAssert.Contains(source, "event.ctrlKey !== true");
+        StringAssert.Contains(source, "entry.terminal.hasSelection() === true");
+        StringAssert.Contains(source, "activation: \"ctrl-click\"");
+        StringAssert.Contains(source, "allowNonHttpProtocols: false");
+        StringAssert.Contains(source, "preview.textContent = request.targetUrl;");
+        Assert.IsFalse(source.Contains("fetch(", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains("XMLHttpRequest", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains("window.open", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains("location.href", StringComparison.Ordinal));
+        StringAssert.Contains(hostSource, "message.RendererInstanceId != rendererInstanceId");
+        StringAssert.Contains(hostSource, "TerminalUrlOpenConfirmationRequest");
+        StringAssert.Contains(hostSource, "ApplyUrlOpenConfirmationAsync");
+        StringAssert.Contains(script, "open-url-request");
+        StringAssert.Contains(script, "ctrl-click");
+        StringAssert.Contains(styles, ".confirmation-dialog[data-kind=url-open]");
+        StringAssert.Contains(webLinksLicense, "Permission is hereby granted, free of charge");
+    }
+
     private static string ReadRendererAsset(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Renderer", fileName);

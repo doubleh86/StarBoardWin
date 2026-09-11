@@ -57,6 +57,17 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-11 (run `20260911-073617-996439-56532a1d`, terminal URL open)
+- renderer `npm ci`와 source→dist build가 통과했다. sandbox에서 esbuild child spawn이
+  `EPERM`으로 차단된 후 허용된 동일 build로 재생성했다.
+- 지정 SDK restore와 Debug build(경고/오류 0)가 통과했다. 전체 automated test 403개가
+  통과했다(Architecture 8, Terminal 239, DesktopIntegration 80, Preferences 33,
+  Integration 43).
+- HTTP/HTTPS·길이·user-info 검증, 일반 click/selection guard, Ctrl+click marker, 실제 실행
+  target 확인, renderer/session generation과 외부 실행 실패 격리, no-fetch/source-dist 계약을
+  자동화로 확인했다. 실제 WebView2 pointer selection과 기본 브라우저 실행은 수행하지 않아
+  MAN-048을 `Not run`으로 유지한다.
+
 - 실행일: 2026-09-11 (run `20260911-073617-996439-56532a1d`, path drop)
 - renderer `npm ci`와 source→dist build가 통과했다. sandbox에서 esbuild child spawn이
   `EPERM`으로 차단된 후 허용된 동일 build로 재생성했다.
@@ -513,6 +524,7 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-035 | portable saved-tabs exclusion | publish/ZIP/추출본에서 saved-tabs primary, backup, temporary와 개발 PC 절대 경로를 package 검사로 거부 | Passed (automated package) |
 | INT-036 | shell별 path-drop 인용 | PowerShell 작은따옴표/한글/특수 문자와 cmd 큰따옴표를 검증하고 cmd `%`/`!`, custom shell, 상대·device·개행 경로를 거부 | Passed (module automated) |
 | INT-037 | path-drop lifetime·renderer contract | drop/confirmation을 renderer instance, active session ID·generation에 결합하고 전환·restart·remove 후 입력 0건, additional object 경로만 사용·file read API 미사용·source/dist 일치 | Passed (module automated + renderer distribution contract) |
+| INT-038 | terminal URL open safety contract | HTTP/HTTPS·길이·user-info 검증, Ctrl+click marker, 실제 target 확인, renderer/session 세대 결합, shell execute 실패 격리, no-fetch와 source/dist 일치 | Passed (module automated + renderer/host integration contract) |
 
 ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan child process를 남기지
 않는다. GUI host는 재시작 close의 session ID·generation, tab 제거와 process 종료 상태를
@@ -650,6 +662,7 @@ build hash를 함께 기록한다.
 | MAN-046 | 현재 탭 출력 검색 | 200 DIP/좁은 폭에서 Ctrl+F, 한글 IME, Enter/Shift+Enter, 결과 강조/없음, Escape focus 복귀와 네 theme를 확인하고 검색 key가 shell에 전달되지 않는지 확인 | Not run — renderer distribution test는 addon·lifecycle·compact CSS를 확인했지만 실제 WebView2 keyboard/IME/theme 화면 및 shell input 관찰은 수행하지 않았음 |
 
 | MAN-047 | Explorer file/folder path drop | PowerShell/Windows PowerShell/cmd 현재 탭에 공백·한글·특수 문자 경로를 놓고 미리보기·취소·승인, Enter 미생성, tab 전환·restart·renderer reconnect 경쟁, IME·붙여넣기·focus·scrollback 회귀를 실제 WebView2에서 확인 | Not run — additional-object/protocol/unit 검증은 통과했으나 실제 Explorer·WebView2 드래그 입력은 수행하지 않음 |
+| MAN-048 | terminal 출력 URL Ctrl+click | 일반 click/drag selection 유지, Ctrl+click 실제 URL 확인·취소·기본 브라우저 열기, HTTP/HTTPS 및 OSC 8, 긴/잘못된/custom scheme 거부, 외부 실행 실패와 tab/restart/reconnect 경쟁을 실제 WebView2에서 확인 | Not run — protocol/validation/distribution 자동 검증은 통과했으나 실제 WebView2 pointer selection과 기본 브라우저 실행은 수행하지 않음 |
 
 ## Focus 검증 절차
 

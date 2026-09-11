@@ -177,6 +177,7 @@ package의 local asset/CSP 계약은 자동 검증됐지만, system network를 �
 | `Ctrl+W` | shell에 그대로 전달 |
 | `Ctrl+F` | 현재 활성 탭의 메모리 scrollback 검색; Enter/Shift+Enter로 다음/이전, Escape로 닫고 terminal focus 복귀 |
 | Explorer file/folder drop | 현재 탭의 shell에 맞게 인용한 경로를 미리보기·확인 후 입력; Enter나 개행은 추가하지 않음 |
+| 출력의 HTTP/HTTPS 주소 Ctrl+click | 실제 대상 주소를 확인한 뒤 Windows 기본 브라우저에서 열기; 일반 click/drag는 text selection 유지 |
 | `Ctrl+Alt+E` | collapsed/expanded geometry 전환 |
 | `Ctrl+Alt+S` | 숨김·비활성 panel 호출, 활성 panel 숨김 |
 
@@ -194,6 +195,11 @@ package의 local asset/CSP 계약은 자동 검증됐지만, system network를 �
 큰따옴표를 사용한다. `cmd.exe`에서 재해석될 수 있는 `%`/`!`가 있는 경로,
 custom shell, 상대·device 경로는 입력하지 않고 오류를 보여 준다. 파일 내용을
 읽지 않으며 확인 전후에 탭·session·renderer가 바뀌면 느린 요청을 폐기한다.
+
+출력 URL은 HTTP와 HTTPS 절대 주소만 대상으로 하며 file, command, JavaScript와 사용자 정의
+protocol은 열지 않는다. Ctrl+click 뒤 표시되는 실제 주소를 확인해야만 기본 브라우저로 전달하고,
+Starboard는 link preview나 background network request를 만들지 않는다. URL 원문은 설정이나
+진단 로그에 저장하지 않으며 브라우저 실행 실패가 terminal session을 종료하지 않는다.
 
 ## 로컬 데이터와 개인정보
 

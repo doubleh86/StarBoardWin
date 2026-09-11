@@ -15,6 +15,7 @@ internal enum RendererMessageType
     Copy,
     PasteRequest,
     DropPaths,
+    OpenUrlRequest,
     CloseSession,
     RestartSession,
     RenameSession,
@@ -38,4 +39,5 @@ internal sealed record RendererMessage(RendererMessageType Type, TerminalSession
                                        TerminalSavedTabDeleteRequest? SavedTabDeleteRequest = null,
                                        TerminalSavedTabLaunchRequest? SavedTabLaunchRequest = null,
                                        TerminalSavedTabLaunchCancellation? SavedTabLaunchCancellation = null,
-                                       Guid? RendererInstanceId = null, long SessionGeneration = 0);
+                                       Guid? RendererInstanceId = null, long SessionGeneration = 0,
+                                       TerminalUrlOpenTarget? UrlOpenTarget = null);

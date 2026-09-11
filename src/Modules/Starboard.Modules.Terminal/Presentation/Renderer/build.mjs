@@ -33,3 +33,7 @@ await copyFile(
   new URL("./node_modules/@xterm/addon-fit/LICENSE", import.meta.url),
   new URL("./dist/xterm-addon-fit-LICENSE.txt", import.meta.url),
 );
+await copyFile(
+  new URL("./node_modules/@xterm/addon-web-links/LICENSE", import.meta.url),
+  new URL("./dist/xterm-addon-web-links-LICENSE.txt", import.meta.url),
+);

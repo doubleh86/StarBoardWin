@@ -112,6 +112,21 @@ public sealed class TerminalSafetyContractTests
     }
 
     [TestMethod]
+    public void UrlOpenConfirmationCapturesValidatedTargetShownToUser()
+    {
+        var session = new TerminalSessionReference(SessionId, 1);
+        var token = new TerminalConfirmationToken(RequestId, session);
+        _ = TerminalUrlOpenTarget.TryCreate("https://example.com/path?q=one", out var target);
+
+        var request = new TerminalUrlOpenConfirmationRequest(token, "PowerShell", target!);
+
+        Assert.AreEqual("https://example.com/path?q=one", request.Target.AbsoluteUri);
+        Assert.AreEqual("PowerShell", request.SessionName);
+        Assert.ThrowsExactly<ArgumentException>(() =>
+            new TerminalUrlOpenConfirmationRequest(token, string.Empty, target!));
+    }
+
+    [TestMethod]
     public void NewOutputSnapshotOnlyReturnsExactSessionGeneration()
     {
         var originalSession = new TerminalSessionReference(SessionId, 6);

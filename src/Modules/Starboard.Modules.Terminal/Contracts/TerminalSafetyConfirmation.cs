@@ -1,7 +1,7 @@
 namespace Starboard.Modules.Terminal.Contracts;
 
 /// <summary>
-/// Identifies one pending close, paste, or path-drop confirmation. The value is never reused.
+/// Identifies one pending close, paste, path-drop, or URL-open confirmation. The value is never reused.
 /// </summary>
 public readonly record struct TerminalConfirmationRequestId
 {
@@ -194,6 +194,39 @@ public sealed record TerminalPathDropConfirmationRequest
     public string SessionName { get; }
 
     public string QuotedInput { get; }
+}
+
+/// <summary>
+/// Owns the exact validated URL displayed to the user and later passed to the operating system.
+/// </summary>
+public sealed record TerminalUrlOpenConfirmationRequest
+{
+    public TerminalUrlOpenConfirmationRequest(TerminalConfirmationToken token, string sessionName,
+                                              TerminalUrlOpenTarget target)
+    {
+        if (token.RequestId.Value == Guid.Empty || token.Session.SessionId == Guid.Empty ||
+            token.Session.Generation < 1)
+        {
+            throw new ArgumentException("The URL-open confirmation requires a valid correlation token.",
+                                        nameof(token));
+        }
+
+        if (string.IsNullOrWhiteSpace(sessionName) == true)
+        {
+            throw new ArgumentException("The URL-open confirmation requires a session name.", nameof(sessionName));
+        }
+
+        ArgumentNullException.ThrowIfNull(target);
+        Token = token;
+        SessionName = sessionName;
+        Target = target;
+    }
+
+    public TerminalConfirmationToken Token { get; }
+
+    public string SessionName { get; }
+
+    public TerminalUrlOpenTarget Target { get; }
 }
 
 public enum TerminalConfirmationResult

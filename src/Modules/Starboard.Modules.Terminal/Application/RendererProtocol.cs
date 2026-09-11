@@ -27,6 +27,8 @@ internal static class RendererProtocol
         "session-error",
         "confirmation-request",
         "confirmation-cancel",
+        "path-drop-result",
+        "url-open-result",
         "new-output-state",
     ];
 
@@ -147,6 +149,7 @@ internal static class RendererProtocol
                 "copy" => ParseData(RendererMessageType.Copy, root, payload),
                 "paste-request" => ParseSession(RendererMessageType.PasteRequest, root, payload),
                 "drop-paths" => ParsePathDrop(root, payload),
+                "open-url-request" => ParseUrlOpen(root, payload),
                 "close-session" => ParseSession(RendererMessageType.CloseSession, root, payload),
                 "restart-session" => ParseSession(RendererMessageType.RestartSession, root, payload),
                 "rename-session" => ParseData(RendererMessageType.RenameSession, root, payload, "name", 128),
@@ -499,6 +502,29 @@ internal static class RendererProtocol
 
         return new RendererMessage(RendererMessageType.DropPaths, sessionId,
                                    RendererInstanceId: rendererInstanceId, SessionGeneration: generation);
+    }
+
+    private static RendererMessage? ParseUrlOpen(JsonElement root, JsonElement payload)
+    {
+        if (TryParseSessionId(root, out var sessionId) == false || payload.ValueKind != JsonValueKind.Object ||
+            payload.TryGetProperty("rendererInstanceId", out var instanceElement) == false ||
+            instanceElement.ValueKind != JsonValueKind.String ||
+            TryParseCompactGuid(instanceElement.GetString(), out var rendererInstanceId) == false ||
+            payload.TryGetProperty("sessionGeneration", out var generationElement) == false ||
+            generationElement.TryGetInt64(out var generation) == false || generation < 1 ||
+            payload.TryGetProperty("activation", out var activationElement) == false ||
+            activationElement.ValueKind != JsonValueKind.String ||
+            string.Equals(activationElement.GetString(), "ctrl-click", StringComparison.Ordinal) == false ||
+            payload.TryGetProperty("url", out var urlElement) == false ||
+            urlElement.ValueKind != JsonValueKind.String ||
+            TerminalUrlOpenTarget.TryCreate(urlElement.GetString(), out var target) == false)
+        {
+            return null;
+        }
+
+        return new RendererMessage(RendererMessageType.OpenUrlRequest, sessionId,
+                                   RendererInstanceId: rendererInstanceId, SessionGeneration: generation,
+                                   UrlOpenTarget: target);
     }
 
     private static RendererMessage? ParseGlobal(RendererMessageType type, JsonElement root, JsonElement payload)
