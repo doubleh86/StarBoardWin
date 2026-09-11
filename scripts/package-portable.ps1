@@ -24,6 +24,37 @@ function Invoke-CheckedCommand {
     }
 }
 
+function Get-Sha256Hash {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LiteralPath
+    )
+
+    $fileHashCommand = Get-Command Get-FileHash -ErrorAction SilentlyContinue
+    if ($null -ne $fileHashCommand) {
+        return (Get-FileHash -LiteralPath $LiteralPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+
+    $stream = [System.IO.File]::Open(
+        $LiteralPath,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::Read)
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $hashBytes = $sha256.ComputeHash($stream)
+            return [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 function Assert-SafeChildPath {
     param(
         [Parameter(Mandatory = $true)]
@@ -490,16 +521,14 @@ New-DeterministicArchive `
     -ArchivePath $archivePath `
     -EntryTimestamp $archiveTimestamp
 
-$archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$archiveHash = Get-Sha256Hash -LiteralPath $archivePath
 $reproductionArchivePath = Join-Path $stagingRoot "reproduction-check.zip"
 Assert-SafeChildPath -ParentPath $stagingRoot -ChildPath $reproductionArchivePath
 New-DeterministicArchive `
     -SourceDirectory $publishDirectory `
     -ArchivePath $reproductionArchivePath `
     -EntryTimestamp $archiveTimestamp
-$reproductionHash = (
-    Get-FileHash -LiteralPath $reproductionArchivePath -Algorithm SHA256
-).Hash.ToLowerInvariant()
+$reproductionHash = Get-Sha256Hash -LiteralPath $reproductionArchivePath
 Remove-Item -LiteralPath $reproductionArchivePath -Force
 if ([string]::Equals(
         $archiveHash,
@@ -515,7 +544,7 @@ if ([string]::Equals(
 $recordedHash = ((Get-Content -LiteralPath $hashPath -Raw).Split(
     [char[]]@(" ", "`r", "`n", "`t"),
     [System.StringSplitOptions]::RemoveEmptyEntries))[0]
-$verifiedHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash
+$verifiedHash = Get-Sha256Hash -LiteralPath $archivePath
 if ([string]::Equals(
         $recordedHash,
         $verifiedHash,

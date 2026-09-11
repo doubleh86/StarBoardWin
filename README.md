@@ -93,7 +93,9 @@ Windows PowerShell 5.1과 PowerShell 7(`pwsh`)을 모두 지원한다. package �
 Release restore도 수행하므로 NuGet package source와 vulnerability metadata source에
 접근할 수 있어야 한다. 격리된 환경에서는 `api.nuget.org` 또는 조직 mirror 접근을
 허용한 뒤 같은 명령을 다시 실행한다. runtime과 이미 생성된 portable package는
-network를 요구하지 않는다.
+network를 요구하지 않는다. `Get-FileHash`가 없는 PowerShell host도 지원하며, 이 경우
+스크립트가 .NET SHA-256 API로 같은 소문자 checksum을 생성한다. 별도 hash 도구나
+network dependency는 필요하지 않다.
 
 `dotnet`이 PATH에 없으면 절대 경로를 저장소에 기록하지 않고 실행 시에만 넘긴다.
 

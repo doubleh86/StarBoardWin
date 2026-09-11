@@ -151,3 +151,11 @@ Terminal 경로는 `src/Modules/Starboard.Modules.Terminal/` 기준이다. publi
   추출 smoke를 통과했다. 완성된 `staging/build`, `publish`, `smoke`를 확인했고 package의
   saved-tabs/settings/workspace primary·backup·temporary, log, WebView2 user data와 개발 PC
   절대 경로 검사는 0건이었다.
+- [x] 2026-09-11 portable checksum 호환성 복구: 41개 IntegrationTests와 499-file publish 뒤
+  발생한 package 실패는 제품이나 publish가 아니라 실행 PowerShell의 `Get-FileHash` 부재로
+  특정했다. cmdlet availability 확인과 disposable .NET SHA-256 fallback을 추가하고 cmdlet 부재
+  simulation 및 file 재개방으로 동일 hash와 수명 해제를 검증했다. 지정 package argv는 최종
+  Release 348개 test, 499-entry ZIP 재현성·추출 smoke를 통과했다. checksum과 독립 재계산 값은
+  `13c491097c49d1b1724b845c18ccd5b1c9f3f83c9906a3c7fc0b14f5f01c1c8a`로 일치했고 per-user
+  data·saved-tabs primary/backup/temporary·개발 경로 검사는 0건이었다. 실제 WebView2 저장 UI,
+  DPI와 IME는 재실행하지 않았으며 MAN-044~045와 기존 manual matrix 상태를 유지한다.

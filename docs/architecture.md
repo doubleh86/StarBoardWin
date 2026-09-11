@@ -600,8 +600,12 @@ network 또는 동등한 조직 mirror가 필요하다. source 접근 실패를 
 오인하거나 audit을 끄지 않고, source 접근을 복구한 뒤 동일 명령을 다시 실행한다. 이 build
 전제 조건은 생성된 portable package의 offline runtime 정책과 별개다.
 
-ZIP entry는 ordinal 경로 순서와 source commit 시각을 사용한다. SHA-256 파일을 만든 뒤
-다시 계산해 일치 여부를 확인하고 별도 staging에 압축 해제한다. 추출본은 전용 smoke
+ZIP entry는 ordinal 경로 순서와 source commit 시각을 사용한다. SHA-256 계산은
+`Get-FileHash` availability를 먼저 확인하고, cmdlet이 없는 PowerShell host에서는 .NET
+`SHA256` API와 read-only file stream을 사용한다. 두 disposable object는 `finally`에서
+결정적으로 해제하며 외부 hash 도구나 network dependency를 추가하지 않는다. 같은 계산
+경로로 checksum 파일을 만든 뒤 다시 계산해 일치 여부를 확인하고 별도 staging에 압축
+해제한다. 추출본은 전용 smoke
 인자로 시작하여 assembly와 package metadata, executable/local renderer 및 기본 shell
 경로를 검사하고 즉시 종료한다. 이 mode에서는 Preferences load와 Desktop startup
 적용을 시작하지 않으므로 기존 사용자 설정과 HKCU 자동 실행 경로를 변경하지 않는다.

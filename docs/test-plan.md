@@ -6,12 +6,11 @@ persistent terminal, taskbar geometry와 focus 정책을 반복 가능한 방식
 검증한다. 자동화로 증명한 항목과 실제 Windows desktop에서만 확인할 수 있는
 항목을 구분한다.
 
-이번 수동 검증 범위에서는 portable 패키징, 오프라인 Release 실행, 업데이트와
-rollback을 배포 검증 대상으로 삼지 않는다. 해당 흐름의 기존 자동/package 및
-격리 smoke 기록은 보존하지만 이번 완료 판단에는 사용하지 않으며, 수동 배포
-검증을 수행하지 않았다는 이유로 `Passed`로 표시하지 않는다. 이번 범위에서
-유효한 복구 결과는 셸 선택·지속 세션과 renderer·셸·ConPTY 실패 후 host/session
-유지 및 재시작 관찰이다.
+실제 desktop 수동 검증 범위에서는 오프라인 WebView2 실행, 업데이트와 rollback을
+배포 검증 대상으로 삼지 않는다. portable 생성·checksum·추출 smoke의 자동/package
+결과는 별도로 판정하며 실제 renderer 조작을 통과한 것으로 확대하지 않는다. 수동
+복구 결과는 셸 선택·지속 세션과 renderer·셸·ConPTY 실패 후 host/session 유지 및
+재시작 관찰로 제한한다.
 
 ## 상태 표기
 
@@ -58,15 +57,18 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
   저장 정의의 지정 셸·폴더와 기존 session instance 보존은 module test, 실제 서로 다른 PID와
   session interactive-state 격리는 기존 ConPTY GUI-host integration을 함께 근거로 삼았다. 실제
   WebView2에서 저장 메뉴를 조작해 PID와 scrollback을 관찰한 결과는 아니며 MAN-044~045로 남겼다.
-- 과제에 지정된 `powershell -NoProfile -File scripts/package-portable.ps1`의 첫 실행은
-  `staging/publish`·`staging/smoke` directory를 초기화한 뒤 publish·archive를 만들기 전 Release
-  restore에서 모든 project가 NuGet audit source를 읽지 못한 `NU1900`으로 중단됐다. network를
-  허용한 동일 명령은 스크립트 수정 없이 Release build 경고·오류 0개와 같은 348개 test, 완성된
-  `staging/build`·`publish`·`smoke`, 499-file self-contained publish, ZIP 재현성·SHA-256·추출
-  smoke를 통과했다. ZIP SHA-256은
-  `8b9bfe37247f8bba5d2372be4c7b18c4d1743e3b58c07ef7a3f936d07bac48ab`이며 saved-tabs
-  primary/backup/temporary, settings/workspace runtime data, log, WebView2 user data와 개발 PC
-  경로 검사는 0건이다.
+- 기존 41개 IntegrationTests와 499-file publish까지 통과한 package 실행이 checksum 단계에서
+  실패한 원인은 해당 PowerShell host에 `Get-FileHash` cmdlet이 없었기 때문이다. 저장 탭 기능,
+  Release build/test 또는 publish 실패가 아니다. 스크립트는 이제 cmdlet availability를 확인하고
+  없으면 disposable file stream과 .NET `SHA256` 객체로 같은 소문자 hash를 계산한다.
+- 수정 후 과제에 지정된 `powershell -NoProfile -File scripts/package-portable.ps1`의 sandbox
+  첫 실행은 publish 전 Release restore에서 NuGet audit source를 읽지 못한 `NU1900`으로 중단됐고,
+  network가 허용된 동일 argv는 Release build 경고·오류 0개와 전체 348개 test(Integration 41),
+  499-entry self-contained ZIP 재현성 및 추출 executable smoke를 통과했다. 최종 ZIP SHA-256은
+  `13c491097c49d1b1724b845c18ccd5b1c9f3f83c9906a3c7fc0b14f5f01c1c8a`이며 checksum 파일과
+  독립 `Get-FileHash` 재계산 및 cmdlet 부재 simulation 결과가 모두 일치했다. stream 해제 후
+  ZIP의 배타적 재개방도 통과했다. saved-tabs/settings/workspace primary·backup·temporary, log,
+  WebView2 user data와 개발 PC 절대 경로 검사는 publish·ZIP·추출본에서 0건이었다.
 - renderer source rebuild는 sandbox의 esbuild child spawn `EPERM` 뒤 허용된 로컬 실행에서
   통과했고 source/dist diff가 없었다. 실제 WebView2 화면, Korean IME, 125/150/200% 및 mixed-DPI
   장비 조작은 수행하지 않았다.
@@ -504,8 +506,8 @@ ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan c
 | SMK-008 | global panel 호출 | 비활성→표시·foreground, 활성→숨김 | Passed |
 | SMK-009 | 실제 tray icon 왼쪽 클릭 | 숨긴 panel 표시·foreground, normal z-order 유지 | Passed |
 | SMK-010 | P4 build 전체 executable/tray 재검증 | 이번 build로 tray·호출·terminal 수명 확인 | Blocked (existing instance) |
-| SMK-011 | versioned portable package | ZIP/SHA-256 일치, 필수 renderer/license/metadata 포함, runtime/user/developer data 제외 | Out of scope — 기존 automated package 기록은 보존하나 이번 수동 배포 완료 판단에서 제외 |
-| SMK-012 | extracted portable smoke mode | 추출 executable 시작, version/commit·renderer·기본 shell 확인 후 user settings 적용 없이 종료 | Out of scope — 기존 automated package 기록은 보존하나 이번 수동 배포 완료 판단에서 제외 |
+| SMK-011 | versioned portable package | ZIP/SHA-256 일치, 필수 renderer/license/metadata 포함, runtime/user/developer data 제외 | Passed (automated package, 2026-09-11) |
+| SMK-012 | extracted portable smoke mode | 추출 executable 시작, version/commit·renderer·기본 shell 확인 후 user settings 적용 없이 종료 | Passed (automated package, 2026-09-11; WebView2 UI 초기화는 MAN-039와 별도) |
 
 ## Manual desktop matrix
 
@@ -654,11 +656,10 @@ launch focus 보존과 terminal click activation은 서로 다른 요구사항�
 
 ## Release gate
 
-이번 작업의 수동 완료 판단에는 아래 배포 gate를 적용하지 않는다. portable
-패키징, 오프라인 Release 실행, 업데이트와 rollback은 `Out of scope`이며, 아래
-기록은 향후 별도 배포 검증을 위한 보존 자료다. 셸 선택·지속 세션 및
-renderer·셸·ConPTY 실패 복구/재시작 결과만 이번 범위의 유효한 recovery 결과로
-판정한다.
+portable 생성·checksum·추출 smoke에는 아래 자동 배포 gate를 적용한다. 실제
+WebView2/terminal UI, 오프라인 Release 화면, 업데이트와 rollback은 별도 수동 gate이며,
+자동 package 통과만으로 완료했다고 판정하지 않는다. 셸 선택·지속 세션 및
+renderer·셸·ConPTY 실패 복구/재시작의 실제 관찰 결과도 자동 package 결과와 구분한다.
 
 - clean restore/build/test 성공
 - self-contained `win-x64` publish 성공
