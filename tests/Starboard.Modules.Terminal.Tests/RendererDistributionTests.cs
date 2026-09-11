@@ -149,11 +149,50 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(styles, "width:min(340px,calc(100% - 16px))");
     }
 
+    [TestMethod]
+    public void ActiveTabSearchSourceLifecycleAndNavigationStaysLocalToRenderer()
+    {
+        var source = ReadRendererSource("index.ts");
+
+        StringAssert.Contains(source, "terminal.loadAddon(searchAddon);");
+        StringAssert.Contains(source, "entry?.searchAddon.clearDecorations();");
+        StringAssert.Contains(source, "if (searchOverlay?.sessionId !== sessionId) {");
+        StringAssert.Contains(source, "if (searchOverlay?.sessionId === sessionId) {");
+        StringAssert.Contains(source, "event.stopPropagation();");
+        Assert.IsFalse(source.Contains("postSession(\"input\", sessionId, { data: term", StringComparison.Ordinal));
+    }
+
     private static string ReadRendererAsset(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Renderer", fileName);
         Assert.IsTrue(File.Exists(path), $"Renderer asset is missing: {path}");
 
         return File.ReadAllText(path);
+    }
+
+    private static string ReadRendererSource(string fileName)
+    {
+        var solutionRoot = FindSolutionRoot();
+        var path = Path.Combine(solutionRoot, "src", "Modules", "Starboard.Modules.Terminal", "Presentation", "Renderer", "src", fileName);
+        Assert.IsTrue(File.Exists(path), $"Renderer source is missing: {path}");
+
+        return File.ReadAllText(path);
+    }
+
+    private static string FindSolutionRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Starboard.Windows.sln")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        Assert.Fail("Could not find the solution root.");
+        return string.Empty;
     }
 }

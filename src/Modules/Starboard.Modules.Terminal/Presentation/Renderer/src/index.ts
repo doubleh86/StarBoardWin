@@ -1583,11 +1583,13 @@ function showSearch(sessionId: string): void {
   input.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       closeSearch(true);
       return;
     }
     if (event.key === "Enter") {
       event.preventDefault();
+      event.stopPropagation();
       findSearchResult(event.shiftKey === false);
     }
   });

@@ -45,9 +45,14 @@
 - 2026-09-11: renderer는 한 WebView2 document에서 session별 xterm buffer를 유지하며,
   `TerminalSessionCoordinator`나 renderer host protocol을 검색에 필요로 하지 않음을 확인했다.
 - 2026-09-11: `@xterm/addon-search` 0.16.0을 package/lock에 고정하고 compact overlay,
-  lifecycle cleanup과 dist contract test를 추가했다. renderer build와 solution
-  restore/build/test는 통과했다. alignment script는 이번 범위 밖 DesktopIntegration의 기존
-  continuation alignment 6건으로 실패했다.
+  lifecycle cleanup과 dist contract test를 추가했다. 검색 overlay의 Enter/Shift+Enter와
+  Escape는 전파도 중단해 shell input 경로에 닿지 않으며, source test가 addon 연결,
+  lifecycle cleanup과 local-only navigation 경계를 확인한다.
+- 2026-09-11: `Test-CSharpAlignment.ps1 -WorkingTree`의 전체 출력은 이번 Terminal 변경이
+  아닌 `DesktopIntegrationModule.cs` 836, 839, 842, 844, 847, 850행의 continuation
+  들여쓰기 6건(각각 expected보다 1열 큼)만 보고했다. 해당 파일은 이 작업의 forbidden
+  path이므로 수정하지 않았고, 검사기 `-SelfTest` 통과와 Terminal 변경 파일 직접 검토로
+  검사기 자체가 아닌 기존 범위 밖 코드 위반임을 확인했다.
 
 ## 완료 요약
 
