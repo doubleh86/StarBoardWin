@@ -833,21 +833,21 @@ public sealed class DesktopIntegrationModule : IDisposable
             ? GlobalShortcutRegistrationStatus.NotRegistered
             : GlobalShortcutRegistrationStatus.Unknown;
         var expand = new GlobalShortcutRegistrationState(configuredHotkeys.ExpandShortcut,
-                                                          expandHotKeyRegistered == true
+                                                         expandHotKeyRegistered == true
                                                               ? configuredHotkeys.ExpandShortcut
                                                               : null,
-                                                          expandHotKeyRegistered == true
+                                                         expandHotKeyRegistered == true
                                                               ? GlobalShortcutRegistrationStatus.Registered
                                                               : status,
-                                                          expandHotKeyRegistered == true ? null : expandHotkeyFailure);
+                                                         expandHotKeyRegistered == true ? null : expandHotkeyFailure);
         var activation = new GlobalShortcutRegistrationState(configuredHotkeys.ActivationShortcut,
-                                                              activationHotKeyRegistered == true
+                                                             activationHotKeyRegistered == true
                                                                   ? configuredHotkeys.ActivationShortcut
                                                                   : null,
-                                                              activationHotKeyRegistered == true
+                                                             activationHotKeyRegistered == true
                                                                   ? GlobalShortcutRegistrationStatus.Registered
                                                                   : status,
-                                                              activationHotKeyRegistered == true ? null : activationHotkeyFailure);
+                                                             activationHotKeyRegistered == true ? null : activationHotkeyFailure);
 
         return new GlobalShortcutRegistrationSnapshot(expand, activation);
     }
