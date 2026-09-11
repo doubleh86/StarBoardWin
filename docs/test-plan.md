@@ -444,6 +444,9 @@ npm run build
 | THM-001 | 네 built-in theme | 모든 필수 WPF/xterm/ANSI token 존재 | Passed |
 | THM-002 | ANSI palette | 각 theme가 정확히 16색 제공 | Passed |
 | THM-003 | foreground/background | 기본 terminal text contrast 기준 충족 | Passed |
+| SET-UI-001 | settings control state resources | CheckBox label, TextBox, ComboBox 본문·popup에 일반·비활성·오류 전경색과 배경 계약 존재 | Passed (automated) |
+| SET-UI-002 | settings built-in themes | Dark, Light, One Dark, Tokyo Night 선택 계약 유지 | Passed (automated) |
+| SET-UI-003 | settings WPF screenshot | 네 테마의 label·checkbox·입력·콤보 일반/비활성/오류 상태가 배경과 구분되고 focus 표시 유지 | Pending — 실제 WPF 화면 및 100/125/150/200% DPI 수동 확인 필요 |
 
 ### OS adapter
 

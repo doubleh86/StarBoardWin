@@ -10,11 +10,17 @@
         MinHeight="680"
         ShowInTaskbar="True"
         WindowStartupLocation="CenterScreen">
-    <DockPanel Background="#1A1B26">
+    <Window.Resources>
+        <SolidColorBrush x:Key="SettingsCanvasBrush" Color="#1A1B26" />
+        <SolidColorBrush x:Key="SettingsForegroundBrush" Color="#C0CAF5" />
+        <SolidColorBrush x:Key="SettingsMutedBrush" Color="#A9B1D6" />
+        <SolidColorBrush x:Key="SettingsErrorBrush" Color="#FFD7DE" />
+    </Window.Resources>
+    <DockPanel Background="{StaticResource SettingsCanvasBrush}">
         <TextBlock x:Name="BuildInfoText"
                    DockPanel.Dock="Bottom"
                    Margin="24,0,24,16"
-                   Foreground="#7F8BB3"
+                   Foreground="{StaticResource SettingsMutedBrush}"
                    FontSize="12"
                    TextAlignment="Right" />
         <Border x:Name="StatusBorder"
@@ -26,7 +32,7 @@
                 BorderThickness="1"
                 Visibility="Collapsed">
             <TextBlock x:Name="StatusText"
-                       Foreground="#FFD7DE"
+                       Foreground="{StaticResource SettingsErrorBrush}"
                        TextWrapping="Wrap" />
         </Border>
         <ContentPresenter x:Name="EditorContent" />

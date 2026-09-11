@@ -167,6 +167,8 @@ workspace/saved-tabs, logs와 WebView2 data는 거부한다.
   적용했다. portable package에는 `Assets/Starboard.ico`를 포함하고 사용자별 data를 거부한다.
 - [ ] 2026-09-11: 밝고 어두운 작업표시줄 및 숨겨진 아이콘 영역에서 100/125/150/200% 배율,
   Explorer 재시작 뒤의 실제 tray 표시를 수동으로 확인한다.
-- [x] 2026-09-11: 설정 창 screenshot에서 checkbox와 ComboBox 선택값의 대비 문제를
-  SETTINGS-UI-01로 기록하고 네 테마·control 상태별 수정 기준을 확정했다.
+- [x] 2026-09-11: 설정 창 checkbox·ComboBox·입력 필드에 네 테마에서 재사용할 수 있는
+  일반·비활성·오류 전경색 토큰과 popup 항목 스타일을 적용하고 UI 계약 테스트를 추가했다.
+- [ ] 2026-09-11: Dark, Light, One Dark, Tokyo Night를 실제 WPF 창에서 100/125/150/200%
+  배율로 screenshot 확인한다. 자동 계약 검증과 실제 화면 확인은 별도 결과로 기록한다.
 - [ ] 각 후속 후보의 상세 기획·구현·검증. 현재는 시작하지 않는다.
