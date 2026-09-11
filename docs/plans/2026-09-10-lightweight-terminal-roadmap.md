@@ -22,6 +22,7 @@ Starboard는 작업표시줄에 붙어 빠르게 명령을 입력하고 결과�
 
 | 우선순위 | 기능 | 사용자 경험과 범위 |
 |---|---|---|
+| UI 보정 | 설정 창 글자 대비 | 테마 배경과 기본 WPF control 상태에서 label·선택값이 흐리거나 검게 표시되지 않도록 foreground를 통일 |
 | 먼저 | 탭 UI 안정화 | 좁은 이름 편집·닫기 영역 회귀를 해결하고 실제 WebView2에서 검증 |
 | 다음 | 저장한 탭 | 이름·폴더·셸을 저장하고 골라 해당 폴더에 새 세션 시작 |
 | 후속 1 | 출력 검색 | 현재 탭의 메모리 내 출력에서 검색, 이전/다음 결과 이동·강조, Escape 닫기 |
@@ -41,6 +42,35 @@ Starboard는 작업표시줄에 붙어 빠르게 명령을 입력하고 결과�
   링크가 보인다는 이유만으로 신뢰하지 않고 실제 대상 URL을 확인할 수 있어야 한다.
 - 완료 알림은 기존 ‘새 출력’ 점과 별개다. 명령 시작·종료·exit code를 식별하는 셸 연동을
   조사하고 지원 셸·오탐 정책을 먼저 확정한다. 기본 꺼짐, focus 강탈 없음, 명령/출력 노출 없음이 기준이다.
+
+## SETTINGS-UI-01 — 설정 창 글자 대비 보정
+
+### 관찰과 범위
+
+- 사용자 제보(2026-09-11): Tokyo Night 설정 창의 구조와 기능은 유지하되 글자 색상과 대비를
+  보정한다. 현재 화면에서 `Windows 로그인 시 시작`, `다음 실행 시 탭 구성 복원`의 checkbox
+  label은 어두운 배경에서 검게 보이고, `테마`와 `표시 모니터`의 선택값은 밝은 system control
+  배경 위에서 지나치게 옅게 보인다.
+- `SettingsEditorView.xaml`은 TextBox와 ComboBox foreground/background를 선언하지만 WPF 기본
+  control template의 실제 표시 상태가 모든 색을 일관되게 사용한다고 가정할 수 없다. 정확한 원인은
+  normal·hover·focus·disabled·dropdown open 상태를 실제 창에서 관찰한 뒤 확정한다.
+- 이번 보정은 색상 token과 control style/template 범위다. 창 크기, section 배치, 문구, 설정 계약,
+  저장 동작과 terminal theme palette는 바꾸지 않는다.
+
+### 수정 기준과 인수 조건
+
+- 일반 label, GroupBox header, checkbox content, 도움말, validation message, TextBox·ComboBox의
+  선택값과 dropdown item에 용도별 foreground를 명시한다. 단일 색상을 모든 상태에 강제하지 않고
+  enabled/disabled와 error 의미는 구분한다.
+- Tokyo Night뿐 아니라 Dark, Light, One Dark 네 테마에서 텍스트와 배경의 대비를 확인한다.
+  system theme나 high contrast가 control template을 바꾸는 경우 가독성을 해치지 않으며,
+  hover·focus·선택·비활성 상태에서도 글자가 사라지거나 같은 계열색에 묻히지 않아야 한다.
+- checkbox glyph와 label, ComboBox 본문·화살표·popup 항목이 한 세트로 읽혀야 한다. 글자색만
+  바꾸어 밝은 기본 배경과 충돌하면 해당 control의 background/border까지 같은 style에서 조정한다.
+- 100/125/150/200% DPI에서 잘림 없이 확인하고 keyboard focus 표시를 유지한다. 자동화 가능한
+  resource/style 계약과 실제 WPF screenshot 검증을 구분하며 실제 화면 확인 전에는 완료로 표시하지 않는다.
+- 예상 영향 파일은 Preferences의 `Presentation/SettingsEditorView.xaml`과 관련 UI test다.
+  필요할 때만 host `Shell/SettingsWindow.xaml`을 함께 수정하며 설정 model이나 module 경계는 건드리지 않는다.
 
 ## ICON-01 — Starboard 아이콘을 앱과 트레이에 적용
 
@@ -137,4 +167,6 @@ workspace/saved-tabs, logs와 WebView2 data는 거부한다.
   적용했다. portable package에는 `Assets/Starboard.ico`를 포함하고 사용자별 data를 거부한다.
 - [ ] 2026-09-11: 밝고 어두운 작업표시줄 및 숨겨진 아이콘 영역에서 100/125/150/200% 배율,
   Explorer 재시작 뒤의 실제 tray 표시를 수동으로 확인한다.
+- [x] 2026-09-11: 설정 창 screenshot에서 checkbox와 ComboBox 선택값의 대비 문제를
+  SETTINGS-UI-01로 기록하고 네 테마·control 상태별 수정 기준을 확정했다.
 - [ ] 각 후속 후보의 상세 기획·구현·검증. 현재는 시작하지 않는다.
