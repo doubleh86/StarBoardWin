@@ -30,6 +30,7 @@ public sealed class ShortcutGuideWindowIntegrationTests
                 var activation = new GlobalShortcutRegistrationState("Ctrl+Alt+S", "Ctrl+Alt+S", GlobalShortcutRegistrationStatus.Registered);
                 var snapshot = new GlobalShortcutRegistrationSnapshot(expand, activation);
                 guide = new ShortcutGuideWindow(snapshot) { ShowActivated = false, ShowInTaskbar = false };
+                Assert.IsNotNull(guide.Icon);
                 var closedCount = 0;
                 guide.Closed += (_, _) => closedCount++;
                 guide.Show();

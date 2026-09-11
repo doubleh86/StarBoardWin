@@ -5,6 +5,7 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Starboard.ico</ApplicationIcon>
     <AssemblyName>Starboard</AssemblyName>
     <RootNamespace>Starboard.Windows</RootNamespace>
   </PropertyGroup>
@@ -28,6 +29,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="Assets\Starboard.ico" />
     <Content Include="..\..\THIRD-PARTY-NOTICES.md"
              CopyToOutputDirectory="PreserveNewest"
              Link="THIRD-PARTY-NOTICES.md" />
