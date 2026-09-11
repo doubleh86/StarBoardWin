@@ -7,6 +7,18 @@ namespace Starboard.IntegrationTests;
 public sealed class PortableReleaseSmokeCheckTests
 {
     [TestMethod]
+    public void PortablePackagePolicyIncludesTheCanonicalTrayIconAndRejectsUserData()
+    {
+        var source = ReadRepositoryFile("scripts", "package-portable.ps1");
+
+        StringAssert.Contains(source, "\"Assets/Starboard.ico\"");
+        StringAssert.Contains(source, "src/Starboard.Windows/Assets/Starboard.ico");
+        StringAssert.Contains(source, "\"settings.json\"");
+        StringAssert.Contains(source, "\"saved-tabs.json\"");
+        StringAssert.Contains(source, "\"workspace.json\"");
+    }
+
+    [TestMethod]
     public void DisplayTextIncludesAvailableShortBuildCommit()
     {
         var buildInfo = new ProductBuildInfo("1.2.3", "0123456789abcdef0123456789abcdef01234567");
@@ -106,5 +118,17 @@ public sealed class PortableReleaseSmokeCheckTests
 
         Assert.AreEqual(4, result.ExitCode);
         Assert.IsFalse(shellCheckWasCalled);
+    }
+
+    private static string ReadRepositoryFile(params string[] relativeSegments)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory.Parent is not null &&
+               File.Exists(Path.Combine(directory.FullName, "Starboard.Windows.sln")) == false)
+        {
+            directory = directory.Parent;
+        }
+
+        return File.ReadAllText(Path.Combine([directory.FullName, .. relativeSegments]));
     }
 }

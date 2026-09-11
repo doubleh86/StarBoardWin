@@ -594,6 +594,14 @@ notice/license와 release metadata를 포함한 뒤 settings/workspace/saved-tab
 backup·temporary 파일, logs/WebView2 user data, dump, PDB와 개발 PC 절대 경로가 없는지
 검사한다.
 
+앱 executable과 WPF 창은 `src/Starboard.Windows/Assets/Starboard.ico`를 application/resource로
+사용한다. notification icon은 DesktopIntegration assembly의
+`Starboard.Modules.DesktopIntegration.Assets.Starboard.ico` embedded resource를 독립적으로
+소유한다. 두 파일은 검증된 동일 ICO이며, portable package에는 확인 가능한
+`Assets/Starboard.ico` 사본도 넣고 package 검사가 이를 요구한다. 따라서 실행 중 tray는
+사용자별 경로나 network가 아니라 module 내부 resource를 계속 사용하고, archive의 asset은
+검증·검사와 배포물 식별에 쓴다.
+
 package 명령은 clean machine에서도 dependency와 vulnerability metadata를 확인하는 Release
 restore를 먼저 수행한다. 따라서 build 시점에는 NuGet package source와 audit source에 대한
 network 또는 동등한 조직 mirror가 필요하다. source 접근 실패를 package 산출물 오류로

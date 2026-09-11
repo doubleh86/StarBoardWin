@@ -106,7 +106,7 @@ powershell -NoProfile -File scripts/package-portable.ps1 -DotNetPath '<dotnet.ex
 결과는 `out/portable/<version>/Starboard-<version>-win-x64.zip`과 같은 이름의
 `.sha256` 파일이다. 스크립트는 Git이 확인한 저장소 루트 아래의 해당 버전
 `staging`만 정리하며, reparse point나 범위를 벗어난 경로는 거부한다. ZIP은 실행
-파일, local renderer, 제품 `LICENSE`, third-party notice와 release metadata를 포함하고
+파일, 앱·트레이와 같은 multi-resolution `Assets/Starboard.ico`, local renderer, 제품 `LICENSE`, third-party notice와 release metadata를 포함하고
 사용자 설정, 작업공간·저장한 탭 JSON과 backup/temporary 파일, 로그, WebView2 user data와
 PDB는 거부한다. 같은 source commit과 SDK/
 dependency 입력에서 파일 순서와 ZIP entry 시각을 고정해 다시 만들 수 있다.

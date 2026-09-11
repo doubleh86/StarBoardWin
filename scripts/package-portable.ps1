@@ -176,6 +176,7 @@ function Test-PortableContents {
         "README.md",
         "THIRD-PARTY-NOTICES.md",
         "release-metadata.json",
+        "Assets/Starboard.ico",
         "Renderer/index.html",
         "Renderer/app.js",
         "Renderer/app.css",
@@ -440,6 +441,9 @@ finally {
 
 Copy-Item -LiteralPath (Join-Path $repositoryRoot "README.md") `
     -Destination (Join-Path $publishDirectory "README.md")
+New-Item -ItemType Directory -Path (Join-Path $publishDirectory "Assets") -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $repositoryRoot "src/Starboard.Windows/Assets/Starboard.ico") `
+    -Destination (Join-Path $publishDirectory "Assets/Starboard.ico")
 
 $licenseText = @"
 MIT License

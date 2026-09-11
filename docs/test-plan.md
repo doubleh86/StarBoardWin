@@ -26,6 +26,17 @@ persistent terminal, taskbar geometry와 focus 정책을 반복 가능한 방식
 mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증으로
 보고하지 않는다.
 
+## ICON-01 앱·트레이 아이콘 검증
+
+| ID | 범위 | 방법 | 상태 |
+|---|---|---|---|
+| ICON-001 | 16/20/24/32/48/64/256px ICO entry, alpha, 제품 resource 일치 | `pwsh -NoProfile -File scripts/Test-StarboardIcon.ps1` | Passed (automated) |
+| ICON-002 | package의 `Starboard.exe`, `Assets/Starboard.ico` 및 사용자별 data 제외 | `package-portable.ps1`의 필수 파일/제외 경로 검사와 추출 smoke | Passed (automated) |
+| ICON-003 | Explorer 재시작 뒤 tray icon 재생성 요청 | `DesktopWindowIntegrationTests` fake runtime | Passed (simulated) |
+| ICON-004 | 밝은 작업표시줄, notification area와 숨겨진 아이콘 영역의 식별성 | 실제 Windows에서 tray를 열어 확인 | Not run — interactive desktop 시각 관찰 필요 |
+| ICON-005 | 100%, 125%, 150%, 200% 배율의 tray 선명도와 투명 가장자리 | 각 배율을 설정하고 Explorer/tray를 다시 열어 확인 | Not run — 100%도 아이콘 시각 관찰을 수행하지 않았고 나머지 배율 변경 권한 없음 |
+| ICON-006 | 실제 Explorer 재시작 뒤 동일 아이콘, 클릭과 menu 유지 | 사용자 desktop에서 Explorer 재시작 후 확인 | Not run — Explorer 재시작은 사용자 shell에 영향을 주므로 이 작업에서 수행하지 않음 |
+
 ## 현재 개발 환경
 
 | 항목 | 값 |

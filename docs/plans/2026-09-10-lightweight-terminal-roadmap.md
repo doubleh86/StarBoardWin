@@ -49,9 +49,10 @@ Starboard는 작업표시줄에 붙어 빠르게 명령을 입력하고 결과�
 - 사용자 요청(2026-09-10): 제작한 아이콘을 앱뿐 아니라 notification area의 트레이에도 사용한다.
   원본은 [starboard-icon-v1.png](../assets/starboard-icon-v1.png), 제작 기록과 프롬프트는
   [아이콘 시안 기록](../assets/starboard-icon-v1.md)을 따른다. 현재 원본은 1254×1254 투명 PNG다.
-- 조사한 `TrayIconService`는 현재 `SystemIcons.Application`을 사용한다. 새 PNG를 저장한
-  것만으로 트레이에 반영되지 않으므로 명시적인 asset 포함·로드·수명 관리가 필요하다.
-- 상태는 **기획 완료, ICO 제작·제품 적용·배포 미착수**다. 이번 요청에서는 문서만 갱신한다.
+- `TrayIconService`는 `Starboard.Modules.DesktopIntegration.Assets.Starboard.ico` embedded
+  resource를 독립적으로 로드하고, 실패 시에만 `SystemIcons.Application`으로 fallback한다.
+  새 PNG를 저장한 것만으로 트레이에 반영되지 않으므로 명시적인 asset 포함·로드·수명 관리가 필요했다.
+- 상태는 **I0·I1·I2·I3 구현 및 자동 검증 완료, 실제 Windows 표시 수동 검증 대기**다.
 
 ### 적용 범위와 정책
 
@@ -80,7 +81,11 @@ Starboard는 작업표시줄에 붙어 빠르게 명령을 입력하고 결과�
 | I3 통합 검증·문서 | I1, I2 | 통합 담당: package 검사·전체 검증·사용자 문서와 실제 Windows 표시 증거 |
 
 I1과 I2는 파일 소유권을 나눠 병렬 가능하다. I0 원본과 공용 문서는 통합 담당만 갱신한다.
-별도 branch/worktree에서 구현하며 현재 오케스트레이터 작업에 임의로 합류시키지 않는다.
+I0의 canonical ICO는 `docs/assets/starboard-icon.ico`이며 16/20/24/32/48/64/256px RGBA PNG
+entry를 가진다. I1은 `src/Starboard.Windows/Assets/Starboard.ico`를 executable/WPF resource로,
+I2는 `Starboard.Modules.DesktopIntegration.Assets.Starboard.ico` embedded resource로 사용한다.
+I3는 portable archive의 `Assets/Starboard.ico` 사본을 필수 파일로 검사하며 user settings,
+workspace/saved-tabs, logs와 WebView2 data는 거부한다.
 
 ### 인수 기준
 
@@ -127,4 +132,9 @@ I1과 I2는 파일 소유권을 나눠 병렬 가능하다. I0 원본과 공용 
 - [x] 출력 검색·경로 드롭·URL 열기·완료 알림을 후속 후보로 정리하고 기존 계획과 연결.
 - [x] 2026-09-10: 제작 아이콘의 앱·트레이 적용을 ICON-01로 기획. 소형 크기 검증,
   resource 수명·fallback, 병렬 작업과 실제 Windows 인수 기준을 추가했다.
+- [x] 2026-09-11: I0 canonical ICO와 두 제품 resource의 hash·PNG entry를
+  `Test-StarboardIcon.ps1`로 검사하고, I1 executable/WPF resource와 I2 embedded tray resource를
+  적용했다. portable package에는 `Assets/Starboard.ico`를 포함하고 사용자별 data를 거부한다.
+- [ ] 2026-09-11: 밝고 어두운 작업표시줄 및 숨겨진 아이콘 영역에서 100/125/150/200% 배율,
+  Explorer 재시작 뒤의 실제 tray 표시를 수동으로 확인한다.
 - [ ] 각 후속 후보의 상세 기획·구현·검증. 현재는 시작하지 않는다.
