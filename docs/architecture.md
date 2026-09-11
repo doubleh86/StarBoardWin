@@ -594,6 +594,12 @@ notice/license와 release metadata를 포함한 뒤 settings/workspace/saved-tab
 backup·temporary 파일, logs/WebView2 user data, dump, PDB와 개발 PC 절대 경로가 없는지
 검사한다.
 
+package 명령은 clean machine에서도 dependency와 vulnerability metadata를 확인하는 Release
+restore를 먼저 수행한다. 따라서 build 시점에는 NuGet package source와 audit source에 대한
+network 또는 동등한 조직 mirror가 필요하다. source 접근 실패를 package 산출물 오류로
+오인하거나 audit을 끄지 않고, source 접근을 복구한 뒤 동일 명령을 다시 실행한다. 이 build
+전제 조건은 생성된 portable package의 offline runtime 정책과 별개다.
+
 ZIP entry는 ordinal 경로 순서와 source commit 시각을 사용한다. SHA-256 파일을 만든 뒤
 다시 계산해 일치 여부를 확인하고 별도 staging에 압축 해제한다. 추출본은 전용 smoke
 인자로 시작하여 assembly와 package metadata, executable/local renderer 및 기본 shell

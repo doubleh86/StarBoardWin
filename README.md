@@ -86,13 +86,19 @@ dotnet run --project src/Starboard.Windows/Starboard.Windows.csproj
 self-contained `win-x64` publish, ZIP과 SHA-256 생성, 추출 smoke를 순서대로 수행한다.
 
 ```powershell
-pwsh -NoProfile -File scripts/package-portable.ps1
+powershell -NoProfile -File scripts/package-portable.ps1
 ```
+
+Windows PowerShell 5.1과 PowerShell 7(`pwsh`)을 모두 지원한다. package 흐름은
+Release restore도 수행하므로 NuGet package source와 vulnerability metadata source에
+접근할 수 있어야 한다. 격리된 환경에서는 `api.nuget.org` 또는 조직 mirror 접근을
+허용한 뒤 같은 명령을 다시 실행한다. runtime과 이미 생성된 portable package는
+network를 요구하지 않는다.
 
 `dotnet`이 PATH에 없으면 절대 경로를 저장소에 기록하지 않고 실행 시에만 넘긴다.
 
 ```powershell
-pwsh -NoProfile -File scripts/package-portable.ps1 -DotNetPath '<dotnet.exe 경로>'
+powershell -NoProfile -File scripts/package-portable.ps1 -DotNetPath '<dotnet.exe 경로>'
 ```
 
 결과는 `out/portable/<version>/Starboard-<version>-win-x64.zip`과 같은 이름의

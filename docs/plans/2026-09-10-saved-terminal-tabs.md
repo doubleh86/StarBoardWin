@@ -142,3 +142,12 @@ Terminal 경로는 `src/Modules/Starboard.Modules.Terminal/` 기준이다. publi
   renderer rebuild, 499-file portable ZIP·추출 smoke를 통과했다.
 - [x] 자동/수동 결과를 분리했다. 실제 WebView2 저장 메뉴·scrollback/PID 관찰과 DPI·IME는
   실행 환경에서 수행하지 않아 `docs/test-plan.md`의 MAN-044~045 및 기존 matrix에 남겼다.
+- [x] 2026-09-11 최종 재검증: 최초 portable 실행은 `staging/publish`·`staging/smoke`
+  directory를 초기화한 뒤, publish·archive를 만들기 전 Release restore의 `NU1900`으로
+  중단됐다. 모든 project가 `https://api.nuget.org/v3/index.json` vulnerability metadata를
+  읽지 못한 동일 오류였으므로 원인은 publish 산출물·파일 잠금·archive 논리가 아니라 격리
+  환경의 network 의존성으로 특정했다. network를 허용한 같은 Windows PowerShell 5.1 명령은
+  스크립트 수정이나 검증 제거 없이 Release 348개 test, 499-file publish, ZIP 재현성·해시와
+  추출 smoke를 통과했다. 완성된 `staging/build`, `publish`, `smoke`를 확인했고 package의
+  saved-tabs/settings/workspace primary·backup·temporary, log, WebView2 user data와 개발 PC
+  절대 경로 검사는 0건이었다.

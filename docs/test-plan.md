@@ -47,22 +47,26 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
-- 실행일: 2026-09-10 (run `20260910-073231-827228-6ed3d9e7`, 저장한 탭 수명 통합)
-- 지정 SDK restore는 NuGet vulnerability metadata 접근이 필요한 sandbox 첫 시도만 `NU1900`으로
-  실패했고 허용된 network에서 같은 명령으로 통과했다. 기본 병렬 Debug build는 이 머신에 남아
-  있는 다수의 MSBuild node 때문에 오류 0개인 채 exit 1, 기본 전체 test는 test 시작 전 출력 없이
-  정체되어 중단했다. build-server 비활성·단일 MSBuild node로 실행한 같은 Debug solution은 build
-  경고·오류 0개, 전체 348개 test(Architecture 8, Terminal 193, DesktopIntegration 75,
-  Preferences 31, Integration 41)가 통과했다.
+- 실행일: 2026-09-11 (run `20260910-073231-827228-6ed3d9e7`, 저장한 탭 수명 통합 최종 재검증)
+- 지정 SDK restore는 NuGet vulnerability metadata 접근이 필요한 sandbox 시도에서 `NU1900` 또는
+  출력 없는 exit 1로 실패했고 network가 허용된 같은 argv로 통과했다. sandbox의 기본 병렬 Debug
+  build도 첫 project 뒤 경고·오류 0개인 채 exit 1, 기본 전체 test는 test 시작 전 출력 없이
+  정체되어 중단했다. 같은 지정 argv를 외부에서 실행한 Debug solution은 build 경고·오류 0개,
+  전체 348개 test(Architecture 8, Terminal 193, DesktopIntegration 75, Preferences 31,
+  Integration 41)가 통과했다.
 - 저장 store/service 집중 89개, 새 integration contract 3개와 architecture 8개가 통과했다.
   저장 정의의 지정 셸·폴더와 기존 session instance 보존은 module test, 실제 서로 다른 PID와
   session interactive-state 격리는 기존 ConPTY GUI-host integration을 함께 근거로 삼았다. 실제
   WebView2에서 저장 메뉴를 조작해 PID와 scrollback을 관찰한 결과는 아니며 MAN-044~045로 남겼다.
-- 과제에 지정된 `powershell -NoProfile -File scripts/package-portable.ps1`이 Windows PowerShell
-  5.1에서도 동작하도록 .NET API/long-path 호환을 보완했다. Release build 경고·오류 0개와 같은
-  348개 test, 499-file self-contained publish, ZIP 재현성·SHA-256·추출 smoke가 통과했다.
-  ZIP SHA-256은 `4aabeecfac4f14164b855557ed38834a41df0ee4962e617625a1d55d79263d67`이며
-  saved-tabs primary/backup/temporary, settings/workspace runtime data와 개발 PC 경로 검사는 0건이다.
+- 과제에 지정된 `powershell -NoProfile -File scripts/package-portable.ps1`의 첫 실행은
+  `staging/publish`·`staging/smoke` directory를 초기화한 뒤 publish·archive를 만들기 전 Release
+  restore에서 모든 project가 NuGet audit source를 읽지 못한 `NU1900`으로 중단됐다. network를
+  허용한 동일 명령은 스크립트 수정 없이 Release build 경고·오류 0개와 같은 348개 test, 완성된
+  `staging/build`·`publish`·`smoke`, 499-file self-contained publish, ZIP 재현성·SHA-256·추출
+  smoke를 통과했다. ZIP SHA-256은
+  `8b9bfe37247f8bba5d2372be4c7b18c4d1743e3b58c07ef7a3f936d07bac48ab`이며 saved-tabs
+  primary/backup/temporary, settings/workspace runtime data, log, WebView2 user data와 개발 PC
+  경로 검사는 0건이다.
 - renderer source rebuild는 sandbox의 esbuild child spawn `EPERM` 뒤 허용된 로컬 실행에서
   통과했고 source/dist diff가 없었다. 실제 WebView2 화면, Korean IME, 125/150/200% 및 mixed-DPI
   장비 조작은 수행하지 않았다.
