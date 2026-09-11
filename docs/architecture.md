@@ -635,6 +635,21 @@ network-disabled 실행은 기존 사용자 WebView2/session 보호를 위해 �
 따라서 local asset/CSP/package smoke가 통과했더라도 실제 offline WebView2와 Runtime 누락
 fallback은 manual matrix에서 계속 부분 또는 blocked 상태로 관리한다.
 
+## 현재 탭 출력 검색
+
+renderer는 고정된 `@xterm/addon-search` 0.16.0을 session별 xterm instance에만 load한다.
+따라서 검색 대상은 활성 탭의 현재 memory scrollback이며, 다른 tab buffer, disk/log,
+host protocol 또는 renderer process 재시작 전 buffer를 읽거나 복원하지 않는다. 검색
+overlay는 renderer document의 상태이고 `Ctrl+F`, Enter/Shift+Enter, 이전/다음 button과
+Escape를 renderer에서 처리한다. input과 탐색 key는 shell input message를 만들지 않으며,
+닫을 때 highlight를 지우고 동일 terminal로 focus를 돌린다. tab 전환·제거·reset은 overlay와
+decorations를 정리한다. 이 흐름은 PID, session, output, scrollback transport를 변경하지
+않는다.
+
+overlay는 terminal pane 위의 compact absolute surface이며 200 DIP collapsed panel에서 본문을
+resize하거나 자동 확장하지 않는다. theme appearance의 canvas/accent/selection 색을 search
+decorations에 사용하고, 예상 밖의 색 형식에는 안정된 cyan fallback을 사용한다.
+
 portable update는 파일을 제자리 교체하거나 시작 프로그램 경로를 자동 이동하지 않는다.
 서로 다른 build commit의 격리 폴더에서 이전→현재→이전 metadata smoke와 absent user state
 불변은 확인했지만, 설정이 존재하는 schema migration/downgrade와 enabled HKCU Run 경로는
@@ -674,3 +689,4 @@ portable update는 파일을 제자리 교체하거나 시작 프로그램 경�
 - [WebView2 distribution](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution)
 - [WebView2 development practices](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/developer-guide)
 - [xterm.js 6.0.0](https://github.com/xtermjs/xterm.js/releases/tag/6.0.0)
+- [xterm.js search addon 0.16.0](https://www.npmjs.com/package/@xterm/addon-search/v/0.16.0)

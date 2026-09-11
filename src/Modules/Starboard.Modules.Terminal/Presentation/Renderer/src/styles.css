@@ -295,6 +295,68 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.terminal-search {
+  position: absolute;
+  z-index: 4;
+  top: var(--space-2xs);
+  right: var(--space-sm);
+  display: flex;
+  width: min(340px, calc(100% - 16px));
+  min-width: 0;
+  min-height: 28px;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: var(--rule-width) solid var(--color-rule-strong);
+  background: color-mix(in srgb, var(--color-canvas-raised) 96%, transparent);
+  box-shadow: 0 3px 10px color-mix(in srgb, black 28%, transparent);
+}
+
+.terminal-search-input {
+  min-width: 0;
+  height: 24px;
+  flex: 1 1 110px;
+  padding: 0 var(--space-2xs);
+  border: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: 11px var(--font-mono);
+}
+
+.terminal-search-input:focus-visible {
+  outline: var(--focus-width) solid var(--color-focus);
+  outline-offset: -1px;
+}
+
+.terminal-search-button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-neutral);
+  cursor: pointer;
+  font: 14px/1 var(--font-ui);
+}
+
+.terminal-search-button:hover,
+.terminal-search-button:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-ink);
+}
+
+.terminal-search-status {
+  min-width: 42px;
+  padding: 0 2px;
+  color: var(--color-neutral);
+  font: 10px var(--font-ui);
+  text-align: center;
+  white-space: nowrap;
+}
+
 .session-restart,
 .session-recovery {
   min-height: 24px;

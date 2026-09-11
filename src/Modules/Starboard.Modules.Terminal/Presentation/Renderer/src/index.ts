@@ -1,4 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
@@ -207,6 +208,7 @@ type SessionEntry = {
   homeDirectory: string;
   terminal: Terminal;
   fitAddon: FitAddon;
+  searchAddon: SearchAddon;
   pane: HTMLElement;
   mount: HTMLElement;
   status: HTMLElement;
@@ -225,6 +227,13 @@ type SessionEntry = {
   lastColumns: number;
   lastRows: number;
   fitErrorReported: boolean;
+};
+
+type SearchOverlay = {
+  sessionId: string;
+  element: HTMLElement;
+  input: HTMLInputElement;
+  status: HTMLElement;
 };
 
 declare global {
@@ -270,6 +279,7 @@ let savedTabsSnapshot: SavedTabsSnapshotPayload | undefined;
 let savedTabsFeedback = "";
 let pendingSavedTabLaunchRequestId: string | undefined;
 let pendingConfirmation: PendingConfirmation | undefined;
+let searchOverlay: SearchOverlay | undefined;
 const suppressedConfirmationKeys = new Set<string>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -577,12 +587,24 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
 
   const terminal = createTerminal();
   const fitAddon = new FitAddon();
+  const searchAddon = new SearchAddon();
   terminal.loadAddon(fitAddon);
+  terminal.loadAddon(searchAddon);
   terminal.open(mount);
   terminal.onData((data) => postSession("input", sessionId, { data }));
   terminal.attachCustomKeyEventHandler((event) => {
     if (event.type !== "keydown") {
       return true;
+    }
+
+    if (
+      event.ctrlKey === true &&
+      event.altKey === false &&
+      event.metaKey === false &&
+      event.code === "KeyF"
+    ) {
+      showSearch(sessionId);
+      return false;
     }
 
     if (
@@ -620,6 +642,7 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
     homeDirectory: payload.homeDirectory,
     terminal,
     fitAddon,
+    searchAddon,
     pane,
     mount,
     status,
@@ -638,6 +661,12 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
     lastRows: 0,
     fitErrorReported: false,
   };
+
+  searchAddon.onDidChangeResults((result) => {
+    if (searchOverlay?.sessionId === sessionId) {
+      updateSearchStatus(result.resultIndex, result.resultCount);
+    }
+  });
 
   applyTerminalOptions(entry);
   return entry;
@@ -1494,6 +1523,154 @@ function upsertSession(sessionId: string, payload: SessionPayload): void {
   renderTabs();
 }
 
+function showSearch(sessionId: string): void {
+  const entry = sessions.get(sessionId);
+  if (entry === undefined || activeSessionId !== sessionId) {
+    return;
+  }
+
+  if (searchOverlay?.sessionId === sessionId) {
+    searchOverlay.input.focus();
+    searchOverlay.input.select();
+    return;
+  }
+
+  closeSearch(false);
+  const element = document.createElement("section");
+  element.className = "terminal-search";
+  element.setAttribute("role", "search");
+  element.setAttribute("aria-label", "현재 탭 출력 검색");
+
+  const input = document.createElement("input");
+  input.type = "search";
+  input.className = "terminal-search-input";
+  input.placeholder = "출력 검색";
+  input.setAttribute("aria-label", "현재 탭 출력 검색");
+  input.autocomplete = "off";
+  input.spellcheck = false;
+
+  const previousButton = document.createElement("button");
+  previousButton.type = "button";
+  previousButton.className = "terminal-search-button";
+  previousButton.textContent = "↑";
+  previousButton.title = "이전 결과 (Shift+Enter)";
+  previousButton.setAttribute("aria-label", "이전 결과");
+
+  const nextButton = document.createElement("button");
+  nextButton.type = "button";
+  nextButton.className = "terminal-search-button";
+  nextButton.textContent = "↓";
+  nextButton.title = "다음 결과 (Enter)";
+  nextButton.setAttribute("aria-label", "다음 결과");
+
+  const status = document.createElement("span");
+  status.className = "terminal-search-status";
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  status.textContent = "검색어 입력";
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "terminal-search-button";
+  closeButton.textContent = "×";
+  closeButton.title = "검색 닫기 (Escape)";
+  closeButton.setAttribute("aria-label", "검색 닫기");
+
+  previousButton.addEventListener("click", () => findSearchResult(false));
+  nextButton.addEventListener("click", () => findSearchResult(true));
+  closeButton.addEventListener("click", () => closeSearch(true));
+  input.addEventListener("input", () => findSearchResult(true, true));
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSearch(true);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      findSearchResult(event.shiftKey === false);
+    }
+  });
+  element.append(input, previousButton, nextButton, status, closeButton);
+  entry.pane.append(element);
+  searchOverlay = { sessionId, element, input, status };
+  input.focus();
+}
+
+function findSearchResult(forward: boolean, incremental = false): void {
+  if (searchOverlay === undefined) {
+    return;
+  }
+
+  const entry = sessions.get(searchOverlay.sessionId);
+  const term = searchOverlay.input.value;
+  if (entry === undefined || term.length === 0) {
+    entry?.searchAddon.clearDecorations();
+    if (searchOverlay !== undefined) {
+      searchOverlay.status.textContent = "검색어 입력";
+    }
+    return;
+  }
+
+  const searchOptions = createSearchOptions(incremental);
+  const found = forward === true
+    ? entry.searchAddon.findNext(term, searchOptions)
+    : entry.searchAddon.findPrevious(term, searchOptions);
+  if (found === false && searchOverlay !== undefined) {
+    searchOverlay.status.textContent = "결과 없음";
+  }
+}
+
+function createSearchOptions(incremental: boolean): ISearchOptions {
+  const accent = toSearchColor(currentAppearance?.theme.accent);
+  const canvas = toSearchColor(currentAppearance?.theme.canvas);
+  const selection = toSearchColor(currentAppearance?.theme.selection);
+  return {
+    incremental,
+    decorations: {
+      matchBackground: selection,
+      matchBorder: accent,
+      matchOverviewRuler: accent,
+      activeMatchBackground: accent,
+      activeMatchBorder: canvas,
+      activeMatchColorOverviewRuler: accent,
+    },
+  };
+}
+
+function toSearchColor(value: string | undefined): string {
+  if (/^#[0-9a-f]{6}$/i.test(value ?? "") === true) {
+    return value!;
+  }
+
+  return "#5ea8ff";
+}
+
+function updateSearchStatus(resultIndex: number, resultCount: number): void {
+  if (searchOverlay === undefined) {
+    return;
+  }
+
+  searchOverlay.status.textContent = resultCount === 0 || resultIndex < 0
+    ? "결과 없음"
+    : `${resultIndex + 1}/${resultCount}`;
+}
+
+function closeSearch(restoreTerminalFocus: boolean): void {
+  if (searchOverlay === undefined) {
+    return;
+  }
+
+  const closedSearch = searchOverlay;
+  searchOverlay = undefined;
+  const entry = sessions.get(closedSearch.sessionId);
+  entry?.searchAddon.clearDecorations();
+  closedSearch.element.remove();
+  if (restoreTerminalFocus === true && entry !== undefined && activeSessionId === entry.id) {
+    entry.terminal.focus();
+  }
+}
+
 function activateSession(sessionId: string): void {
   const nextEntry = sessions.get(sessionId);
   if (nextEntry === undefined) {
@@ -1502,6 +1679,9 @@ function activateSession(sessionId: string): void {
 
   if (pendingConfirmation !== undefined && pendingConfirmation.sessionId !== sessionId) {
     completeConfirmation("cancelled");
+  }
+  if (searchOverlay?.sessionId !== sessionId) {
+    closeSearch(false);
   }
 
   activeSessionId = sessionId;
@@ -1545,12 +1725,16 @@ function removeSession(sessionId: string): void {
   }
 
   sessions.delete(sessionId);
+  if (searchOverlay?.sessionId === sessionId) {
+    closeSearch(false);
+  }
   if (pendingConfirmation?.sessionId === sessionId) {
     dismissConfirmation(false);
   }
   if (contextMenu?.getAttribute("aria-label") === `${entry.name} 탭 메뉴`) {
     dismissTabMenu();
   }
+  entry.searchAddon.dispose();
   entry.terminal.dispose();
   entry.pane.remove();
   entry.tabItem.remove();
@@ -1844,6 +2028,9 @@ function handleHostMessage(value: unknown): void {
       completeConfirmation("cancelled");
     }
     entry.terminal.reset();
+    if (searchOverlay?.sessionId === sessionId) {
+      closeSearch(false);
+    }
     setNewOutputState(entry, false);
     entry.errorMessage = undefined;
     updateSessionStatus(entry);
@@ -1872,7 +2059,10 @@ function handleApplicationShortcut(event: KeyboardEvent): void {
   }
 
   let handled = false;
-  if (event.shiftKey === true && event.code === "KeyT") {
+  if (event.shiftKey === false && event.code === "KeyF" && activeSessionId !== undefined) {
+    showSearch(activeSessionId);
+    handled = true;
+  } else if (event.shiftKey === true && event.code === "KeyT") {
     if (newTabButton.disabled === false) {
       focusTerminalOnNextActivation = true;
       postGlobal("new-tab");
@@ -1938,6 +2128,12 @@ document.addEventListener("pointerdown", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && searchOverlay !== undefined) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeSearch(true);
+    return;
+  }
   if (event.key === "Escape" && contextMenu !== undefined) {
     event.preventDefault();
     dismissTabMenu();

@@ -174,6 +174,7 @@ package의 local asset/CSP 계약은 자동 검증됐지만, system network를 �
 | `Ctrl+Tab`, `Ctrl+Shift+Tab` | 다음/이전 terminal 탭 선택 |
 | `Ctrl+Shift+W` | 현재 terminal 탭 닫기 요청; 살아 있는 session은 확인 뒤 종료 |
 | `Ctrl+W` | shell에 그대로 전달 |
+| `Ctrl+F` | 현재 활성 탭의 메모리 scrollback 검색; Enter/Shift+Enter로 다음/이전, Escape로 닫고 terminal focus 복귀 |
 | `Ctrl+Alt+E` | collapsed/expanded geometry 전환 |
 | `Ctrl+Alt+S` | 숨김·비활성 panel 호출, 활성 panel 숨김 |
 

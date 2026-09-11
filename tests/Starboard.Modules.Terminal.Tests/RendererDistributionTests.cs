@@ -134,6 +134,21 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(styles, "max-height:min(360px,calc(100vh - 44px))");
     }
 
+    [TestMethod]
+    public void BundledRendererContainsActiveTabOnlyOutputSearchRuntime()
+    {
+        var script = ReadRendererAsset("app.js");
+        var styles = ReadRendererAsset("app.css");
+
+        StringAssert.Contains(script, "findNext");
+        StringAssert.Contains(script, "findPrevious");
+        StringAssert.Contains(script, "clearDecorations");
+        StringAssert.Contains(script, "\\uACB0\\uACFC \\uC5C6\\uC74C");
+        StringAssert.Contains(script, "\"KeyF\"");
+        StringAssert.Contains(styles, ".terminal-search");
+        StringAssert.Contains(styles, "width:min(340px,calc(100% - 16px))");
+    }
+
     private static string ReadRendererAsset(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Renderer", fileName);

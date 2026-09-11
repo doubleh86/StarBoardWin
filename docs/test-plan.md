@@ -632,6 +632,7 @@ build hash를 함께 기록한다.
 | MAN-043 | workspace opt-out | 옵션 해제 뒤 구성 파일 삭제와 다음 시작의 기본 tab 하나를 확인 | Blocked — 초기 workspace primary/backup 부재만 읽기 전용으로 확인했음; opt-out 저장으로 파일을 삭제하고 다음 시작 기본 tab을 확인하는 destructive UI 시나리오는 수행하지 못했음 |
 | MAN-044 | 저장한 탭 전체 UI 흐름 | 실제 WebView2에서 저장·취소·편집·삭제·선택·실패 재시도, 앱 재실행 유지와 workspace on/off 독립성 확인 | Not run — terminal UI 입력 자동화가 허용되지 않아 실제 menu/dialog 조작과 재실행을 수행하지 않았음 |
 | MAN-045 | 저장 항목 shell/폴더와 기존 xterm 보존 | 저장 항목 실행 전후 새 PID·지정 폴더/셸 및 기존 탭 PID·입력·scrollback 보존을 실제 화면에서 확인 | Not run — module/ConPTY 자동 검증은 통과했지만 실제 WebView2 scrollback과 사용자 입력 상태는 관찰하지 않았음 |
+| MAN-046 | 현재 탭 출력 검색 | 200 DIP/좁은 폭에서 Ctrl+F, 한글 IME, Enter/Shift+Enter, 결과 강조/없음, Escape focus 복귀와 네 theme를 확인하고 검색 key가 shell에 전달되지 않는지 확인 | Not run — renderer distribution test는 addon·lifecycle·compact CSS를 확인했지만 실제 WebView2 keyboard/IME/theme 화면 및 shell input 관찰은 수행하지 않았음 |
 
 ## Focus 검증 절차
 
