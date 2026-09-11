@@ -531,6 +531,120 @@ public sealed class TerminalSessionCoordinatorTests
     }
 
     [TestMethod]
+    public async Task PathDropConfirmationConfirmedWritesQuotedInputWithoutExecutingCommand()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var session = FindOutputState(coordinator.NewOutputState, tab.SessionId).Session;
+        var preparation = coordinator.RequestPathDropConfirmation(
+            session, ["C:\\한글 폴더\\a'b&$(draft).txt", "D:\\work\\file.txt"]);
+        Assert.IsTrue(preparation.Succeeded);
+        Assert.IsNotNull(preparation.ConfirmationRequest);
+
+        var response = new TerminalConfirmationResponse(preparation.ConfirmationRequest.Token,
+                                                        TerminalConfirmationResult.Confirmed);
+        var applied = await coordinator.ApplyPathDropConfirmationAsync(response, CancellationToken.None);
+
+        Assert.IsTrue(applied);
+        CollectionAssert.AreEqual(
+            new List<string> { "'C:\\한글 폴더\\a''b&$(draft).txt' 'D:\\work\\file.txt'" },
+            factory.Sessions[0].Writes);
+        Assert.IsFalse(factory.Sessions[0].Writes[0].Contains('\r'));
+        Assert.IsFalse(factory.Sessions[0].Writes[0].Contains('\n'));
+    }
+
+    [TestMethod]
+    public async Task PathDropConfirmationAfterTabSwitchIsDiscarded()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var target = await coordinator.AddAsync(CancellationToken.None);
+        var session = FindOutputState(coordinator.NewOutputState, target.SessionId).Session;
+        var preparation = coordinator.RequestPathDropConfirmation(session, ["C:\\work\\file.txt"]);
+        Assert.IsNotNull(preparation.ConfirmationRequest);
+
+        Assert.IsTrue(coordinator.Select(first.SessionId));
+        var response = new TerminalConfirmationResponse(preparation.ConfirmationRequest.Token,
+                                                        TerminalConfirmationResult.Confirmed);
+        var applied = await coordinator.ApplyPathDropConfirmationAsync(response, CancellationToken.None);
+
+        Assert.IsFalse(applied);
+        Assert.AreEqual(0, factory.Sessions[0].Writes.Count);
+        Assert.AreEqual(0, factory.Sessions[1].Writes.Count);
+    }
+
+    [TestMethod]
+    public async Task PathDropConfirmationAfterRestartOrRemovalIsDiscarded()
+    {
+        var restartFactory = new FakeTerminalSessionFactory();
+        await using var restartCoordinator = CreateCoordinator(restartFactory);
+        var restartTab = await restartCoordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var restartSession = FindOutputState(restartCoordinator.NewOutputState, restartTab.SessionId).Session;
+        var restartPreparation = restartCoordinator.RequestPathDropConfirmation(
+            restartSession, ["C:\\work\\restart.txt"]);
+        Assert.IsNotNull(restartPreparation.ConfirmationRequest);
+        await restartCoordinator.RestartAsync(restartTab.SessionId, CancellationToken.None);
+
+        var restartResponse = new TerminalConfirmationResponse(restartPreparation.ConfirmationRequest.Token,
+                                                               TerminalConfirmationResult.Confirmed);
+        var restartApplied = await restartCoordinator.ApplyPathDropConfirmationAsync(
+            restartResponse, CancellationToken.None);
+
+        var removalFactory = new FakeTerminalSessionFactory();
+        await using var removalCoordinator = CreateCoordinator(removalFactory);
+        var removalTab = await removalCoordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var removalSession = FindOutputState(removalCoordinator.NewOutputState, removalTab.SessionId).Session;
+        var removalPreparation = removalCoordinator.RequestPathDropConfirmation(
+            removalSession, ["C:\\work\\removed.txt"]);
+        Assert.IsNotNull(removalPreparation.ConfirmationRequest);
+        removalFactory.Sessions[0].RaiseExit(0);
+        Assert.IsTrue(await removalCoordinator.CloseAsync(removalTab.SessionId, CancellationToken.None));
+
+        var removalResponse = new TerminalConfirmationResponse(removalPreparation.ConfirmationRequest.Token,
+                                                               TerminalConfirmationResult.Confirmed);
+        var removalApplied = await removalCoordinator.ApplyPathDropConfirmationAsync(
+            removalResponse, CancellationToken.None);
+
+        Assert.IsFalse(restartApplied);
+        Assert.IsFalse(removalApplied);
+        Assert.IsTrue(restartFactory.Sessions.All(session => session.Writes.Count == 0));
+        Assert.AreEqual(0, removalFactory.Sessions[0].Writes.Count);
+    }
+
+    [TestMethod]
+    public async Task RequestPathDropConfirmationStaleGenerationOrCustomShellReturnsSafeFailure()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var currentSession = FindOutputState(coordinator.NewOutputState, tab.SessionId).Session;
+        var staleSession = new TerminalSessionReference(currentSession.SessionId, currentSession.Generation + 1);
+
+        var stale = coordinator.RequestPathDropConfirmation(staleSession, ["C:\\work\\file.txt"]);
+
+        Assert.IsFalse(stale.Succeeded);
+        Assert.IsNull(stale.ConfirmationRequest);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(stale.ErrorMessage));
+        Assert.AreEqual(0, factory.Sessions[0].Writes.Count);
+
+        var customFactory = new FakeTerminalSessionFactory();
+        await using var customCoordinator = CreateCoordinator(customFactory);
+        var customShell = new ShellLaunchSpec("custom-shell.exe", string.Empty, Path.GetTempPath());
+        var customTab = await customCoordinator.StartAsync(customShell, null, null, ShellResolver.Resolve,
+                                                           80, 24, CancellationToken.None);
+        var customSession = FindOutputState(customCoordinator.NewOutputState, customTab.SessionId).Session;
+
+        var unsupported = customCoordinator.RequestPathDropConfirmation(customSession, ["C:\\work\\file.txt"]);
+
+        Assert.IsFalse(unsupported.Succeeded);
+        Assert.IsNull(unsupported.ConfirmationRequest);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(unsupported.ErrorMessage));
+        Assert.AreEqual(0, customFactory.Sessions[0].Writes.Count);
+    }
+
+    [TestMethod]
     public async Task NewOutputStateTracksInactiveSessionAndResetsBySelectionRestartAndRemoval()
     {
         var factory = new FakeTerminalSessionFactory();

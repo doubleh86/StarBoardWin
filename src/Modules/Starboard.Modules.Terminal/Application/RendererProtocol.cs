@@ -137,7 +137,7 @@ internal static class RendererProtocol
 
             message = type switch
             {
-                "ready" => ParseGlobal(RendererMessageType.Ready, root, payload),
+                "ready" => ParseRendererReady(root, payload),
                 "new-tab" => ParseGlobal(RendererMessageType.NewTab, root, payload),
                 "select-session" => ParseSession(RendererMessageType.SelectSession, root, payload),
                 "select-next" => ParseGlobal(RendererMessageType.SelectNext, root, payload),
@@ -146,6 +146,7 @@ internal static class RendererProtocol
                 "resize" => ParseResize(root, payload),
                 "copy" => ParseData(RendererMessageType.Copy, root, payload),
                 "paste-request" => ParseSession(RendererMessageType.PasteRequest, root, payload),
+                "drop-paths" => ParsePathDrop(root, payload),
                 "close-session" => ParseSession(RendererMessageType.CloseSession, root, payload),
                 "restart-session" => ParseSession(RendererMessageType.RestartSession, root, payload),
                 "rename-session" => ParseData(RendererMessageType.RenameSession, root, payload, "name", 128),
@@ -469,6 +470,35 @@ internal static class RendererProtocol
         }
 
         return new RendererMessage(RendererMessageType.Resize, sessionId, null, columns, rows);
+    }
+
+    private static RendererMessage? ParseRendererReady(JsonElement root, JsonElement payload)
+    {
+        if (root.TryGetProperty("sessionId", out _) == true || payload.ValueKind != JsonValueKind.Object ||
+            payload.TryGetProperty("rendererInstanceId", out var instanceElement) == false ||
+            instanceElement.ValueKind != JsonValueKind.String ||
+            TryParseCompactGuid(instanceElement.GetString(), out var rendererInstanceId) == false)
+        {
+            return null;
+        }
+
+        return new RendererMessage(RendererMessageType.Ready, RendererInstanceId: rendererInstanceId);
+    }
+
+    private static RendererMessage? ParsePathDrop(JsonElement root, JsonElement payload)
+    {
+        if (TryParseSessionId(root, out var sessionId) == false || payload.ValueKind != JsonValueKind.Object ||
+            payload.TryGetProperty("rendererInstanceId", out var instanceElement) == false ||
+            instanceElement.ValueKind != JsonValueKind.String ||
+            TryParseCompactGuid(instanceElement.GetString(), out var rendererInstanceId) == false ||
+            payload.TryGetProperty("sessionGeneration", out var generationElement) == false ||
+            generationElement.TryGetInt64(out var generation) == false || generation < 1)
+        {
+            return null;
+        }
+
+        return new RendererMessage(RendererMessageType.DropPaths, sessionId,
+                                   RendererInstanceId: rendererInstanceId, SessionGeneration: generation);
     }
 
     private static RendererMessage? ParseGlobal(RendererMessageType type, JsonElement root, JsonElement payload)

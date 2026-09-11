@@ -42,6 +42,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private bool savedTabsInitialized;
     private bool rendererFailed;
     private bool isDisposed;
+    private Guid rendererInstanceId;
     private long rendererGeneration;
     private int columns = 80;
     private int rows = 24;
@@ -363,7 +364,10 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         switch (message.Type)
         {
             case RendererMessageType.Ready:
+                rendererInstanceId = message.RendererInstanceId
+                    ?? throw new InvalidOperationException("A validated renderer-ready message has no instance identifier.");
                 rendererGeneration++;
+                Renderer.AllowExternalDrop = true;
                 rendererReady.TrySetResult();
                 break;
             case RendererMessageType.NewTab:
@@ -403,6 +407,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 {
                     RequestPasteFromClipboard(pasteSessionId);
                 }
+                break;
+            case RendererMessageType.DropPaths:
+                HandlePathDrop(message, eventArgs);
                 break;
             case RendererMessageType.CloseSession:
                 if (message.SessionId is { } closeSessionId)
@@ -696,6 +703,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private void Core_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs eventArgs)
     {
         _ = sender;
+        rendererInstanceId = Guid.Empty;
+        Renderer.AllowExternalDrop = false;
         var allowedPrefix = $"https://{RendererHostName}/";
         if (eventArgs.Uri.StartsWith(allowedPrefix, StringComparison.OrdinalIgnoreCase) == false)
         {
@@ -710,6 +719,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                             $"The renderer process failed ({eventArgs.ProcessFailedKind}).");
         CancelPendingSafetyConfirmation(sendRendererCancellation: false);
         rendererFailed = true;
+        rendererInstanceId = Guid.Empty;
+        Renderer.AllowExternalDrop = false;
         rendererSessionGenerations.Clear();
         appearanceState?.MarkRendererUnavailable();
         ShowError("Terminal renderer가 중단됐습니다. shell session은 유지되며 renderer를 다시 연결할 수 있습니다.");
@@ -917,6 +928,21 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                            });
     }
 
+    private void PresentPathDropConfirmation(TerminalPathDropConfirmationRequest request)
+    {
+        var sessionId = new TerminalSessionId(request.Token.Session.SessionId);
+        pendingSafetyConfirmation = new PendingSafetyConfirmation(request.Token, ConfirmationKind.PathDrop);
+        SendSessionMessage("confirmation-request", sessionId,
+                           new
+                           {
+                               requestId = request.Token.RequestId.ToString(),
+                               sessionGeneration = request.Token.Session.Generation,
+                               kind = "path-drop",
+                               request.SessionName,
+                               request.QuotedInput,
+                           });
+    }
+
     private async Task ApplyConfirmationResponseAsync(TerminalConfirmationResponse response)
     {
         var pending = pendingSafetyConfirmation;
@@ -934,7 +960,13 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 return;
             }
 
-            _ = await sessionCoordinator.ApplyPasteConfirmationAsync(response, lifetimeCancellation.Token);
+            if (pending.Kind == ConfirmationKind.Paste)
+            {
+                _ = await sessionCoordinator.ApplyPasteConfirmationAsync(response, lifetimeCancellation.Token);
+                return;
+            }
+
+            _ = await sessionCoordinator.ApplyPathDropConfirmationAsync(response, lifetimeCancellation.Token);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException or OperationCanceledException or Win32Exception or
@@ -1023,6 +1055,61 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
+    private void HandlePathDrop(RendererMessage message, CoreWebView2WebMessageReceivedEventArgs eventArgs)
+    {
+        if (message.SessionId is not { } sessionId || message.RendererInstanceId != rendererInstanceId ||
+            message.SessionGeneration < 1 || pendingSafetyConfirmation is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            var objects = eventArgs.AdditionalObjects;
+            if (objects.Count == 0 || objects.Count > TerminalPathDropFormatter.MaximumPathCount)
+            {
+                SendPathDropFailure(sessionId, "한 번에 1개 이상 32개 이하의 로컬 파일이나 폴더를 놓아 주세요.");
+                return;
+            }
+
+            var paths = new List<string>(objects.Count);
+            foreach (var additionalObject in objects)
+            {
+                if (additionalObject is not CoreWebView2File file || string.IsNullOrWhiteSpace(file.Path) == true)
+                {
+                    SendPathDropFailure(sessionId, "로컬 파일이나 폴더 경로만 넣을 수 있습니다.");
+                    return;
+                }
+
+                paths.Add(file.Path);
+            }
+
+            var session = new TerminalSessionReference(sessionId.Value, message.SessionGeneration);
+            var result = sessionCoordinator.RequestPathDropConfirmation(session, paths);
+            if (result.Succeeded == false || result.ConfirmationRequest is null)
+            {
+                SendPathDropFailure(sessionId, result.ErrorMessage ?? "경로를 안전하게 넣을 수 없습니다.");
+                return;
+            }
+
+            PresentPathDropConfirmation(result.ConfirmationRequest);
+        }
+        catch (Exception exception) when (exception is COMException or InvalidOperationException or NotSupportedException)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "PathDrop",
+                                "A dropped-path request could not be read from the WebView2 message.", exception);
+            if (message.RendererInstanceId == rendererInstanceId && ContainsSession(sessionId) == true)
+            {
+                SendPathDropFailure(sessionId, "드롭한 경로를 확인하지 못했습니다. Explorer에서 다시 시도해 주세요.");
+            }
+        }
+    }
+
+    private void SendPathDropFailure(TerminalSessionId sessionId, string message)
+    {
+        SendSessionMessage("path-drop-result", sessionId, new { succeeded = false, message });
+    }
+
     private void ResizeSession(TerminalSessionId sessionId, int requestedColumns, int requestedRows)
     {
         try
@@ -1074,6 +1161,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
 
         var canAddSession = snapshot.Tabs.Count < TerminalTabRegistry.DefaultMaximumTabs;
+        var sessionLifetimes = sessionCoordinator.NewOutputState.States
+            .ToDictionary(state => new TerminalSessionId(state.Session.SessionId), state => state.Session.Generation);
         for (var index = 0; index < snapshot.Tabs.Count; index++)
         {
             var tab = snapshot.Tabs[index];
@@ -1085,6 +1174,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                                    tab.ExitCode,
                                    order = index,
                                    canAddSession,
+                                   sessionGeneration = sessionLifetimes[tab.SessionId],
                                    tab.StartingDirectory,
                                    homeDirectory = defaultShell?.WorkingDirectory ?? tab.StartingDirectory,
                                });
@@ -1401,6 +1491,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         {
             CancelPendingSafetyConfirmation(sendRendererCancellation: false);
             rendererFailed = true;
+            rendererInstanceId = Guid.Empty;
+            Renderer.AllowExternalDrop = false;
             rendererSessionGenerations.Clear();
             appearanceState?.MarkRendererUnavailable();
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererOutput",
@@ -1662,6 +1754,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     {
         Close,
         Paste,
+        PathDrop,
     }
 
     private sealed record PendingSafetyConfirmation(TerminalConfirmationToken Token, ConfirmationKind Kind);

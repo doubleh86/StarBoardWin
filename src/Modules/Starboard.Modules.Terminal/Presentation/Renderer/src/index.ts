@@ -8,6 +8,7 @@ const ProtocolVersion = 2;
 const MaximumTabs = 8;
 const SessionIdPattern = /^[0-9a-f]{32}$/i;
 const EmptySessionId = "00000000000000000000000000000000";
+const RendererInstanceId = crypto.randomUUID().replaceAll("-", "").toLowerCase();
 
 type GlobalRendererMessageType =
   | "ready"
@@ -27,6 +28,7 @@ type SessionRendererMessageType =
   | "resize"
   | "copy"
   | "paste-request"
+  | "drop-paths"
   | "close-session"
   | "restart-session"
   | "rename-session"
@@ -67,6 +69,7 @@ type SessionHostMessageType =
   | "session-error"
   | "confirmation-request"
   | "confirmation-cancel"
+  | "path-drop-result"
   | "new-output-state";
 
 type HostMessage =
@@ -168,11 +171,12 @@ type SessionPayload = {
   exitCode: number | null;
   order: number;
   canAddSession: boolean;
+  sessionGeneration: number;
   startingDirectory: string;
   homeDirectory: string;
 };
 
-type ConfirmationKind = "close" | "paste";
+type ConfirmationKind = "close" | "paste" | "path-drop";
 
 type ConfirmationRequestPayload = {
   requestId: string;
@@ -180,6 +184,7 @@ type ConfirmationRequestPayload = {
   kind: ConfirmationKind;
   sessionName: string;
   clipboardText?: string;
+  quotedInput?: string;
 };
 
 type ConfirmationCancelPayload = {
@@ -204,6 +209,7 @@ type SessionEntry = {
   state: SessionState;
   exitCode: number | null;
   order: number;
+  sessionGeneration: number;
   startingDirectory: string;
   homeDirectory: string;
   terminal: Terminal;
@@ -245,6 +251,10 @@ declare global {
           listener: (event: MessageEvent<unknown>) => void,
         ) => void;
         postMessage: (message: RendererMessage) => void;
+        postMessageWithAdditionalObjects: (
+          message: RendererMessage,
+          additionalObjects: readonly object[],
+        ) => void;
       };
     };
   }
@@ -434,6 +444,24 @@ function postSession(
     sessionId,
     payload,
   });
+}
+
+function postPathDrop(entry: SessionEntry, files: File[]): boolean {
+  const webview = window.chrome?.webview;
+  if (webview === undefined || typeof webview.postMessageWithAdditionalObjects !== "function") {
+    return false;
+  }
+
+  webview.postMessageWithAdditionalObjects({
+    version: ProtocolVersion,
+    type: "drop-paths",
+    sessionId: entry.id,
+    payload: {
+      rendererInstanceId: RendererInstanceId,
+      sessionGeneration: entry.sessionGeneration,
+    },
+  }, files);
+  return true;
 }
 
 function toTerminalTheme(payload: AppearancePayload): ITheme {
@@ -638,6 +666,7 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
     state: payload.state,
     exitCode: payload.exitCode,
     order: payload.order,
+    sessionGeneration: payload.sessionGeneration,
     startingDirectory: payload.startingDirectory,
     homeDirectory: payload.homeDirectory,
     terminal,
@@ -1201,7 +1230,7 @@ function parseConfirmationRequest(
   if (
     isRequestIdentifier(payload.requestId) === false ||
     isSessionGeneration(payload.sessionGeneration) === false ||
-    (payload.kind !== "close" && payload.kind !== "paste") ||
+    (payload.kind !== "close" && payload.kind !== "paste" && payload.kind !== "path-drop") ||
     typeof payload.sessionName !== "string" ||
     payload.sessionName.trim().length === 0
   ) {
@@ -1217,12 +1246,21 @@ function parseConfirmationRequest(
     return undefined;
   }
 
+  if (
+    payload.kind === "path-drop" &&
+    (typeof payload.quotedInput !== "string" || payload.quotedInput.length === 0 ||
+      payload.quotedInput.includes("\r") === true || payload.quotedInput.includes("\n") === true)
+  ) {
+    return undefined;
+  }
+
   return {
     requestId: payload.requestId.toLowerCase(),
     sessionGeneration: payload.sessionGeneration,
     kind: payload.kind,
     sessionName: payload.sessionName,
     clipboardText: payload.kind === "paste" ? payload.clipboardText : undefined,
+    quotedInput: payload.kind === "path-drop" ? payload.quotedInput : undefined,
   };
 }
 
@@ -1258,6 +1296,22 @@ function formatPastePreview(text: string): { text: string; lineBreakCount: numbe
     return "↵\n";
   });
   return { text: visibleText, lineBreakCount };
+}
+
+function showPathDropFeedback(entry: SessionEntry, message: string, isError: boolean): void {
+  entry.pane.querySelector(".path-drop-feedback")?.remove();
+  const feedback = document.createElement("div");
+  feedback.className = "path-drop-feedback";
+  feedback.classList.toggle("is-error", isError);
+  feedback.setAttribute("role", isError === true ? "alert" : "status");
+  feedback.setAttribute("aria-live", isError === true ? "assertive" : "polite");
+  feedback.textContent = message;
+  entry.pane.append(feedback);
+  window.setTimeout(() => {
+    if (feedback.isConnected === true) {
+      feedback.remove();
+    }
+  }, 6_000);
 }
 
 function restoreTerminalFocus(sessionId: string): void {
@@ -1331,7 +1385,9 @@ function showConfirmation(sessionId: string, request: ConfirmationRequestPayload
 
   const title = document.createElement("h2");
   title.id = `confirmation-title-${request.requestId}`;
-  title.textContent = request.kind === "close" ? `${request.sessionName} 탭 닫기` : "여러 줄 붙여넣기";
+  title.textContent = request.kind === "close"
+    ? `${request.sessionName} 탭 닫기`
+    : request.kind === "paste" ? "여러 줄 붙여넣기" : "경로 입력에 넣기";
   dialog.setAttribute("aria-labelledby", title.id);
 
   const guidance = document.createElement("p");
@@ -1339,7 +1395,9 @@ function showConfirmation(sessionId: string, request: ConfirmationRequestPayload
   guidance.textContent =
     request.kind === "close"
       ? "이 탭의 터미널과 실행 중인 작업이 종료됩니다."
-      : `${request.sessionName} 탭에 여러 줄을 붙여넣으면 명령이 바로 실행될 수 있습니다. 내용을 확인하세요.`;
+      : request.kind === "paste"
+        ? `${request.sessionName} 탭에 여러 줄을 붙여넣으면 명령이 바로 실행될 수 있습니다. 내용을 확인하세요.`
+        : `${request.sessionName} 탭의 현재 입력 위치에 인용한 경로만 넣습니다. shell prompt가 맞는지 확인하세요. Enter는 추가하지 않습니다.`;
 
   let preview: HTMLElement | undefined;
   let previewSummary: HTMLElement | undefined;
@@ -1356,6 +1414,18 @@ function showConfirmation(sessionId: string, request: ConfirmationRequestPayload
     preview.setAttribute("aria-readonly", "true");
     preview.setAttribute("aria-label", "붙여넣을 내용, 읽기 전용. 줄바꿈은 ↵로 표시됩니다.");
     preview.textContent = formatted.text;
+  } else if (request.kind === "path-drop" && request.quotedInput !== undefined) {
+    previewSummary = document.createElement("p");
+    previewSummary.className = "confirmation-preview-summary";
+    previewSummary.textContent = `${request.quotedInput.length}자 · 줄바꿈 없음 · 자동 실행 안 함`;
+
+    preview = document.createElement("pre");
+    preview.className = "confirmation-preview";
+    preview.tabIndex = 0;
+    preview.setAttribute("role", "textbox");
+    preview.setAttribute("aria-readonly", "true");
+    preview.setAttribute("aria-label", "shell 입력에 넣을 인용된 경로, 읽기 전용");
+    preview.textContent = request.quotedInput;
   }
 
   const actions = document.createElement("div");
@@ -1368,7 +1438,9 @@ function showConfirmation(sessionId: string, request: ConfirmationRequestPayload
   const confirmButton = document.createElement("button");
   confirmButton.type = "button";
   confirmButton.className = "confirmation-primary";
-  confirmButton.textContent = request.kind === "close" ? "탭 닫기" : "붙여넣기";
+  confirmButton.textContent = request.kind === "close"
+    ? "탭 닫기"
+    : request.kind === "paste" ? "붙여넣기" : "입력에 넣기";
   confirmButton.addEventListener("click", () => completeConfirmation("confirmed"));
   actions.append(cancelButton, confirmButton);
 
@@ -1506,6 +1578,7 @@ function upsertSession(sessionId: string, payload: SessionPayload): void {
   entry.state = payload.state;
   entry.exitCode = payload.exitCode;
   entry.order = payload.order;
+  entry.sessionGeneration = payload.sessionGeneration;
   entry.startingDirectory = payload.startingDirectory;
   entry.homeDirectory = payload.homeDirectory;
   if (
@@ -1908,6 +1981,7 @@ function isSessionPayload(
     (payload.exitCode === null || typeof payload.exitCode === "number") &&
     Number.isInteger(payload.order) === true &&
     typeof payload.canAddSession === "boolean" &&
+    isSessionGeneration(payload.sessionGeneration) === true &&
     typeof payload.startingDirectory === "string" &&
     typeof payload.homeDirectory === "string"
   );
@@ -2022,6 +2096,14 @@ function handleHostMessage(value: unknown): void {
 
   if (message.type === "paste" && typeof payload.data === "string") {
     entry.terminal.paste(payload.data);
+    return;
+  }
+
+  if (
+    message.type === "path-drop-result" && payload.succeeded === false &&
+    typeof payload.message === "string"
+  ) {
+    showPathDropFeedback(entry, payload.message, true);
     return;
   }
 
@@ -2158,4 +2240,40 @@ window.addEventListener("unhandledrejection", () =>
   postGlobal("renderer-error", { kind: "unhandled-rejection" }),
 );
 
-postGlobal("ready");
+document.addEventListener("dragover", (event) => {
+  if (event.dataTransfer?.types.includes("Files") !== true) {
+    return;
+  }
+
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+});
+document.addEventListener("drop", (event) => {
+  if (event.dataTransfer?.types.includes("Files") !== true) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  const entry = activeSessionId === undefined ? undefined : sessions.get(activeSessionId);
+  if (entry === undefined) {
+    return;
+  }
+
+  if (entry.state !== "running") {
+    showPathDropFeedback(entry, "shell이 실행 중일 때만 경로를 넣을 수 있습니다.", true);
+    return;
+  }
+
+  if (pendingConfirmation !== undefined) {
+    showPathDropFeedback(entry, "먼저 열려 있는 확인 요청을 완료해 주세요.", true);
+    return;
+  }
+
+  const files = Array.from(event.dataTransfer.files);
+  if (files.length === 0 || postPathDrop(entry, files) === false) {
+    showPathDropFeedback(entry, "로컬 파일이나 폴더 경로를 확인하지 못했습니다.", true);
+  }
+});
+
+postGlobal("ready", { rendererInstanceId: RendererInstanceId });

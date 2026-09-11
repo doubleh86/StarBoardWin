@@ -1,7 +1,7 @@
 namespace Starboard.Modules.Terminal.Contracts;
 
 /// <summary>
-/// Identifies one pending close or paste confirmation. The value is never reused.
+/// Identifies one pending close, paste, or path-drop confirmation. The value is never reused.
 /// </summary>
 public readonly record struct TerminalConfirmationRequestId
 {
@@ -154,6 +154,46 @@ public sealed record TerminalPasteConfirmationRequest
     public string SessionName { get; }
 
     public string ClipboardText { get; }
+}
+
+/// <summary>
+/// Owns the already quoted path input shown to the user. The source files and folders are never opened,
+/// and the quoted input cannot contain a command-terminating line break.
+/// </summary>
+public sealed record TerminalPathDropConfirmationRequest
+{
+    public TerminalPathDropConfirmationRequest(TerminalConfirmationToken token, string sessionName,
+                                               string quotedInput)
+    {
+        if (token.RequestId.Value == Guid.Empty || token.Session.SessionId == Guid.Empty ||
+            token.Session.Generation < 1)
+        {
+            throw new ArgumentException("The path-drop confirmation requires a valid correlation token.",
+                                        nameof(token));
+        }
+
+        if (string.IsNullOrWhiteSpace(sessionName) == true)
+        {
+            throw new ArgumentException("The path-drop confirmation requires a session name.", nameof(sessionName));
+        }
+
+        if (string.IsNullOrWhiteSpace(quotedInput) == true || quotedInput.Contains('\r') == true ||
+            quotedInput.Contains('\n') == true)
+        {
+            throw new ArgumentException("Path-drop input must be non-empty and cannot contain a line break.",
+                                        nameof(quotedInput));
+        }
+
+        Token = token;
+        SessionName = sessionName;
+        QuotedInput = quotedInput;
+    }
+
+    public TerminalConfirmationToken Token { get; }
+
+    public string SessionName { get; }
+
+    public string QuotedInput { get; }
 }
 
 public enum TerminalConfirmationResult

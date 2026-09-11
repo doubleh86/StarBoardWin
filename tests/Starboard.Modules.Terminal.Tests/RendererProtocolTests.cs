@@ -28,6 +28,58 @@ public sealed class RendererProtocolTests
     }
 
     [TestMethod]
+    public void TryParseRendererReadyCarriesRendererInstanceIdentity()
+    {
+        const string Json = """
+            {"version":2,"type":"ready","payload":{"rendererInstanceId":"20000000000000000000000000000001"}}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(RendererMessageType.Ready, message.Type);
+        Assert.AreEqual(Guid.Parse("20000000-0000-0000-0000-000000000001"), message.RendererInstanceId);
+    }
+
+    [TestMethod]
+    public void TryParsePathDropCarriesExactRendererAndSessionLifetime()
+    {
+        const string Json = """
+            {"version":2,"type":"drop-paths","sessionId":"10000000000000000000000000000001","payload":{"rendererInstanceId":"20000000000000000000000000000001","sessionGeneration":7}}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(RendererMessageType.DropPaths, message.Type);
+        Assert.AreEqual(SessionId, message.SessionId);
+        Assert.AreEqual(Guid.Parse("20000000-0000-0000-0000-000000000001"), message.RendererInstanceId);
+        Assert.AreEqual(7, message.SessionGeneration);
+    }
+
+    [TestMethod]
+    [DataRow("00000000000000000000000000000000", 1)]
+    [DataRow("20000000000000000000000000000001", 0)]
+    public void TryParsePathDropInvalidLifetimeIdentityRejectsMessage(string rendererInstanceId,
+                                                                      long sessionGeneration)
+    {
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = 2,
+                                                type = "drop-paths",
+                                                sessionId = SessionId.ToString(),
+                                                payload = new { rendererInstanceId, sessionGeneration },
+                                            });
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(message);
+    }
+
+    [TestMethod]
     public void TryParseWithUnknownVersionRejectsMessage()
     {
         const string Json = """
@@ -98,6 +150,7 @@ public sealed class RendererProtocolTests
     [DataRow("resize", "{\"columns\":80,\"rows\":24}")]
     [DataRow("copy", "{\"data\":\"text\"}")]
     [DataRow("paste-request", "{}")]
+    [DataRow("drop-paths", "{\"rendererInstanceId\":\"20000000000000000000000000000001\",\"sessionGeneration\":1}")]
     [DataRow("select-session", "{}")]
     [DataRow("close-session", "{}")]
     [DataRow("restart-session", "{}")]

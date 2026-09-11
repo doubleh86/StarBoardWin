@@ -57,6 +57,16 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-11 (run `20260911-073617-996439-56532a1d`, path drop)
+- renderer `npm ci`와 source→dist build가 통과했다. sandbox에서 esbuild child spawn이
+  `EPERM`으로 차단된 후 허용된 동일 build로 재생성했다.
+- 지정 SDK restore·Debug build(경고/오류 0)·전체 377개 test가 통과했다
+  (Architecture 8, Terminal 214, DesktopIntegration 80, Preferences 33, Integration 42).
+  경로 인용·거부, 탭 전환·restart·remove 후 입력 0건, renderer instance/session
+  generation 프로토콜과 file read API 미사용은 자동화로 확인했다.
+- 실제 Explorer·WebView2 drop, 드롭 중 renderer reconnect, 한글 IME·focus·scrollback
+  회귀는 수행하지 않아 MAN-047을 `Not run`으로 유지한다.
+
 - 실행일: 2026-09-11 (run `20260910-073231-827228-6ed3d9e7`, 저장한 탭 수명 통합 최종 재검증)
 - 지정 SDK restore는 NuGet vulnerability metadata 접근이 필요한 sandbox 시도에서 `NU1900` 또는
   출력 없는 exit 1로 실패했고 network가 허용된 같은 argv로 통과했다. sandbox의 기본 병렬 Debug
@@ -501,6 +511,8 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-033 | 저장 항목 새 shell 실행 | 지정 shell·폴더·이름으로 새 session을 만들고 기존 session instance/PID/state를 교체하지 않음 | Passed (module automated + ConPTY GUI-host process isolation) |
 | INT-034 | renderer 저장 탭 수명 연결 | CRUD/launch/cancel routing, request ID 중복 억제, renderer generation 변경 뒤 snapshot 재동기화와 shutdown 순서 | Passed (automated integration contract) |
 | INT-035 | portable saved-tabs exclusion | publish/ZIP/추출본에서 saved-tabs primary, backup, temporary와 개발 PC 절대 경로를 package 검사로 거부 | Passed (automated package) |
+| INT-036 | shell별 path-drop 인용 | PowerShell 작은따옴표/한글/특수 문자와 cmd 큰따옴표를 검증하고 cmd `%`/`!`, custom shell, 상대·device·개행 경로를 거부 | Passed (module automated) |
+| INT-037 | path-drop lifetime·renderer contract | drop/confirmation을 renderer instance, active session ID·generation에 결합하고 전환·restart·remove 후 입력 0건, additional object 경로만 사용·file read API 미사용·source/dist 일치 | Passed (module automated + renderer distribution contract) |
 
 ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan child process를 남기지
 않는다. GUI host는 재시작 close의 session ID·generation, tab 제거와 process 종료 상태를
@@ -636,6 +648,8 @@ build hash를 함께 기록한다.
 | MAN-044 | 저장한 탭 전체 UI 흐름 | 실제 WebView2에서 저장·취소·편집·삭제·선택·실패 재시도, 앱 재실행 유지와 workspace on/off 독립성 확인 | Not run — terminal UI 입력 자동화가 허용되지 않아 실제 menu/dialog 조작과 재실행을 수행하지 않았음 |
 | MAN-045 | 저장 항목 shell/폴더와 기존 xterm 보존 | 저장 항목 실행 전후 새 PID·지정 폴더/셸 및 기존 탭 PID·입력·scrollback 보존을 실제 화면에서 확인 | Not run — module/ConPTY 자동 검증은 통과했지만 실제 WebView2 scrollback과 사용자 입력 상태는 관찰하지 않았음 |
 | MAN-046 | 현재 탭 출력 검색 | 200 DIP/좁은 폭에서 Ctrl+F, 한글 IME, Enter/Shift+Enter, 결과 강조/없음, Escape focus 복귀와 네 theme를 확인하고 검색 key가 shell에 전달되지 않는지 확인 | Not run — renderer distribution test는 addon·lifecycle·compact CSS를 확인했지만 실제 WebView2 keyboard/IME/theme 화면 및 shell input 관찰은 수행하지 않았음 |
+
+| MAN-047 | Explorer file/folder path drop | PowerShell/Windows PowerShell/cmd 현재 탭에 공백·한글·특수 문자 경로를 놓고 미리보기·취소·승인, Enter 미생성, tab 전환·restart·renderer reconnect 경쟁, IME·붙여넣기·focus·scrollback 회귀를 실제 WebView2에서 확인 | Not run — additional-object/protocol/unit 검증은 통과했으나 실제 Explorer·WebView2 드래그 입력은 수행하지 않음 |
 
 ## Focus 검증 절차
 

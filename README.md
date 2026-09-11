@@ -20,6 +20,7 @@ Windows 10 1809 이상은 best-effort 대상이다.
 - terminal resize를 ConPTY cell size로 전달
 - shell/renderer 오류 surface와 shell restart
 - 실행 중인 탭 닫기는 기본적으로 확인하며, 여러 줄 clipboard 붙여넣기는 확인한 동일 미리보기만 전달
+- Explorer에서 현재 탭으로 드롭한 로컬 파일·폴더 경로를 shell별로 인용해 확인 후 입력
 - 비활성 탭의 non-empty output은 조용한 `새 출력` 점으로만 표시
 - `Ctrl+Alt+E` global hotkey로 work area 전체 확장/축소
 - `Ctrl+Alt+S`로 가려졌거나 숨겨진 panel 호출, 활성 panel 숨김
@@ -175,6 +176,7 @@ package의 local asset/CSP 계약은 자동 검증됐지만, system network를 �
 | `Ctrl+Shift+W` | 현재 terminal 탭 닫기 요청; 살아 있는 session은 확인 뒤 종료 |
 | `Ctrl+W` | shell에 그대로 전달 |
 | `Ctrl+F` | 현재 활성 탭의 메모리 scrollback 검색; Enter/Shift+Enter로 다음/이전, Escape로 닫고 terminal focus 복귀 |
+| Explorer file/folder drop | 현재 탭의 shell에 맞게 인용한 경로를 미리보기·확인 후 입력; Enter나 개행은 추가하지 않음 |
 | `Ctrl+Alt+E` | collapsed/expanded geometry 전환 |
 | `Ctrl+Alt+S` | 숨김·비활성 panel 호출, 활성 panel 숨김 |
 
@@ -187,6 +189,11 @@ package의 local asset/CSP 계약은 자동 검증됐지만, system network를 �
 닫기는 아무 입력도 전달하지 않는다. 확인 뒤에는 clipboard를 다시 읽지 않고 사용자가
 확인한 snapshot만 한 번 전달한다. 새 출력 점은 완료·성공 알림이 아니며, 해당 탭을
 선택하면 사라진다.
+
+경로 드롭은 PowerShell에서 작은따옴표를 안전하게 이중화하고 `cmd.exe`에서
+큰따옴표를 사용한다. `cmd.exe`에서 재해석될 수 있는 `%`/`!`가 있는 경로,
+custom shell, 상대·device 경로는 입력하지 않고 오류를 보여 준다. 파일 내용을
+읽지 않으며 확인 전후에 탭·session·renderer가 바뀌면 느린 요청을 폐기한다.
 
 ## 로컬 데이터와 개인정보
 
@@ -208,7 +215,7 @@ Starboard에는 analytics, telemetry, crash upload, remote configuration이 없�
 구성 ID, 이름, 순서, 시작 폴더, shell 종류와 활성 탭만 들어간다. terminal command,
 저장한 탭 파일에는 저장 ID, 이름, 시작 폴더와 shell 종류만 들어간다. terminal command,
 output, clipboard 내용, environment 값, runtime PID/session ID는 로그나 두 구성
-파일에 남기지 않는다. 닫기 확인 token, 여러 줄 붙여넣기 미리보기와 새 출력 표시는
+파일에 남기지 않는다. 닫기 확인 token, 여러 줄 붙여넣기·경로 드롭 미리보기와 새 출력 표시는
 메모리의 현재 session 세대에만 묶이며 disk·log·package에 저장하지 않는다. 로그는
 subsystem, operation, 복구 가능성에 필요한 오류 종류만 기록한다. portable ZIP에는
 이 사용자 데이터, backup, temporary 파일이 포함되지 않는다.

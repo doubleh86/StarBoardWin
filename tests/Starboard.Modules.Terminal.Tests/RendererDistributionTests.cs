@@ -162,6 +162,31 @@ public sealed class RendererDistributionTests
         Assert.IsFalse(source.Contains("postSession(\"input\", sessionId, { data: term", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void BundledRendererPathDropUsesAdditionalObjectsAndNeverReadsFilesOrSynthesizesEnter()
+    {
+        var source = ReadRendererSource("index.ts");
+        var hostSource = ReadTerminalSource("Presentation", "TerminalView.xaml.cs");
+        var script = ReadRendererAsset("app.js");
+        var styles = ReadRendererAsset("app.css");
+
+        StringAssert.Contains(source, "postMessageWithAdditionalObjects");
+        StringAssert.Contains(source, "rendererInstanceId: RendererInstanceId");
+        StringAssert.Contains(source, "sessionGeneration: entry.sessionGeneration");
+        StringAssert.Contains(source, "event.dataTransfer.files");
+        Assert.IsFalse(source.Contains("FileReader", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains(".arrayBuffer()", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains(".text()", StringComparison.Ordinal));
+        StringAssert.Contains(hostSource, "message.RendererInstanceId != rendererInstanceId");
+        StringAssert.Contains(hostSource, "rendererInstanceId = Guid.Empty;");
+        StringAssert.Contains(hostSource, "additionalObject is not CoreWebView2File file");
+        StringAssert.Contains(script, "drop-paths");
+        StringAssert.Contains(script, "postMessageWithAdditionalObjects");
+        StringAssert.Contains(script, "path-drop-result");
+        StringAssert.Contains(styles, ".path-drop-feedback");
+        StringAssert.Contains(styles, ".confirmation-dialog[data-kind=path-drop]");
+    }
+
     private static string ReadRendererAsset(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Renderer", fileName);
@@ -175,6 +200,15 @@ public sealed class RendererDistributionTests
         var solutionRoot = FindSolutionRoot();
         var path = Path.Combine(solutionRoot, "src", "Modules", "Starboard.Modules.Terminal", "Presentation", "Renderer", "src", fileName);
         Assert.IsTrue(File.Exists(path), $"Renderer source is missing: {path}");
+
+        return File.ReadAllText(path);
+    }
+
+    private static string ReadTerminalSource(params string[] relativePath)
+    {
+        var solutionRoot = FindSolutionRoot();
+        var path = Path.Combine([solutionRoot, "src", "Modules", "Starboard.Modules.Terminal", .. relativePath]);
+        Assert.IsTrue(File.Exists(path), $"Terminal source is missing: {path}");
 
         return File.ReadAllText(path);
     }

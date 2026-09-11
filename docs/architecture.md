@@ -234,6 +234,20 @@ preview와 token은 log, settings, workspace 또는 package에 쓰지 않는다.
 non-empty output은 session generation별 in-memory `new output` state로 표시한다. 이는
 command completion 판단이나 activation 요청이 아니며, tab 선택·restart·remove에서 지운다.
 
+Explorer 경로 drop은 WebView2의 `postMessageWithAdditionalObjects`/`CoreWebView2File.Path`
+경계를 사용한다. renderer는 `File` 객체만 host로 넘기고 `text()`, `arrayBuffer()`
+또는 stream을 통해 내용을 읽지 않는다. host도 `Path`만 자료로 사용하며 존재 확인,
+metadata 조회나 file open을 하지 않는다. drop 당시 renderer instance GUID, active session ID와
+session generation을 함께 보내고 host/coordinator가 모두 현재값과 비교한다. navigation,
+tab 선택·종료·restart 후의 느린 request나 confirmation은 입력을 만들지 않는다.
+
+PowerShell 7/Windows PowerShell은 작은따옴표로 감싸고 경로 내 작은따옴표를
+두 번 쓴다. `cmd.exe`는 큰따옴표로 감싸되 명령 실행 시 환경 변수나 delayed
+expansion으로 재해석될 수 있는 `%`/`!`가 있으면 거부한다. custom shell,
+상대·device 경로, 제어 문자와 지나치게 큰 입력도 거부한다. 인용 결과는
+취소가 기본 focus인 읽기 전용 확인 화면에 보이며, 승인해도 Enter·CR·LF를
+추가하지 않아 shell prompt를 자동 실행하지 않는다.
+
 ## ConPTY 설계
 
 Windows 10 1809부터 제공되는 documented API만 쓴다.
@@ -570,7 +584,7 @@ WebView2 transparent composition 위험 때문에 glassmorphism과 blur를 쓰�
 - subsystem, operation, native error code, recoverability만 기록한다.
 - command, terminal output, clipboard, environment value와 full custom arguments는
   기록하지 않는다.
-- 닫기 확인 correlation token, 여러 줄 paste preview와 새 출력 badge도 disk 또는 log에
+- 닫기 확인 correlation token, 여러 줄 paste/path-drop preview와 새 출력 badge도 disk 또는 log에
   기록하지 않으며 현재 session generation이 바뀌면 폐기한다.
 - opt-in workspace JSON은 탭 이름·순서·시작 폴더처럼 사용자가 선택한 구성만 담으며,
   command, output, clipboard, environment, runtime session ID와 PID는 담지 않는다.

@@ -204,7 +204,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 tab = tabRegistry.Add(shell.WorkingDirectory, defaultShellKind);
                 tabShells.Add(tab.SessionId, shell);
                 InitializeSessionLifetimeLocked(tab.SessionId);
-                CancelPendingPasteLocked();
+                CancelPendingInputConfirmationLocked();
                 snapshot = tabRegistry.CreateSnapshot();
             }
 
@@ -246,7 +246,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 tab = tabRegistry.Add(savedTab.StartingDirectory, savedTab.ShellKind, savedTab.Name);
                 tabShells.Add(tab.SessionId, shell with { WorkingDirectory = savedTab.StartingDirectory });
                 InitializeSessionLifetimeLocked(tab.SessionId);
-                CancelPendingPasteLocked();
+                CancelPendingInputConfirmationLocked();
                 snapshot = tabRegistry.CreateSnapshot();
             }
 
@@ -459,6 +459,57 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
+    internal TerminalPathDropPreparationResult RequestPathDropConfirmation(TerminalSessionReference requestedSession,
+                                                                           IReadOnlyList<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        lock (stateLock)
+        {
+            ThrowIfUnavailable();
+            var sessionId = new TerminalSessionId(requestedSession.SessionId);
+            if (sessionGenerations.TryGetValue(sessionId, out var generation) == false ||
+                generation != requestedSession.Generation || tabRegistry.ActiveSessionId != sessionId ||
+                sessions.ContainsKey(sessionId) == false)
+            {
+                return PathDropFailed("드롭한 탭이 바뀌었거나 이미 종료되어 경로를 넣지 않았습니다.");
+            }
+
+            var tab = tabRegistry.GetRequired(sessionId);
+            if (tab.State != TerminalSessionState.Running)
+            {
+                return PathDropFailed("현재 탭의 shell이 실행 중일 때만 경로를 넣을 수 있습니다.");
+            }
+
+            if (pendingConfirmation is not null)
+            {
+                return PathDropFailed("먼저 열려 있는 확인 요청을 완료해 주세요.");
+            }
+
+            if (tabShells.TryGetValue(sessionId, out var shell) == false)
+            {
+                return PathDropFailed("현재 탭의 shell 정보를 확인할 수 없습니다.");
+            }
+
+            var shellKind = ShellResolver.GetConfiguredKind(shell.ExecutablePath);
+            if (shellKind is null || shellKind == TerminalShellKind.Automatic)
+            {
+                return PathDropFailed("현재 탭의 shell에서 안전한 경로 인용 방식을 확정할 수 없습니다.");
+            }
+
+            var formatted = TerminalPathDropFormatter.Format(paths, shellKind.Value);
+            if (formatted.Succeeded == false || formatted.QuotedInput is null)
+            {
+                return PathDropFailed(formatted.ErrorMessage ?? "경로를 안전하게 인용할 수 없습니다.");
+            }
+
+            var token = CreateConfirmationTokenLocked(sessionId);
+            pendingConfirmation = new PendingConfirmation(token, ConfirmationKind.PathDrop, formatted.QuotedInput);
+            var confirmation = new TerminalPathDropConfirmationRequest(token, tab.Name, formatted.QuotedInput);
+
+            return new TerminalPathDropPreparationResult(confirmation, null);
+        }
+    }
+
     internal async Task<bool> ApplyCloseConfirmationAsync(TerminalConfirmationResponse response,
                                                           CancellationToken cancellationToken)
     {
@@ -513,6 +564,38 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
             var sessionId = new TerminalSessionId(response.Token.Session.SessionId);
             await WriteAsync(sessionId, clipboardText!, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        finally
+        {
+            operationLock.Release();
+        }
+    }
+
+    internal async Task<bool> ApplyPathDropConfirmationAsync(TerminalConfirmationResponse response,
+                                                             CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            string? quotedInput;
+            lock (stateLock)
+            {
+                ThrowIfUnavailable();
+                if (TryConsumeConfirmationLocked(response, ConfirmationKind.PathDrop, out quotedInput) == false)
+                {
+                    return false;
+                }
+            }
+
+            if (response.Result == TerminalConfirmationResult.Cancelled)
+            {
+                return false;
+            }
+
+            var sessionId = new TerminalSessionId(response.Token.Session.SessionId);
+            await WriteAsync(sessionId, quotedInput!, cancellationToken).ConfigureAwait(false);
             return true;
         }
         finally
@@ -887,7 +970,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
             if (previousActiveSessionId != tabRegistry.ActiveSessionId)
             {
-                CancelPendingPasteLocked();
+                CancelPendingInputConfirmationLocked();
             }
 
             currentColumns = columns;
@@ -931,7 +1014,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             ThrowIfDisposed();
             tab = tabRegistry.AddRestored(configuration);
             InitializeSessionLifetimeLocked(tab.SessionId);
-            CancelPendingPasteLocked();
+            CancelPendingInputConfirmationLocked();
             if (restoredShell is not null)
             {
                 tabShells.Add(tab.SessionId, restoredShell);
@@ -1094,13 +1177,14 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             return false;
         }
 
-        if (expectedKind == ConfirmationKind.Paste && tabRegistry.ActiveSessionId != sessionId)
+        if ((expectedKind == ConfirmationKind.Paste || expectedKind == ConfirmationKind.PathDrop) &&
+            tabRegistry.ActiveSessionId != sessionId)
         {
             pendingConfirmation = null;
             return false;
         }
 
-        clipboardText = pendingConfirmation.ClipboardText;
+        clipboardText = pendingConfirmation.InputText;
         pendingConfirmation = null;
         return true;
     }
@@ -1131,12 +1215,17 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
-    private void CancelPendingPasteLocked()
+    private void CancelPendingInputConfirmationLocked()
     {
-        if (pendingConfirmation?.Kind == ConfirmationKind.Paste)
+        if (pendingConfirmation?.Kind is ConfirmationKind.Paste or ConfirmationKind.PathDrop)
         {
             pendingConfirmation = null;
         }
+    }
+
+    private static TerminalPathDropPreparationResult PathDropFailed(string message)
+    {
+        return new TerminalPathDropPreparationResult(null, message);
     }
 
     private TerminalNewOutputStateSnapshot CreateNewOutputSnapshotLocked()
@@ -1269,8 +1358,9 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     {
         Close,
         Paste,
+        PathDrop,
     }
 
     private sealed record PendingConfirmation(TerminalConfirmationToken Token, ConfirmationKind Kind,
-                                              string? ClipboardText);
+                                              string? InputText);
 }

@@ -99,6 +99,19 @@ public sealed class TerminalSafetyContractTests
     }
 
     [TestMethod]
+    public void PathDropConfirmationCapturesOnlyNonExecutingSingleLineInput()
+    {
+        var session = new TerminalSessionReference(SessionId, 1);
+        var token = new TerminalConfirmationToken(RequestId, session);
+
+        var request = new TerminalPathDropConfirmationRequest(token, "PowerShell", "'C:\\한글 폴더\\file.txt'");
+
+        Assert.AreEqual("'C:\\한글 폴더\\file.txt'", request.QuotedInput);
+        Assert.ThrowsExactly<ArgumentException>(() =>
+            new TerminalPathDropConfirmationRequest(token, "PowerShell", "'C:\\work'\r"));
+    }
+
+    [TestMethod]
     public void NewOutputSnapshotOnlyReturnsExactSessionGeneration()
     {
         var originalSession = new TerminalSessionReference(SessionId, 6);

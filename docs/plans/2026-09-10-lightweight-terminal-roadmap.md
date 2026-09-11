@@ -43,6 +43,39 @@ Starboard는 작업표시줄에 붙어 빠르게 명령을 입력하고 결과�
 - 완료 알림은 기존 ‘새 출력’ 점과 별개다. 명령 시작·종료·exit code를 식별하는 셸 연동을
   조사하고 지원 셸·오탐 정책을 먼저 확정한다. 기본 꺼짐, focus 강탈 없음, 명령/출력 노출 없음이 기준이다.
 
+## PATH-DROP-01 — 파일·폴더 경로를 안전하게 입력
+
+### 목표와 범위
+
+- Explorer에서 renderer의 현재 터미널에 놓은 파일과 폴더는 내용을 읽지 않고 WebView2가 제공하는
+  절대 경로만 받는다. 드롭 당시 활성 session id, shell generation과 renderer instance id를 함께
+  고정하며 하나라도 현재 상태와 다르면 요청을 폐기한다.
+- PowerShell 계열은 작은따옴표 문자열과 작은따옴표 이중화, `cmd.exe`는 큰따옴표를 사용한다.
+  셸 종류를 확정할 수 없는 custom shell과 `cmd.exe`에서 실행 시 재해석될 수 있는 `%`/`!`, 제어 문자,
+  상대·device 경로는 지원하지 않는다.
+- 인용 결과는 항상 읽기 전용 미리보기와 취소 우선 확인 화면을 거친 뒤 동일 session lifetime에만
+  전달한다. Enter·개행은 만들지 않으며 renderer에는 terminal buffer 삽입만 지시하고 shell에는
+  확인된 문자열만 한 번 전달한다.
+
+### 영향 파일과 위험
+
+- Terminal contract/application에는 경로 검증·셸별 인용 결과와 session lifetime에 결합된 확인
+  요청을 둔다. `TerminalView.xaml.cs`는 `CoreWebView2File.Path`만 추출하고 파일 stream이나 metadata를
+  열지 않는다.
+- renderer `src/`는 외부 file drop을 가로채 additional objects로 host에 전달하고 확인 UI를 표시한다.
+  `dist/`는 build script로만 재생성한다. Preferences와 DesktopIntegration은 변경하지 않는다.
+- 핵심 위험은 WebView2 navigation 전후의 늦은 메시지, 탭 전환·종료·restart 경쟁, `cmd.exe`의
+  환경 변수/delayed expansion이다. request/session/renderer identity 검증과 보수적 거부로 차단한다.
+
+### 구현 및 검증
+
+- [x] 순수 경로 검증·인용 정책과 session-bound 확인 계약을 구현하고 공백·한글·특수 문자,
+  unsupported shell/path, 전환·restart·종료 경쟁 테스트를 추가한다.
+- [x] WebView2 additional-object bridge와 renderer drop/미리보기/오류 UI를 연결하고 source/dist 일치
+  테스트를 보강한다.
+- [x] renderer `npm ci`/build, Terminal focused tests, solution restore/build/test, 정렬 및 diff 검사를
+  수행한다. 실제 Explorer·WebView2 drop과 IME/focus 회귀는 자동 검증과 구분해 수동 항목으로 남긴다.
+
 ## SETTINGS-UI-01 — 설정 창 글자 대비 보정
 
 ### 관찰과 범위
@@ -171,4 +204,8 @@ workspace/saved-tabs, logs와 WebView2 data는 거부한다.
   일반·비활성·오류 전경색 토큰과 popup 항목 스타일을 적용하고 UI 계약 테스트를 추가했다.
 - [ ] 2026-09-11: Dark, Light, One Dark, Tokyo Night를 실제 WPF 창에서 100/125/150/200%
   배율로 screenshot 확인한다. 자동 계약 검증과 실제 화면 확인은 별도 결과로 기록한다.
-- [ ] 각 후속 후보의 상세 기획·구현·검증. 현재는 시작하지 않는다.
+- [ ] PATH-DROP-01 외 남은 후속 후보의 상세 기획·구현·검증.
+- [x] 2026-09-11: PATH-DROP-01의 shell별 인용, 확인 미리보기, renderer/session
+  generation 경계와 WebView2 additional-object 연결을 구현했다. renderer build,
+  Terminal 214개와 전체 377개 자동 테스트가 통과했고 실제 Explorer drop·IME·focus
+  확인은 MAN-047에 `Not run`으로 남겼다.
