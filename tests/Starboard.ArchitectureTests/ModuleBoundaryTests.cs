@@ -3,6 +3,7 @@ using System.Xml.Linq;
 using Starboard.Modules.DesktopIntegration;
 using Starboard.Modules.DesktopIntegration.Contracts;
 using Starboard.Modules.Preferences;
+using Starboard.Modules.Preferences.Contracts;
 using Starboard.Modules.Terminal;
 using Starboard.Modules.Terminal.Contracts;
 using Starboard.SharedKernel.Diagnostics;
@@ -47,6 +48,40 @@ public sealed class ModuleBoundaryTests
                        typeof(GlobalShortcutRegistrationSnapshot).Assembly);
         Assert.AreEqual("Starboard.Modules.DesktopIntegration.Contracts",
                         typeof(ShortcutGuideRequestEventArgs).Namespace);
+    }
+
+    [TestMethod]
+    public void CommandCompletionCoordinationContractsStayModuleOwnedAndMetadataOnly()
+    {
+        Assert.AreSame(typeof(TerminalModule).Assembly, typeof(TerminalCommandCompletion).Assembly);
+        Assert.AreSame(typeof(DesktopIntegrationModule).Assembly,
+                       typeof(CommandCompletionNotificationRequest).Assembly);
+        Assert.AreSame(typeof(PreferencesModule).Assembly,
+                       typeof(CommandCompletionNotificationPreferenceTransition).Assembly);
+
+        var crossModulePayloadTypes = new[]
+        {
+            typeof(TerminalCommandCompletion),
+            typeof(TerminalCommandCompletedEventArgs),
+            typeof(CommandCompletionNotificationRequest),
+            typeof(CommandCompletionNotificationSettings),
+        };
+        var stringProperties = crossModulePayloadTypes
+            .SelectMany(type => type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+            .Where(property => property.PropertyType == typeof(string))
+            .Select(property => $"{property.DeclaringType?.FullName}.{property.Name}")
+            .ToArray();
+
+        Assert.AreEqual(0, stringProperties.Length,
+                        "Command completion coordination must not carry command text, output, or arbitrary labels.");
+
+        var request = new CommandCompletionNotificationRequest(
+            Guid.Parse("10000000-0000-0000-0000-000000000001"), 4,
+            Guid.Parse("20000000-0000-0000-0000-000000000001"), 0);
+
+        Assert.IsTrue(request.IsCurrent(request.SessionId, 4));
+        Assert.IsFalse(request.IsCurrent(request.SessionId, 5));
+        Assert.IsTrue(request.Succeeded);
     }
 
     [TestMethod]

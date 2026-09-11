@@ -9,7 +9,13 @@ namespace Starboard.Modules.Terminal.Contracts;
 /// the shell captured when they were created, including when that tab is restarted.
 /// A null default selects the module's normal shell discovery order.
 /// </remarks>
-public sealed record TerminalSettings(TerminalAppearanceSettings Appearance, string? DefaultShellExecutable);
+public sealed record TerminalSettings(TerminalAppearanceSettings Appearance, string? DefaultShellExecutable)
+{
+    /// <summary>
+    /// Enables explicit shell command lifecycle observation for completion notifications. The default is opt-out.
+    /// </summary>
+    public bool CommandCompletionNotificationsEnabled { get; init; }
+}
 
 public sealed record TerminalSettingsApplyResult(TerminalSettings RequestedSettings, TerminalSettings PreviousSettings,
                                                  TerminalSettings EffectiveSettings, TerminalSettingsApplyStatus Status,

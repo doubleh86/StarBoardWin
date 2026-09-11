@@ -34,6 +34,7 @@ public sealed class JsonSettingsStoreTests
             Assert.AreEqual("Dark", result.Settings.Theme);
             Assert.AreEqual(15, result.Settings.FontSize);
             Assert.AreEqual("Ctrl+Alt+S", result.Settings.ActivationShortcut);
+            Assert.IsFalse(result.Settings.CommandCompletionNotificationsEnabled);
             Assert.AreEqual("설정 파일을 읽지 못해 이전 설정으로 복구했습니다.", result.RecoveryMessage);
         }
         finally
@@ -51,7 +52,11 @@ public sealed class JsonSettingsStoreTests
             var settingsPath = Path.Combine(directory, "settings.json");
             var store = new JsonSettingsStore(new TestDiagnosticLog(), settingsPath);
             await store.SaveAsync(new AppSettings { Theme = "Dark" }, CancellationToken.None);
-            await store.SaveAsync(new AppSettings { Theme = "Light" }, CancellationToken.None);
+            await store.SaveAsync(new AppSettings
+                                  {
+                                      Theme = "Light",
+                                      CommandCompletionNotificationsEnabled = true,
+                                  }, CancellationToken.None);
 
             var current = JsonSerializer.Deserialize<AppSettings>(await File.ReadAllTextAsync(settingsPath),
                                                                   SerializerOptions);
@@ -61,7 +66,9 @@ public sealed class JsonSettingsStoreTests
             Assert.IsNotNull(current);
             Assert.IsNotNull(backup);
             Assert.AreEqual("Light", current.Theme);
+            Assert.IsTrue(current.CommandCompletionNotificationsEnabled);
             Assert.AreEqual("Dark", backup.Theme);
+            Assert.IsFalse(backup.CommandCompletionNotificationsEnabled);
             Assert.AreEqual(0, Directory.GetFiles(directory, "*.tmp").Length);
         }
         finally

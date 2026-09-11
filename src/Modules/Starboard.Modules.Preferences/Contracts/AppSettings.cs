@@ -2,7 +2,7 @@ namespace Starboard.Modules.Preferences.Contracts;
 
 public sealed record AppSettings
 {
-    public const int CurrentSchemaVersion = 6;
+    public const int CurrentSchemaVersion = 7;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
@@ -38,4 +38,10 @@ public sealed record AppSettings
     /// restores a previous shell process, command, output, or interactive session.
     /// </summary>
     public bool RestoreWorkspaceOnLaunch { get; init; }
+
+    /// <summary>
+    /// Shows a generic, non-activating notification only after an explicit shell completion signal.
+    /// Command text and terminal output are never persisted with this preference.
+    /// </summary>
+    public bool CommandCompletionNotificationsEnabled { get; init; }
 }

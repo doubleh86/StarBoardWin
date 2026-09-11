@@ -27,6 +27,24 @@ public sealed record PreferenceApplyResult(PreferenceApplyRequest Request, Prefe
             : EffectiveSettings.RestoreWorkspaceOnLaunch == true
                 ? WorkspaceRestorePreferenceTransition.Enabled
                 : WorkspaceRestorePreferenceTransition.Disabled;
+
+    /// <summary>
+    /// The host uses this transition to coordinate terminal lifecycle observation and desktop notification display.
+    /// </summary>
+    public CommandCompletionNotificationPreferenceTransition CommandCompletionNotificationTransition =>
+        Request.PreviousSettings.CommandCompletionNotificationsEnabled ==
+        EffectiveSettings.CommandCompletionNotificationsEnabled
+            ? CommandCompletionNotificationPreferenceTransition.Unchanged
+            : EffectiveSettings.CommandCompletionNotificationsEnabled == true
+                ? CommandCompletionNotificationPreferenceTransition.Enabled
+                : CommandCompletionNotificationPreferenceTransition.Disabled;
+}
+
+public enum CommandCompletionNotificationPreferenceTransition
+{
+    Unchanged,
+    Enabled,
+    Disabled,
 }
 
 public enum WorkspaceRestorePreferenceTransition

@@ -234,6 +234,52 @@ preview와 token은 log, settings, workspace 또는 package에 쓰지 않는다.
 non-empty output은 session generation별 in-memory `new output` state로 표시한다. 이는
 command completion 판단이나 activation 요청이 아니며, tab 선택·restart·remove에서 지운다.
 
+### 명령 수명과 완료 알림 계약
+
+명령 완료는 terminal byte stream의 양, 마지막 출력 이후 경과 시간, prompt 문자열, shell process
+종료로 추측하지 않는다. xterm/renderer가 소비하는 output과 명령 수명 control signal은 별도 경계다.
+VS Code가 문서화한 OSC 633/133의 `C`(pre-execution), `D;<exitcode>`(finished) 순서는 선행 사례지만,
+Windows ConPTY에서 marker 위치에 보정 heuristic이 필요하고 command line을 운반하는 `E` sequence도
+존재한다. Starboard는 command/output을 contract 밖에 유지하기 위해 renderer 출력에서 이 sequence를
+해석하지 않고, 제품이 주입한 shell hook의 metadata-only control channel만 신뢰한다.
+
+초기 notification-capable shell은 `pwsh.exe`와 `powershell.exe`다. PowerShell의
+`PSConsoleHostReadLine` hook에서 실행 직전 start를 보내고 다음 `prompt` 진입에서 종료와 exit code를
+보내는 adapter를 후속 단계에서 연결한다. integration을 주입할 수 없거나 restricted language/profile
+충돌로 완전한 start/finish 쌍을 보장하지 못하면 해당 generation은 미지원이다. `cmd.exe`와 custom
+shell도 명시적인 양방향 hook이 확보되기 전에는 완료 알림을 만들지 않는다. 지원 범위를 넓히기 위해
+prompt 모양이나 output 정지 fallback을 추가하지 않는다.
+
+Terminal의 수명 tracker는 다음 metadata만 소비한다.
+
+- host가 발급하고 재사용하지 않는 command execution ID
+- opaque runtime session ID와 shell 교체마다 증가하는 generation
+- `CommandStarted`, `CommandFinished(exitCode)`, `IntegrationLost` control signal
+
+정상 순서는 generation별 `Ready → Executing → Ready`다. 동일 execution ID의 명시적인 finish만
+`TerminalCommandCompletion`을 만들며 결과는 integration이 보고한 정수 exit code와 `0 == success`
+판정이다. 계약은 모든 `int` 값을 손실 없이 보존한다. PowerShell cmdlet/pipeline처럼 native process
+exit code가 없는 경우 adapter는 shell 성공 상태를 0/1로 정규화하고, 명시적 결과를 얻지 못하면 finish를
+만들지 않는다. restart
+이전 generation의 늦은 signal은 현재 tracker를 바꾸지 않고 거부한다. 현재 generation에서 finish 선행,
+중복 start, execution ID 불일치 또는 control channel 손실이 발생하면 active command를 폐기하고
+tracker를 `Unavailable`로 만든다. 그 세대에서는 누락을 허용하되 오탐을 만들지 않으며 새 generation만
+새 tracker를 시작한다. shell/ConPTY 자체 종료는 terminal session 상태일 뿐 command finish 대체 신호가
+아니다.
+
+Preferences schema 7의 `commandCompletionNotificationsEnabled`는 기본 `false`인 opt-in이다. missing,
+partial 및 schema 6 이하 JSON은 값이 없으면 계속 `false`로 normalize된다. 적용 결과의 transition을
+composition root가 받아 Terminal의 관찰 설정과 DesktopIntegration 표시 정책을 조정한다. Terminal
+completion event를 받을 때 host는 현재 session ID/generation과 다시 비교한 뒤 동일 metadata를
+`CommandCompletionNotificationRequest`로 변환한다. DesktopIntegration은 고정된 제품 문구와 성공/실패
+상태만 표시하며 panel activation, foreground 전환이나 focus 이동을 요청하지 않는다.
+
+Terminal completion event와 DesktopIntegration request에는 session ID/generation, execution ID와 exit
+result만 있으며 command, output, prompt, working directory, tab 이름 또는 사용자 제공 문자열이 없다.
+설정 파일에는 opt-in boolean만 저장한다. diagnostics는 integration availability, signal kind, rejection
+reason과 복구 가능 여부 같은 bounded metadata만 기록하고 ID, exit code를 포함한 상관 정보가 필요해도
+command/output을 기록하지 않는다.
+
 Explorer 경로 drop은 WebView2의 `postMessageWithAdditionalObjects`/`CoreWebView2File.Path`
 경계를 사용한다. renderer는 `File` 객체만 host로 넘기고 `text()`, `arrayBuffer()`
 또는 stream을 통해 내용을 읽지 않는다. host도 `Path`만 자료로 사용하며 존재 확인,
@@ -313,7 +359,7 @@ tabpanel은 숨기기만 하므로 output buffer, scrollback과 emulator state�
 
 ### Workspace persistence and restore
 
-`restoreWorkspaceOnLaunch`는 Preferences schema 6의 opt-in 값이며 기본값은 `false`다.
+`restoreWorkspaceOnLaunch`는 Preferences schema 6에서 추가된 opt-in 값이며 기본값은 `false`다.
 꺼진 설정은 남아 있는 workspace 파일보다 우선한다. 시작 시 기본 탭 하나를 만들고,
 설정 저장이 성공한 뒤에는 기존 workspace 파일을 삭제한다. 켜진 경우에만 Terminal이
 `%LOCALAPPDATA%/Starboard/workspace.json`을 읽고, 1~8개 탭의 구성 ID, 이름, 연속된
@@ -719,6 +765,9 @@ portable update는 파일을 제자리 교체하거나 시작 프로그램 경�
 - [IVirtualDesktopManager](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-ivirtualdesktopmanager)
 - [WebView2 distribution](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution)
 - [WebView2 development practices](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/developer-guide)
+- [VS Code terminal shell integration protocol](https://github.com/microsoft/vscode-docs/blob/main/docs/terminal/shell-integration.md)
+- [PowerShell PSConsoleHostReadLine](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_psconsolehostreadline)
+- [PowerShell prompt function](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_prompts)
 - [xterm.js 6.0.0](https://github.com/xtermjs/xterm.js/releases/tag/6.0.0)
 - [xterm.js search addon 0.16.0](https://www.npmjs.com/package/@xterm/addon-search/v/0.16.0)
 - [xterm.js web-links addon 0.12.0](https://www.npmjs.com/package/@xterm/addon-web-links/v/0.12.0)

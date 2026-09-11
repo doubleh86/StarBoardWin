@@ -101,4 +101,32 @@ public sealed class PreferenceApplyContractTests
 
         Assert.AreEqual(WorkspaceRestorePreferenceTransition.Unchanged, result.WorkspaceRestoreTransition);
     }
+
+    [TestMethod]
+    public void AppliedCompletionNotificationPreferenceReportsHostCoordinationTransition()
+    {
+        var previous = new AppSettings();
+        var requested = previous with { CommandCompletionNotificationsEnabled = true };
+        var enabledResult = new PreferenceApplyResult(new PreferenceApplyRequest(previous, requested),
+                                                      PreferenceApplyStatus.Applied, requested, requested, []);
+        var disabledResult = new PreferenceApplyResult(new PreferenceApplyRequest(requested, previous),
+                                                       PreferenceApplyStatus.Applied, previous, previous, []);
+
+        Assert.AreEqual(CommandCompletionNotificationPreferenceTransition.Enabled,
+                        enabledResult.CommandCompletionNotificationTransition);
+        Assert.AreEqual(CommandCompletionNotificationPreferenceTransition.Disabled,
+                        disabledResult.CommandCompletionNotificationTransition);
+    }
+
+    [TestMethod]
+    public void RestoredCompletionNotificationPreferenceDoesNotRequestHostCoordination()
+    {
+        var previous = new AppSettings();
+        var requested = previous with { CommandCompletionNotificationsEnabled = true };
+        var result = new PreferenceApplyResult(new PreferenceApplyRequest(previous, requested),
+                                               PreferenceApplyStatus.FailedAndRestored, previous, previous, []);
+
+        Assert.AreEqual(CommandCompletionNotificationPreferenceTransition.Unchanged,
+                        result.CommandCompletionNotificationTransition);
+    }
 }

@@ -43,6 +43,43 @@ Starboard는 작업표시줄에 붙어 빠르게 명령을 입력하고 결과�
 - 완료 알림은 기존 ‘새 출력’ 점과 별개다. 명령 시작·종료·exit code를 식별하는 셸 연동을
   조사하고 지원 셸·오탐 정책을 먼저 확정한다. 기본 꺼짐, focus 강탈 없음, 명령/출력 노출 없음이 기준이다.
 
+## COMMAND-NOTIFY-01 — 명시적 명령 완료 신호와 알림 계약
+
+### 목표와 범위
+
+- 완료 판단은 출력 도착·정지 시간, prompt 문자열이나 shell process 종료를 사용하지 않는다. 초기 지원
+  범위는 Starboard가 주입한 integration hook에서 별도 control channel로 시작과 종료/exit code를 모두
+  보낼 수 있는 PowerShell 7과 Windows PowerShell이다. `cmd.exe`와 custom shell은 명시적 연동이
+  확보되기 전까지 알림 미지원으로 남겨 오탐보다 누락을 선택한다.
+- Terminal은 command execution ID와 runtime session ID/generation을 결합해 `Ready → Executing → Ready`
+  수명을 추적한다. 같은 execution의 명시적 종료 신호에만 완료 event를 만들며 restart 이전 세대,
+  중복·역순·불일치 신호는 알림을 만들지 않는다.
+- Preferences의 `commandCompletionNotificationsEnabled`는 opt-in이고 기본값은 `false`다. Terminal의 완료
+  event와 DesktopIntegration의 표시 요청은 host가 public contract로 변환한다. 어느 계약에도 command,
+  output, prompt, working directory 또는 임의 사용자 문자열을 넣지 않는다.
+
+### 영향 파일과 위험
+
+- Terminal contract에는 민감한 본문 없는 execution ID, session reference, exit result와 완료 event를,
+  Domain에는 명시적 integration signal만 소비하는 세대별 state machine을 둔다.
+- DesktopIntegration contract에는 host가 현재 session generation을 재검증한 뒤 넘길 generic notification
+  request를 둔다. 요청은 focus/activation 지시나 사용자 제공 표시 문자열을 받지 않는다.
+- Preferences schema에는 기본 비활성화 값을 추가하고 missing/partial/이전 JSON을 defaults와 병합한다.
+  설정 적용 중 실패하면 현재 유효 snapshot을 유지하며, 미확정 완료는 재시도하거나 추측하지 않는다.
+- control channel 손실, 잘못된 순서, execution ID 불일치는 해당 generation의 tracker를 unavailable로
+  만들고 진행 중 command를 폐기한다. 새 session generation만 깨끗한 tracker를 만든다. 핵심 위험은
+  terminal output에 섞인 escape sequence를 신뢰해 생기는 오탐과 restart 후 늦은 event이므로 renderer
+  output parser를 완료 판정 경계로 사용하지 않는다.
+
+### 구현 및 검증
+
+- [x] Terminal 완료 계약과 명시적 신호 state machine을 추가하고 정상/실패 exit code, 늦은 세대,
+  중복·역순·연동 손실을 단위 테스트한다.
+- [x] Preferences 기본값·이전/부분 JSON 호환과 opt-in transition, DesktopIntegration 표시 요청 계약,
+  module 소유권 및 민감 문자열 부재를 테스트한다.
+- [x] 관련 Terminal, Preferences, Architecture test project와 `git diff --check`를 통과시킨다. 실제 shell
+  hook/control channel과 Windows notification UI 연결은 이 계약 확정 다음 구현 단계로 남긴다.
+
 ## PATH-DROP-01 — 파일·폴더 경로를 안전하게 입력
 
 ### 목표와 범위
@@ -236,7 +273,10 @@ workspace/saved-tabs, logs와 WebView2 data는 거부한다.
   일반·비활성·오류 전경색 토큰과 popup 항목 스타일을 적용하고 UI 계약 테스트를 추가했다.
 - [ ] 2026-09-11: Dark, Light, One Dark, Tokyo Night를 실제 WPF 창에서 100/125/150/200%
   배율로 screenshot 확인한다. 자동 계약 검증과 실제 화면 확인은 별도 결과로 기록한다.
-- [ ] 긴 작업 완료 알림 후보의 상세 기획·구현·검증.
+- [x] 2026-09-11: COMMAND-NOTIFY-01의 metadata-only 완료 event, 세대별 명시적 signal state machine,
+  기본 비활성화 schema 7 설정과 DesktopIntegration 조정 request를 확정했다. 지정된 Terminal 247개,
+  Preferences 36개, Architecture 9개와 전체 415개 자동 테스트가 통과했다. 실제 PowerShell hook,
+  control channel과 Windows 알림 표시는 다음 구현 단계다.
 - [x] 2026-09-11: PATH-DROP-01의 shell별 인용, 확인 미리보기, renderer/session
   generation 경계와 WebView2 additional-object 연결을 구현했다. renderer build,
   Terminal 214개와 전체 377개 자동 테스트가 통과했고 실제 Explorer drop·IME·focus
