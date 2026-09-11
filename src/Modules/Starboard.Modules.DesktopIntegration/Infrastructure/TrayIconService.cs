@@ -1,7 +1,76 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 
 namespace Starboard.Modules.DesktopIntegration.Infrastructure;
+
+internal sealed class TrayIconAsset : IDisposable
+{
+    private const string _ResourceName = "Starboard.Modules.DesktopIntegration.Assets.Starboard.ico";
+
+    private readonly Icon? _ownedIcon;
+    private readonly Stream? _ownedStream;
+    private bool _isDisposed;
+
+    private TrayIconAsset(Icon icon, Icon? ownedIcon, Stream? ownedStream)
+    {
+        Icon = icon;
+        _ownedIcon = ownedIcon;
+        _ownedStream = ownedStream;
+    }
+
+    internal Icon Icon { get; }
+
+    internal bool IsFallback => _ownedIcon is null;
+
+    internal static TrayIconAsset LoadEmbedded()
+    {
+        return Load(() => typeof(TrayIconService).Assembly.GetManifestResourceStream(_ResourceName));
+    }
+
+    internal static TrayIconAsset Load(Func<Stream?> openResourceStream)
+    {
+        ArgumentNullException.ThrowIfNull(openResourceStream);
+
+        Stream? iconStream = null;
+        try
+        {
+            iconStream = openResourceStream();
+            if (iconStream is null)
+            {
+                Trace.TraceWarning("The embedded Starboard tray icon was not found; the application icon will be used.");
+                return CreateFallback();
+            }
+
+            var icon = new Icon(iconStream);
+            return new TrayIconAsset(icon, icon, iconStream);
+        }
+        catch (Exception exception) when (DesktopIntegrationModule.IsRecoverablePlatformFailure(exception) == true)
+        {
+            iconStream?.Dispose();
+            Trace.TraceWarning("The embedded Starboard tray icon could not be loaded ({0}); the application icon will be used.",
+                               exception.GetType().Name);
+            return CreateFallback();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed == true)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        _ownedIcon?.Dispose();
+        _ownedStream?.Dispose();
+    }
+
+    private static TrayIconAsset CreateFallback()
+    {
+        return new TrayIconAsset(SystemIcons.Application, null, null);
+    }
+}
 
 internal sealed class TrayIconService : IDisposable
 {
@@ -11,6 +80,7 @@ internal sealed class TrayIconService : IDisposable
     private readonly ToolStripMenuItem _shortcutGuideItem;
     private readonly ToolStripMenuItem _exitItem;
     private readonly NotifyIcon _notifyIcon;
+    private readonly TrayIconAsset _iconAsset;
 
     private bool _isDisposed;
 
@@ -52,14 +122,26 @@ internal sealed class TrayIconService : IDisposable
         _contextMenu.Items.Add(new ToolStripSeparator());
         _contextMenu.Items.Add(_exitItem);
 
-        _notifyIcon = new NotifyIcon
+        var iconAsset = TrayIconAsset.LoadEmbedded();
+        var notifyIcon = new NotifyIcon();
+        try
         {
-            ContextMenuStrip = _contextMenu,
-            Icon = SystemIcons.Application,
-            Text = "Starboard 터미널 · Ctrl+Alt+S로 호출",
-            Visible = true,
-        };
-        _notifyIcon.MouseClick += HandleNotifyIconMouseClick;
+            notifyIcon.ContextMenuStrip = _contextMenu;
+            notifyIcon.Icon = iconAsset.Icon;
+            notifyIcon.Text = "Starboard 터미널 · Ctrl+Alt+S로 호출";
+            notifyIcon.MouseClick += HandleNotifyIconMouseClick;
+            notifyIcon.Visible = true;
+        }
+        catch
+        {
+            notifyIcon.MouseClick -= HandleNotifyIconMouseClick;
+            notifyIcon.Dispose();
+            iconAsset.Dispose();
+            throw;
+        }
+
+        _iconAsset = iconAsset;
+        _notifyIcon = notifyIcon;
     }
 
     internal event EventHandler? ToggleVisibilityRequested;
@@ -94,6 +176,7 @@ internal sealed class TrayIconService : IDisposable
         _shortcutGuideItem.Click -= HandleShortcutGuideClick;
         _exitItem.Click -= HandleExitClick;
         _notifyIcon.Dispose();
+        _iconAsset.Dispose();
         _contextMenu.Dispose();
     }
 
