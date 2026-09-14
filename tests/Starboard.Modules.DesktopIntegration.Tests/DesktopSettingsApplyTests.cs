@@ -206,6 +206,47 @@ public sealed class DesktopSettingsApplyTests
         Assert.AreEqual("\"C:\\사용자 파일\\Starboard App\\Starboard.exe\"", command);
     }
 
+    [TestMethod]
+    public void NotifyCommandCompletion_EnabledDeliversMetadataWithoutActivatingThePanel()
+    {
+        var runtime = new FakeRuntime();
+        using var module = CreateAttachedModule(runtime, new FakeStartupRegistration());
+        var request = CreateCompletionRequest(exitCode: 0);
+
+        module.SetCommandCompletionNotificationSettings(new CommandCompletionNotificationSettings(true));
+        module.NotifyCommandCompletion(request);
+
+        CollectionAssert.AreEqual(new[] { request }, runtime.CompletionNotifications);
+        Assert.AreEqual(0, runtime.ActivationRequestCount);
+    }
+
+    [TestMethod]
+    public void NotifyCommandCompletion_DisabledDoesNotCallTheTrayRuntime()
+    {
+        var runtime = new FakeRuntime();
+        using var module = CreateAttachedModule(runtime, new FakeStartupRegistration());
+
+        module.NotifyCommandCompletion(CreateCompletionRequest(exitCode: 1));
+
+        Assert.AreEqual(0, runtime.CompletionNotifications.Count);
+    }
+
+    [TestMethod]
+    public void NotifyCommandCompletion_TrayFailureLogsWarningAndDoesNotThrow()
+    {
+        var runtime = new FakeRuntime { ThrowOnCompletionNotification = true };
+        var diagnosticLog = new RecordingDiagnosticLog();
+        using var module = new DesktopIntegrationModule(diagnosticLog, runtime, new FakeStartupRegistration(), false);
+        module.Attach(new nint(1), new PanelOptions(200));
+        module.SetCommandCompletionNotificationSettings(new CommandCompletionNotificationSettings(true));
+
+        module.NotifyCommandCompletion(CreateCompletionRequest(exitCode: 1));
+
+        Assert.AreEqual(1, diagnosticLog.Entries.Count);
+        Assert.AreEqual("ShowCommandCompletionNotification", diagnosticLog.Entries[0].Operation);
+        Assert.AreEqual(0, runtime.ActivationRequestCount);
+    }
+
     private static DesktopIntegrationModule CreateAttachedModule(FakeRuntime runtime,
                                                                  FakeStartupRegistration startupRegistration)
     {
@@ -222,6 +263,11 @@ public sealed class DesktopSettingsApplyTests
         return new DesktopSettings(collapsedHeightDip, opacity, PreferredMonitorBehavior.TaskbarMonitor,
                                    new HotkeySettings(expandShortcut, activationShortcut),
                                    new StartupSettings(startWithWindows));
+    }
+
+    private static CommandCompletionNotificationRequest CreateCompletionRequest(int exitCode)
+    {
+        return new CommandCompletionNotificationRequest(Guid.NewGuid(), 1, Guid.NewGuid(), exitCode);
     }
 
     private sealed class FakeRuntime : IDesktopIntegrationRuntime
@@ -246,11 +292,17 @@ public sealed class DesktopSettingsApplyTests
 
         public int? ThrowOnOpacityCall { get; init; }
 
+        public bool ThrowOnCompletionNotification { get; init; }
+
         public Dictionary<int, string> RegisteredShortcuts { get; } = [];
 
         public int RegisterCallCount { get; private set; }
 
         public double LastOpacity { get; private set; }
+
+        public List<CommandCompletionNotificationRequest> CompletionNotifications { get; } = [];
+
+        public int ActivationRequestCount { get; private set; }
 
         private int OpacitySetCallCount { get; set; }
 
@@ -361,6 +413,7 @@ public sealed class DesktopSettingsApplyTests
         public void ActivateOnExplicitRequest(nint windowHandle)
         {
             _ = windowHandle;
+            ActivationRequestCount++;
         }
 
         public void SetTrayPanelVisible(bool isVisible)
@@ -371,6 +424,16 @@ public sealed class DesktopSettingsApplyTests
         public void RecreateTrayIcon(bool isVisible)
         {
             _ = isVisible;
+        }
+
+        public void ShowCommandCompletionNotification(CommandCompletionNotificationRequest request)
+        {
+            if (ThrowOnCompletionNotification == true)
+            {
+                throw new InvalidOperationException("The notification channel is unavailable.");
+            }
+
+            CompletionNotifications.Add(request);
         }
 
         public void RaiseTraySettingsRequested()
@@ -416,6 +479,20 @@ public sealed class DesktopSettingsApplyTests
             _ = exception;
         }
     }
+
+    private sealed class RecordingDiagnosticLog : IDiagnosticLog
+    {
+        public List<DiagnosticLogEntry> Entries { get; } = [];
+
+        public void Write(DiagnosticLevel level, string subsystem, string operation, string message,
+                          Exception? exception = null)
+        {
+            Entries.Add(new DiagnosticLogEntry(level, subsystem, operation, message, exception));
+        }
+    }
+
+    private sealed record DiagnosticLogEntry(DiagnosticLevel Level, string Subsystem, string Operation, string Message,
+                                             Exception? Exception);
 }
 
 #pragma warning restore CA1707

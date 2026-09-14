@@ -21,6 +21,8 @@ public sealed class SettingsEditorViewContrastContractTests
         StringAssert.Contains(xaml, "TargetType=\"ComboBoxItem\"");
         StringAssert.Contains(xaml, "Property=\"Validation.HasError\"");
         StringAssert.Contains(xaml, "Property=\"IsHighlighted\"");
+        StringAssert.Contains(xaml, "Content=\"명령 완료 알림\"");
+        StringAssert.Contains(xaml, "CommandCompletionNotificationsEnabled");
         Assert.IsFalse(xaml.Contains("Foreground=\"Black\"", StringComparison.Ordinal));
     }
 

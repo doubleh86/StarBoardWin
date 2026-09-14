@@ -28,20 +28,28 @@ public sealed class SettingsEditorViewModelTests
     [TestMethod]
     public async Task CancelDiscardsDraftAndReturnsOriginalSnapshot()
     {
-        var original = new AppSettings { Theme = "Dark", RestoreWorkspaceOnLaunch = true };
+        var original = new AppSettings
+        {
+            Theme = "Dark",
+            RestoreWorkspaceOnLaunch = true,
+            CommandCompletionNotificationsEnabled = true,
+        };
         var saveHandler = new RecordingSaveHandler();
         var viewModel = new SettingsEditorViewModel(original, saveHandler);
         viewModel.Theme = "Light";
         viewModel.RestoreWorkspaceOnLaunch = false;
+        viewModel.CommandCompletionNotificationsEnabled = false;
 
         viewModel.Cancel();
         var outcome = await viewModel.Completion;
 
         Assert.AreEqual("Dark", viewModel.Theme);
         Assert.IsTrue(viewModel.RestoreWorkspaceOnLaunch);
+        Assert.IsTrue(viewModel.CommandCompletionNotificationsEnabled);
         Assert.AreEqual(SettingsEditorCompletionKind.Canceled, outcome.CompletionKind);
         Assert.AreEqual("Dark", outcome.Settings.Theme);
         Assert.IsTrue(outcome.Settings.RestoreWorkspaceOnLaunch);
+        Assert.IsTrue(outcome.Settings.CommandCompletionNotificationsEnabled);
         Assert.AreEqual(0, saveHandler.SaveCount);
     }
 
@@ -71,12 +79,14 @@ public sealed class SettingsEditorViewModelTests
         var viewModel = new SettingsEditorViewModel(new AppSettings(), saveHandler)
         {
             Theme = "Light",
+            CommandCompletionNotificationsEnabled = true,
         };
 
         await viewModel.SaveAsync(CancellationToken.None);
 
         Assert.AreEqual(1, saveHandler.SaveCount);
         Assert.AreEqual("Light", viewModel.Theme);
+        Assert.IsTrue(viewModel.CommandCompletionNotificationsEnabled);
         Assert.AreEqual("설정을 저장하지 못했습니다. 편집한 값은 그대로 유지됩니다.", viewModel.SaveError);
         Assert.IsFalse(viewModel.Completion.IsCompleted);
     }
@@ -120,6 +130,7 @@ public sealed class SettingsEditorViewModelTests
             ExpandShortcut = "Ctrl+Shift+E",
             ActivationShortcut = "Ctrl+Shift+S",
             RestoreWorkspaceOnLaunch = true,
+            CommandCompletionNotificationsEnabled = true,
         };
 
         await viewModel.SaveAsync(CancellationToken.None);
@@ -131,6 +142,7 @@ public sealed class SettingsEditorViewModelTests
         Assert.AreEqual(240, outcome.Settings.CollapsedHeightDip);
         Assert.AreEqual("Ctrl+Shift+S", outcome.Settings.ActivationShortcut);
         Assert.IsTrue(outcome.Settings.RestoreWorkspaceOnLaunch);
+        Assert.IsTrue(outcome.Settings.CommandCompletionNotificationsEnabled);
     }
 
     private sealed class RecordingSaveHandler : ISettingsEditorSaveHandler

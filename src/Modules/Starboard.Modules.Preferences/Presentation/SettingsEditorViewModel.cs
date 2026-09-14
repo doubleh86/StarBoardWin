@@ -37,6 +37,7 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
     private string expandShortcut = "Ctrl+Alt+E";
     private string activationShortcut = "Ctrl+Alt+S";
     private bool restoreWorkspaceOnLaunch;
+    private bool commandCompletionNotificationsEnabled;
     private string? saveError;
     private bool isSaving;
     private bool isCompleted;
@@ -125,6 +126,12 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
     {
         get => restoreWorkspaceOnLaunch;
         set => SetDraftProperty(ref restoreWorkspaceOnLaunch, value);
+    }
+
+    public bool CommandCompletionNotificationsEnabled
+    {
+        get => commandCompletionNotificationsEnabled;
+        set => SetDraftProperty(ref commandCompletionNotificationsEnabled, value);
     }
 
     public string? SaveError
@@ -251,6 +258,7 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
             ExpandShortcut = ExpandShortcut.Trim(),
             ActivationShortcut = ActivationShortcut.Trim(),
             RestoreWorkspaceOnLaunch = RestoreWorkspaceOnLaunch,
+            CommandCompletionNotificationsEnabled = CommandCompletionNotificationsEnabled,
         };
     }
 
@@ -323,11 +331,12 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
         expandShortcut = settings.ExpandShortcut;
         activationShortcut = settings.ActivationShortcut;
         restoreWorkspaceOnLaunch = settings.RestoreWorkspaceOnLaunch;
+        commandCompletionNotificationsEnabled = settings.CommandCompletionNotificationsEnabled;
 
         OnPropertiesChanged(nameof(ShellExecutable), nameof(Theme), nameof(CollapsedHeightText), nameof(FontFamily),
                             nameof(FontSizeText), nameof(OpacityText), nameof(StartWithWindows),
                             nameof(PreferredMonitor), nameof(ExpandShortcut), nameof(ActivationShortcut),
-                            nameof(RestoreWorkspaceOnLaunch));
+                            nameof(RestoreWorkspaceOnLaunch), nameof(CommandCompletionNotificationsEnabled));
     }
 
     private void SetDraftProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

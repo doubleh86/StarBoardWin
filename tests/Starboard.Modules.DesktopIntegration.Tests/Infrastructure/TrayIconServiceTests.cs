@@ -1,4 +1,5 @@
 using System.Drawing;
+using Starboard.Modules.DesktopIntegration.Contracts;
 using Starboard.Modules.DesktopIntegration.Infrastructure;
 
 namespace Starboard.Modules.DesktopIntegration.Tests.Infrastructure;
@@ -71,6 +72,31 @@ public sealed class TrayIconServiceTests
         iconAsset.Dispose();
 
         Assert.IsTrue(stream.IsDisposed);
+    }
+
+    [TestMethod]
+    public void CreateCommandCompletionNotificationContent_UsesGenericSuccessMessageOnly()
+    {
+        var content = TrayIconService.CreateCommandCompletionNotificationContent(CreateRequest(exitCode: 0));
+
+        Assert.AreEqual("Starboard", content.Title);
+        Assert.AreEqual("이 탭의 명령이 완료되었습니다.", content.Message);
+        Assert.AreEqual(System.Windows.Forms.ToolTipIcon.Info, content.Icon);
+    }
+
+    [TestMethod]
+    public void CreateCommandCompletionNotificationContent_UsesGenericFailureMessageOnly()
+    {
+        var content = TrayIconService.CreateCommandCompletionNotificationContent(CreateRequest(exitCode: 1));
+
+        Assert.AreEqual("Starboard", content.Title);
+        Assert.AreEqual("이 탭의 명령이 실패했습니다.", content.Message);
+        Assert.AreEqual(System.Windows.Forms.ToolTipIcon.Warning, content.Icon);
+    }
+
+    private static CommandCompletionNotificationRequest CreateRequest(int exitCode)
+    {
+        return new CommandCompletionNotificationRequest(Guid.NewGuid(), 1, Guid.NewGuid(), exitCode);
     }
 
     private sealed class TrackingMemoryStream(byte[] buffer) : MemoryStream(buffer)

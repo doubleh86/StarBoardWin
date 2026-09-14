@@ -113,7 +113,7 @@
                     <GroupBox Header="화면" Foreground="{StaticResource ForegroundBrush}" Margin="0,0,0,16">
                         <Grid Margin="12">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="160" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                             <TextBlock Text="테마" VerticalAlignment="Center" />
                             <ComboBox Grid.Column="1" SelectedItem="{Binding Theme, UpdateSourceTrigger=PropertyChanged}" ItemsSource="{Binding Themes}" />
                             <TextBlock Grid.Row="1" Text="축소 높이 (DIP)" VerticalAlignment="Center" Margin="0,12,0,0" />
@@ -152,12 +152,19 @@
                                            Text="옵션을 끄고 저장하면 현재 세션은 유지하고 저장된 구성과 백업 삭제를 시도합니다."
                                            TextWrapping="Wrap" />
                             </StackPanel>
-                            <TextBlock Grid.Row="2" Text="표시 모니터" VerticalAlignment="Center" Margin="0,12,0,0" />
-                            <ComboBox Grid.Row="2" Grid.Column="1" Margin="0,8,0,0" SelectedItem="{Binding PreferredMonitor}" ItemsSource="{Binding PreferredMonitors}" />
-                            <TextBlock Grid.Row="3" Text="확장 단축키" VerticalAlignment="Center" Margin="0,12,0,0" />
-                            <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,8,0,0"><TextBox Text="{Binding ExpandShortcut, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" /><TextBlock Text="{Binding ExpandShortcutError}" Foreground="{StaticResource ErrorBrush}" /></StackPanel>
-                            <TextBlock Grid.Row="4" Text="호출/숨김 단축키" VerticalAlignment="Center" Margin="0,12,0,0" />
-                            <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,8,0,0"><TextBox Text="{Binding ActivationShortcut, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" /><TextBlock Text="{Binding ActivationShortcutError}" Foreground="{StaticResource ErrorBrush}" /></StackPanel>
+                            <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Margin="0,8,0,4">
+                                <CheckBox Content="명령 완료 알림" IsChecked="{Binding CommandCompletionNotificationsEnabled}" />
+                                <TextBlock Margin="22,4,0,0"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           Text="명령이 끝나면 이 탭의 성공 또는 실패만 알립니다. 명령 내용과 출력은 표시하거나 저장하지 않습니다."
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="3" Text="표시 모니터" VerticalAlignment="Center" Margin="0,12,0,0" />
+                            <ComboBox Grid.Row="3" Grid.Column="1" Margin="0,8,0,0" SelectedItem="{Binding PreferredMonitor}" ItemsSource="{Binding PreferredMonitors}" />
+                            <TextBlock Grid.Row="4" Text="확장 단축키" VerticalAlignment="Center" Margin="0,12,0,0" />
+                            <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,8,0,0"><TextBox Text="{Binding ExpandShortcut, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" /><TextBlock Text="{Binding ExpandShortcutError}" Foreground="{StaticResource ErrorBrush}" /></StackPanel>
+                            <TextBlock Grid.Row="5" Text="호출/숨김 단축키" VerticalAlignment="Center" Margin="0,12,0,0" />
+                            <StackPanel Grid.Row="5" Grid.Column="1" Margin="0,8,0,0"><TextBox Text="{Binding ActivationShortcut, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" /><TextBlock Text="{Binding ActivationShortcutError}" Foreground="{StaticResource ErrorBrush}" /></StackPanel>
                         </Grid>
                     </GroupBox>
                 </StackPanel>

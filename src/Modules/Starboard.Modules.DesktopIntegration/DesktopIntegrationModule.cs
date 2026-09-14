@@ -33,6 +33,7 @@ public sealed class DesktopIntegrationModule : IDisposable
     private PanelOptions options = new(200);
     private PanelWindowPolicyDecision? lastDecision;
     private DesktopSettings effectiveSettings = CreateDefaultSettings();
+    private CommandCompletionNotificationSettings commandCompletionNotificationSettings;
     private HotkeySettings configuredHotkeys = new("Ctrl+Alt+E", "Ctrl+Alt+S");
     private string? expandHotkeyFailure;
     private string? activationHotkeyFailure;
@@ -175,6 +176,52 @@ public sealed class DesktopIntegrationModule : IDisposable
         }
 
         Reconcile();
+    }
+
+    /// <summary>
+    /// Updates the opt-in notification state. This setting is deliberately independent
+    /// from panel appearance and hotkey application, so it cannot alter focus or z-order policy.
+    /// </summary>
+    public void SetCommandCompletionNotificationSettings(CommandCompletionNotificationSettings settings)
+    {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+
+        lock (stateLock)
+        {
+            commandCompletionNotificationSettings = settings;
+        }
+    }
+
+    /// <summary>
+    /// Best-effort delivery for host-validated terminal completion metadata. No request
+    /// fields are shown or logged; the tray layer supplies generic, fixed user-facing text.
+    /// </summary>
+    public void NotifyCommandCompletion(CommandCompletionNotificationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (isDisposed == true)
+        {
+            return;
+        }
+
+        lock (stateLock)
+        {
+            if (commandCompletionNotificationSettings.Enabled == false)
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            runtime.ShowCommandCompletionNotification(request);
+        }
+        catch (Exception exception)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "DesktopIntegration", "ShowCommandCompletionNotification",
+                                "A command completion notification could not be shown; terminal execution continues.",
+                                exception);
+        }
     }
 
     public bool TogglePanelVisibility()
@@ -1089,6 +1136,11 @@ internal interface IDesktopIntegrationRuntime : IDisposable
     void SetTrayPanelVisible(bool isVisible);
 
     void RecreateTrayIcon(bool isVisible);
+
+    void ShowCommandCompletionNotification(CommandCompletionNotificationRequest request)
+    {
+        _ = request;
+    }
 }
 
 internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRuntime
@@ -1220,6 +1272,11 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
     {
         DisposeTrayIcon();
         CreateTrayIcon(isVisible);
+    }
+
+    public void ShowCommandCompletionNotification(CommandCompletionNotificationRequest request)
+    {
+        _trayIconService?.ShowCommandCompletionNotification(request);
     }
 
     public void Dispose()

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
+using Starboard.Modules.DesktopIntegration.Contracts;
 
 namespace Starboard.Modules.DesktopIntegration.Infrastructure;
 
@@ -74,6 +75,7 @@ internal sealed class TrayIconAsset : IDisposable
 
 internal sealed class TrayIconService : IDisposable
 {
+    private const int CommandCompletionNotificationTimeoutMilliseconds = 5000;
     private readonly ContextMenuStrip _contextMenu;
     private readonly ToolStripMenuItem _toggleVisibilityItem;
     private readonly ToolStripMenuItem _settingsItem;
@@ -161,6 +163,30 @@ internal sealed class TrayIconService : IDisposable
             : "터미널 표시";
     }
 
+    /// <summary>
+    /// Uses NotifyIcon's passive balloon channel only. The tray icon owns no panel
+    /// activation or window-placement operations, so this cannot change panel focus or z-order.
+    /// </summary>
+    internal void ShowCommandCompletionNotification(CommandCompletionNotificationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+
+        var content = CreateCommandCompletionNotificationContent(request);
+        _notifyIcon.ShowBalloonTip(CommandCompletionNotificationTimeoutMilliseconds, content.Title, content.Message,
+                                   content.Icon);
+    }
+
+    internal static TrayNotificationContent CreateCommandCompletionNotificationContent(
+        CommandCompletionNotificationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return request.Succeeded == true
+            ? new TrayNotificationContent("Starboard", "이 탭의 명령이 완료되었습니다.", ToolTipIcon.Info)
+            : new TrayNotificationContent("Starboard", "이 탭의 명령이 실패했습니다.", ToolTipIcon.Warning);
+    }
+
     public void Dispose()
     {
         if (_isDisposed == true)
@@ -218,3 +244,5 @@ internal sealed class TrayIconService : IDisposable
         ShortcutGuideRequested?.Invoke(this, EventArgs.Empty);
     }
 }
+
+internal readonly record struct TrayNotificationContent(string Title, string Message, ToolTipIcon Icon);
