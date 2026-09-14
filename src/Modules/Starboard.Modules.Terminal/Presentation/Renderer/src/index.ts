@@ -140,6 +140,8 @@ type SavedTab = {
   shellKind: "automatic" | "pwsh" | "powershell" | "cmd";
 };
 
+type SavedTabDraft = Omit<SavedTab, "savedTabId">;
+
 type SavedTabsSnapshotPayload = {
   schemaVersion: number;
   maximumSavedTabs: number;
@@ -178,6 +180,7 @@ type SessionPayload = {
   sessionGeneration: number;
   startingDirectory: string;
   homeDirectory: string;
+  shellKind: SavedTab["shellKind"];
 };
 
 type ConfirmationKind = "close" | "paste" | "path-drop" | "url-open";
@@ -217,6 +220,7 @@ type SessionEntry = {
   sessionGeneration: number;
   startingDirectory: string;
   homeDirectory: string;
+  shellKind: SavedTab["shellKind"];
   terminal: Terminal;
   fitAddon: FitAddon;
   searchAddon: SearchAddon;
@@ -290,6 +294,7 @@ let focusTerminalOnNextActivation = false;
 let contextMenu: HTMLElement | undefined;
 let savedTabsMenu: HTMLElement | undefined;
 let savedTabsDialog: HTMLDialogElement | undefined;
+let savedTabsDialogFocusReturnSessionId: string | undefined;
 let savedTabsSnapshot: SavedTabsSnapshotPayload | undefined;
 let savedTabsFeedback = "";
 let pendingSavedTabLaunchRequestId: string | undefined;
@@ -987,6 +992,26 @@ function showTabMenuAt(anchor: Pick<DOMRect, "left" | "bottom">, sessionId: stri
   addItem("왼쪽으로 이동", () => postSession("move-session", sessionId, { direction: "left" }), index === 0);
   addItem("오른쪽으로 이동", () => postSession("move-session", sessionId, { direction: "right" }), index === orderedSessions().length - 1);
   addItem("시작 폴더 설정", () => showStartingDirectoryEditor(sessionId));
+  const savedTabLimitReached = savedTabsSnapshot !== undefined &&
+    savedTabsSnapshot.tabs.length >= savedTabsSnapshot.maximumSavedTabs;
+  addItem("저장한 탭에 추가…", () => {
+    showSavedTabsDialog({
+      name: entry.name,
+      startingDirectory: entry.startingDirectory,
+      shellKind: entry.shellKind,
+    }, sessionId);
+  }, savedTabLimitReached);
+  if (savedTabLimitReached === true) {
+    const limit = document.createElement("p");
+    limit.id = "tab-context-menu-limit";
+    limit.className = "tab-context-menu-limit";
+    limit.setAttribute("role", "status");
+    limit.textContent = `저장한 탭 한도(${savedTabsSnapshot?.maximumSavedTabs ?? 20}개)에 도달했습니다.`;
+    menu.append(limit);
+    const saveItem = menu.querySelector<HTMLButtonElement>("button:last-of-type");
+    saveItem?.setAttribute("aria-label", `${saveItem.textContent} (저장한 탭 한도에 도달하여 사용할 수 없음)`);
+    saveItem?.setAttribute("aria-describedby", limit.id);
+  }
   document.body.append(menu);
   contextMenu = menu;
   menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
@@ -1104,25 +1129,25 @@ function showSavedTabsMenu(): void {
   menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
 }
 
-function appendSavedTabEditor(dialog: HTMLDialogElement, tab?: SavedTab): void {
+function appendSavedTabEditor(dialog: HTMLDialogElement, tab?: SavedTab, createDefault?: SavedTabDraft): void {
   const editor = document.createElement("form");
   editor.className = "saved-tab-editor";
   const heading = document.createElement("h3");
   heading.textContent = tab === undefined ? "새 저장 탭" : "저장 탭 편집";
   const name = document.createElement("input");
   name.type = "text";
-  name.value = tab?.name ?? "";
+  name.value = tab?.name ?? createDefault?.name ?? "";
   name.maxLength = 128;
   const path = document.createElement("input");
   path.type = "text";
-  path.value = tab?.startingDirectory ?? "";
+  path.value = tab?.startingDirectory ?? createDefault?.startingDirectory ?? "";
   path.maxLength = 32_767;
   const shell = document.createElement("select");
   for (const value of ["automatic", "pwsh", "powershell", "cmd"] as const) {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = shellLabel(value);
-    option.selected = value === (tab?.shellKind ?? "automatic");
+    option.selected = value === (tab?.shellKind ?? createDefault?.shellKind ?? "automatic");
     shell.append(option);
   }
   const addLabel = (text: string, control: HTMLElement): void => {
@@ -1135,12 +1160,25 @@ function appendSavedTabEditor(dialog: HTMLDialogElement, tab?: SavedTab): void {
   addLabel("이름", name);
   addLabel("시작 폴더", path);
   addLabel("셸", shell);
+  if (createDefault !== undefined) {
+    const guidance = document.createElement("p");
+    guidance.className = "saved-tab-guidance";
+    guidance.textContent = "현재 터미널에서 이동한 폴더와 다를 수 있습니다.";
+    editor.append(guidance);
+  }
   const actions = document.createElement("div");
   actions.className = "saved-tab-editor-actions";
   const cancel = document.createElement("button");
   cancel.type = "button";
   cancel.textContent = "취소";
-  cancel.addEventListener("click", () => renderSavedTabsDialog());
+  cancel.addEventListener("click", () => {
+    if (savedTabsDialogFocusReturnSessionId !== undefined) {
+      dialog.close();
+      return;
+    }
+
+    renderSavedTabsDialog();
+  });
   const save = document.createElement("button");
   save.type = "submit";
   save.className = "saved-tab-primary";
@@ -1161,7 +1199,7 @@ function appendSavedTabEditor(dialog: HTMLDialogElement, tab?: SavedTab): void {
   name.focus();
 }
 
-function renderSavedTabsDialog(editTab?: SavedTab, create = false): void {
+function renderSavedTabsDialog(editTab?: SavedTab, create = false, createDefault?: SavedTabDraft): void {
   const dialog = savedTabsDialog;
   if (dialog === undefined) {
     return;
@@ -1176,7 +1214,7 @@ function renderSavedTabsDialog(editTab?: SavedTab, create = false): void {
   feedback.classList.toggle("is-error", savedTabsFeedback.length > 0 && pendingSavedTabLaunchRequestId === undefined);
   dialog.append(feedback);
   if (editTab !== undefined || create === true) {
-    appendSavedTabEditor(dialog, editTab);
+    appendSavedTabEditor(dialog, editTab, createDefault);
     return;
   }
   const list = document.createElement("div");
@@ -1212,7 +1250,7 @@ function renderSavedTabsDialog(editTab?: SavedTab, create = false): void {
   actions.append(add, close); dialog.append(actions);
 }
 
-function showSavedTabsDialog(): void {
+function showSavedTabsDialog(createDefault?: SavedTabDraft, focusReturnSessionId?: string): void {
   if (savedTabsDialog !== undefined) { renderSavedTabsDialog(); return; }
   const dialog = document.createElement("dialog");
   dialog.className = "saved-tabs-dialog";
@@ -1222,9 +1260,18 @@ function showSavedTabsDialog(): void {
       postGlobal("cancel-saved-tab-launch", { requestId: pendingSavedTabLaunchRequestId });
       pendingSavedTabLaunchRequestId = undefined;
     }
-    savedTabsDialog = undefined; dialog.remove(); savedTabsButton.focus();
+    const returnSessionId = savedTabsDialogFocusReturnSessionId;
+    savedTabsDialogFocusReturnSessionId = undefined;
+    savedTabsDialog = undefined;
+    dialog.remove();
+    const returnTab = returnSessionId === undefined ? undefined : sessions.get(returnSessionId)?.tabButton;
+    (returnTab ?? savedTabsButton).focus();
   });
-  savedTabsDialog = dialog; document.body.append(dialog); renderSavedTabsDialog(); dialog.showModal();
+  savedTabsDialogFocusReturnSessionId = focusReturnSessionId;
+  savedTabsDialog = dialog;
+  document.body.append(dialog);
+  renderSavedTabsDialog(undefined, createDefault !== undefined, createDefault);
+  dialog.showModal();
 }
 
 function isRequestIdentifier(value: unknown): value is string {
@@ -1690,6 +1737,7 @@ function upsertSession(sessionId: string, payload: SessionPayload): void {
   entry.sessionGeneration = payload.sessionGeneration;
   entry.startingDirectory = payload.startingDirectory;
   entry.homeDirectory = payload.homeDirectory;
+  entry.shellKind = payload.shellKind;
   if (
     payload.state === "running" ||
     payload.state === "starting" ||
@@ -2092,7 +2140,9 @@ function isSessionPayload(
     typeof payload.canAddSession === "boolean" &&
     isSessionGeneration(payload.sessionGeneration) === true &&
     typeof payload.startingDirectory === "string" &&
-    typeof payload.homeDirectory === "string"
+    typeof payload.homeDirectory === "string" &&
+    (payload.shellKind === "automatic" || payload.shellKind === "pwsh" ||
+      payload.shellKind === "powershell" || payload.shellKind === "cmd")
   );
 }
 
@@ -2115,7 +2165,9 @@ function handleHostMessage(value: unknown): void {
 
   if (message.type === "saved-tabs-snapshot") {
     savedTabsSnapshot = message.payload;
-    renderSavedTabsDialog();
+    if (savedTabsDialogFocusReturnSessionId === undefined) {
+      renderSavedTabsDialog();
+    }
     return;
   }
 
@@ -2125,6 +2177,22 @@ function handleHostMessage(value: unknown): void {
     }
     savedTabsFeedback = message.payload.status === "succeeded" ? "저장했습니다." :
       savedTabStatusLabel(message.payload.status, message.payload.failureMessage);
+    if (message.payload.operation === "create" && message.payload.status === "succeeded" &&
+        savedTabsDialogFocusReturnSessionId !== undefined) {
+      savedTabsDialog?.close();
+      return;
+    }
+    if (message.payload.operation === "create" && savedTabsDialogFocusReturnSessionId !== undefined) {
+      const entry = sessions.get(savedTabsDialogFocusReturnSessionId);
+      if (entry !== undefined) {
+        renderSavedTabsDialog(undefined, true, {
+          name: entry.name,
+          startingDirectory: entry.startingDirectory,
+          shellKind: entry.shellKind,
+        });
+        return;
+      }
+    }
     renderSavedTabsDialog();
     return;
   }

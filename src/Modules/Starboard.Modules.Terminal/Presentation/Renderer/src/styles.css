@@ -435,7 +435,9 @@ button:focus-visible {
 .saved-tab-launch-path,
 .saved-tabs-empty,
 .saved-tabs-feedback,
-.saved-tabs-limit {
+.saved-tabs-limit,
+.saved-tab-guidance,
+.tab-context-menu-limit {
   color: var(--color-neutral);
   font-size: 10px;
 }

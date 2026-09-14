@@ -135,6 +135,26 @@ public sealed class RendererDistributionTests
     }
 
     [TestMethod]
+    public void BundledRendererSavesCurrentTabFromItsKeyboardAccessibleContextMenu()
+    {
+        var source = ReadRendererSource("index.ts");
+        var script = ReadRendererAsset("app.js");
+        var styles = ReadRendererAsset("app.css");
+
+        StringAssert.Contains(source, "showSavedTabsDialog({");
+        StringAssert.Contains(source, "shellKind: entry.shellKind");
+        StringAssert.Contains(source, "if (savedTabsDialogFocusReturnSessionId !== undefined) {");
+        StringAssert.Contains(source, "const returnTab = returnSessionId === undefined ? undefined : sessions.get(returnSessionId)?.tabButton;");
+        StringAssert.Contains(script, "key===\"F10\"");
+        StringAssert.Contains(script, "\\uC800\\uC7A5\\uD55C \\uD0ED\\uC5D0 \\uCD94\\uAC00\\u2026");
+        StringAssert.Contains(script, "tab-context-menu-limit");
+        StringAssert.Contains(script, "aria-describedby");
+        StringAssert.Contains(script, "saved-tab-guidance");
+        StringAssert.Contains(styles, ".tab-context-menu-limit");
+        StringAssert.Contains(styles, ".saved-tab-guidance");
+    }
+
+    [TestMethod]
     public void BundledRendererContainsActiveTabOnlyOutputSearchRuntime()
     {
         var script = ReadRendererAsset("app.js");

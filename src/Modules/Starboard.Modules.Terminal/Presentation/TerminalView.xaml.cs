@@ -1255,6 +1255,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                                    sessionGeneration = sessionLifetimes[tab.SessionId],
                                    tab.StartingDirectory,
                                    homeDirectory = defaultShell?.WorkingDirectory ?? tab.StartingDirectory,
+                                   shellKind = tab.ShellKind?.ToString().ToLowerInvariant() ?? "automatic",
                                });
 
             if (tab.State == TerminalSessionState.Exited)

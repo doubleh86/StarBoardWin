@@ -178,3 +178,17 @@ Terminal 경로는 `src/Modules/Starboard.Modules.Terminal/` 기준이다. publi
   DPI와 IME는 재실행하지 않았으며 MAN-044~045와 기존 manual matrix 상태를 유지한다.
 - [ ] 다음 버전: 실제 구현에서 빠진 탭 context menu의 `저장한 탭에 추가…` 진입점을 연결하고,
   현재 탭 값 prefill·20개 한도·저장/취소 focus 복귀를 검증한다.
+
+### 2026-09-14 context-menu 저장 진입점
+
+- 범위: `session-upsert`가 탭이 이미 소유하는 shell kind를 renderer에 전달하고, renderer의
+  tab context menu에서 기존 saved-tab create editor를 현재 탭의 이름·설정 시작 폴더·셸로
+  연다. 저장 service와 create protocol은 변경하지 않는다.
+- 위험: dialog를 닫을 때 기존 저장한 탭 버튼이 아니라 context menu를 연 원래 tab button으로
+  focus를 복귀해야 한다. 20개인 경우 disabled item의 접근 가능한 이름으로 이유를 전달한다.
+- 검증: renderer distribution 계약으로 keyboard entry, prefill, limit 설명과 focus 복귀를
+  검사하고 renderer build로 `dist`를 다시 생성한다. 실제 WebView2/DPI/IME 조작은 별도 manual
+  matrix에 `Not run`으로 남긴다.
+- 완료: `session-upsert` shell kind 전달, context-menu prefill/20개 제한/focus 복귀와 renderer
+  distribution·integration 회귀 검증을 추가했다. 2026-09-14 `npm run build`, Debug restore/build와
+  전체 437개 테스트가 통과했다. 실제 WebView2·DPI·IME 수동 검증은 MAN-049 `Not run`이다.

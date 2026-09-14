@@ -47,6 +47,7 @@ public sealed class SavedTerminalTabsIntegrationTests
         StringAssert.Contains(source, "RendererProtocol.SerializeSavedTabsSnapshot(");
         StringAssert.Contains(source, "await InitializeSavedTabsAsync(cancellationToken);");
         StringAssert.Contains(source, "await StartWorkspaceAsync(terminalOptions.RestoreWorkspaceOnLaunch,");
+        StringAssert.Contains(source, "shellKind = tab.ShellKind?.ToString().ToLowerInvariant() ?? \"automatic\"");
     }
 
     [TestMethod]

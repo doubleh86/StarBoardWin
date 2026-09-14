@@ -705,6 +705,7 @@ build hash를 함께 기록한다.
 
 | MAN-047 | Explorer file/folder path drop | PowerShell/Windows PowerShell/cmd 현재 탭에 공백·한글·특수 문자 경로를 놓고 미리보기·취소·승인, Enter 미생성, tab 전환·restart·renderer reconnect 경쟁, IME·붙여넣기·focus·scrollback 회귀를 실제 WebView2에서 확인 | Not run — additional-object/protocol/unit 검증은 통과했으나 실제 Explorer·WebView2 드래그 입력은 수행하지 않음 |
 | MAN-048 | terminal 출력 URL Ctrl+click | 일반 click/drag selection 유지, Ctrl+click 실제 URL 확인·취소·기본 브라우저 열기, HTTP/HTTPS 및 OSC 8, 긴/잘못된/custom scheme 거부, 외부 실행 실패와 tab/restart/reconnect 경쟁을 실제 WebView2에서 확인 | Not run — protocol/validation/distribution 자동 검증은 통과했으나 실제 WebView2 pointer selection과 기본 브라우저 실행은 수행하지 않음 |
+| MAN-049 | 현재 탭을 저장한 탭에 추가 | tab 우클릭과 Shift+F10에서 메뉴 항목에 도달하고, 이름·설정 시작 폴더·셸 prefill, 20개 한도 안내, 저장/취소 뒤 원래 tab focus와 shell PID·입력·scrollback·선택 보존을 WebView2에서 확인 | Not run — renderer distribution과 protocol/host source 자동 검증만 수행했으며 실제 WebView2, DPI 및 Korean IME 조작은 수행하지 않음 |
 
 ## Focus 검증 절차
 
