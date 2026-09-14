@@ -27,8 +27,11 @@ public sealed class TerminalModule : IDisposable
         var savedTabStore = new FileTerminalSavedTabStore(FileTerminalSavedTabStore.GetDefaultPath());
         savedTabService = new TerminalSavedTabService(savedTabStore, sessionCoordinator, diagnosticLog);
         workspacePersistence.StatusChanged += HandleWorkspacePersistenceStatusChanged;
+        sessionCoordinator.CommandCompleted += HandleCommandCompleted;
         terminalView = new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence, savedTabService);
     }
+
+    public event EventHandler<TerminalCommandCompletedEventArgs>? CommandCompleted;
 
     public FrameworkElement Surface => terminalView;
 
@@ -73,6 +76,16 @@ public sealed class TerminalModule : IDisposable
         terminalView.Dispatcher.Invoke(() => terminalView.NotifyPanelVisibilityChanged(isVisible));
     }
 
+    public bool IsCurrentSession(TerminalSessionReference session)
+    {
+        if (isDisposed == true)
+        {
+            return false;
+        }
+
+        return sessionCoordinator.IsCurrentSession(session);
+    }
+
     public Task<TerminalWorkspacePersistenceResult> ShutdownAsync()
     {
         lock (shutdownLock)
@@ -96,6 +109,7 @@ public sealed class TerminalModule : IDisposable
         }
 
         isDisposed = true;
+        sessionCoordinator.CommandCompleted -= HandleCommandCompleted;
         await terminalView.DisposeAsync();
         await savedTabService.DisposeAsync();
         isCapturingShutdownStatus = true;
@@ -120,6 +134,16 @@ public sealed class TerminalModule : IDisposable
         {
             shutdownWorkspaceSaveStatus = status;
         }
+    }
+
+    private void HandleCommandCompleted(TerminalCommandCompletion completion)
+    {
+        if (isDisposed == true)
+        {
+            return;
+        }
+
+        CommandCompleted?.Invoke(this, new TerminalCommandCompletedEventArgs(completion));
     }
 
     internal static TerminalWorkspacePersistenceResult CreateShutdownResult(TerminalWorkspaceSaveStatus? status)

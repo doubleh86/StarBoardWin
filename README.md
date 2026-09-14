@@ -22,6 +22,7 @@ Windows 10 1809 이상은 best-effort 대상이다.
 - 실행 중인 탭 닫기는 기본적으로 확인하며, 여러 줄 clipboard 붙여넣기는 확인한 동일 미리보기만 전달
 - Explorer에서 현재 탭으로 드롭한 로컬 파일·폴더 경로를 shell별로 인용해 확인 후 입력
 - 비활성 탭의 non-empty output은 조용한 `새 출력` 점으로만 표시
+- 설정에서 명시적으로 켠 경우 PowerShell 7/Windows PowerShell 명령의 실제 종료 뒤 성공·실패만 알리는 완료 알림
 - `Ctrl+Alt+E` global hotkey로 work area 전체 확장/축소
 - `Ctrl+Alt+S`로 가려졌거나 숨겨진 panel 호출, 활성 panel 숨김
 - 32 DIP 탭 바 아래 terminal 본문 약 8행이 보이는 200 DIP 기본 높이
@@ -62,6 +63,13 @@ shell 상태를 유지하지만, renderer process 자체가 재시작되면 과�
 저장 항목을 열 때마다 새 PID와 빈 interactive state를 얻는다. 현재 탭을 저장할 때 폴더는
 shell prompt의 실시간 현재 폴더가 아니라 탭에 설정된 시작 폴더이므로 필요하면 저장 창에서
 경로를 고쳐야 한다.
+
+`설정 > 명령 완료 알림`은 기본적으로 꺼져 있다. 켜면 PowerShell 7 또는 Windows
+PowerShell의 명시적 명령 시작·종료 신호가 같은 shell session generation에서 짝을
+이룬 경우에만 Windows 알림을 한 번 표시한다. `cmd.exe`와 custom shell은 신뢰할 수
+있는 종료 결과 연동이 없어 알림 대상이 아니다. 출력이 잠시 멈추거나 prompt처럼 보이는
+문자열이 나타난 것만으로 완료를 추측하지 않으며, 알림은 panel을 표시·활성화하거나 다른
+앱의 focus를 가져오지 않는다. 명령 내용, 출력, 작업 폴더와 탭 이름은 알림에 포함하지 않는다.
 
 ## 요구 사항
 
@@ -109,7 +117,7 @@ powershell -NoProfile -File scripts/package-portable.ps1 -DotNetPath '<dotnet.ex
 `staging`만 정리하며, reparse point나 범위를 벗어난 경로는 거부한다. ZIP은 실행
 파일, 앱·트레이와 같은 multi-resolution `Assets/Starboard.ico`, local renderer, 제품 `LICENSE`, third-party notice와 release metadata를 포함하고
 사용자 설정, 작업공간·저장한 탭 JSON과 backup/temporary 파일, 로그, WebView2 user data와
-PDB는 거부한다. 같은 source commit과 SDK/
+PDB 및 command/history/output capture 파일은 거부한다. 같은 source commit과 SDK/
 dependency 입력에서 파일 순서와 ZIP entry 시각을 고정해 다시 만들 수 있다.
 
 portable package는 .NET Runtime을 포함하므로 별도 .NET 설치가 필요 없지만,
@@ -218,13 +226,15 @@ Starboard는 link preview나 background network request를 만들지 않는다. 
 
 Starboard에는 analytics, telemetry, crash upload, remote configuration이 없다.
 작업공간과 저장한 탭 파일은 각각 최대 64 KiB의 일반 로컬 JSON이며 암호화되지 않는다. 작업공간에는 탭
-구성 ID, 이름, 순서, 시작 폴더, shell 종류와 활성 탭만 들어간다. terminal command,
-저장한 탭 파일에는 저장 ID, 이름, 시작 폴더와 shell 종류만 들어간다. terminal command,
-output, clipboard 내용, environment 값, runtime PID/session ID는 로그나 두 구성
+구성 ID, 이름, 순서, 시작 폴더, shell 종류와 활성 탭만 들어가고, 저장한 탭 파일에는
+저장 ID, 이름, 시작 폴더와 shell 종류만 들어간다. terminal command, output, clipboard
+내용, environment 값, runtime PID/session ID는 로그나 두 구성
 파일에 남기지 않는다. 닫기 확인 token, 여러 줄 붙여넣기·경로 드롭 미리보기와 새 출력 표시는
 메모리의 현재 session 세대에만 묶이며 disk·log·package에 저장하지 않는다. 로그는
 subsystem, operation, 복구 가능성에 필요한 오류 종류만 기록한다. portable ZIP에는
 이 사용자 데이터, backup, temporary 파일이 포함되지 않는다.
+완료 알림도 메모리의 opaque session generation·execution ID와 exit result만 사용하며
+알림 설정의 boolean 외에는 설정·로그·배포물에 저장하지 않는다.
 
 ## 구조
 

@@ -196,6 +196,11 @@ function Test-PortableContents {
         [System.IO.Path]::DirectorySeparatorChar) +
         [System.IO.Path]::DirectorySeparatorChar
     $files = Get-ChildItem -LiteralPath $PublishDirectory -File -Recurse
+    $sensitiveCaptureNames = @(
+        "command-history.txt",
+        "command-output.txt",
+        "terminal-output.txt"
+    )
     foreach ($file in $files) {
         $relativePath = $file.FullName.Substring($publishPrefix.Length).Replace("\", "/")
         $segments = $relativePath.Split("/")
@@ -208,6 +213,7 @@ function Test-PortableContents {
                 "saved-tabs.json",
                 "saved-tabs.json.bak",
                 "saved-tabs.json.tmp") -or
+            $file.Name -in $sensitiveCaptureNames -or
             $file.Extension -in @(".bak", ".tmp", ".log", ".pdb", ".dmp", ".hdmp") -or
             $segments -contains "WebView2" -or
             $segments -contains "WebView2Data" -or

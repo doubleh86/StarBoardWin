@@ -1237,6 +1237,25 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
+    internal bool IsCurrentSession(TerminalSessionReference session)
+    {
+        lock (stateLock)
+        {
+            if (isDisposed == true)
+            {
+                return false;
+            }
+
+            var sessionId = new TerminalSessionId(session.SessionId);
+            if (sessions.TryGetValue(sessionId, out var entry) == false)
+            {
+                return false;
+            }
+
+            return entry.SessionReference == session;
+        }
+    }
+
     private TerminalConfirmationToken CreateConfirmationTokenLocked(TerminalSessionId sessionId)
     {
         if (sessionGenerations.TryGetValue(sessionId, out var generation) == false)

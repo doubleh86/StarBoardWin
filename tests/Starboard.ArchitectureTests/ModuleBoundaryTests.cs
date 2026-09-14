@@ -85,6 +85,29 @@ public sealed class ModuleBoundaryTests
     }
 
     [TestMethod]
+    public void HostUsesTerminalCompletionPublicBoundaryWithoutImplementationAccess()
+    {
+        var completionEvent = typeof(TerminalModule).GetEvent(nameof(TerminalModule.CommandCompleted),
+                                                              BindingFlags.Instance | BindingFlags.Public);
+        var validationMethod = typeof(TerminalModule).GetMethod(nameof(TerminalModule.IsCurrentSession),
+                                                                BindingFlags.Instance | BindingFlags.Public);
+
+        Assert.IsNotNull(completionEvent);
+        Assert.AreEqual(typeof(EventHandler<TerminalCommandCompletedEventArgs>), completionEvent.EventHandlerType);
+        Assert.IsNotNull(validationMethod);
+        Assert.AreEqual(typeof(bool), validationMethod.ReturnType);
+        CollectionAssert.AreEqual(new[] { typeof(TerminalSessionReference) },
+                                  validationMethod.GetParameters().Select(parameter => parameter.ParameterType).ToArray());
+
+        var root = FindSolutionRoot();
+        var hostCoordinatorPath = Path.Combine(root, "src", "Starboard.Windows", "Composition", "AppCoordinator.cs");
+        var hostCoordinatorSource = File.ReadAllText(hostCoordinatorPath);
+        StringAssert.Contains(hostCoordinatorSource, "terminalModule.CommandCompleted += HandleCommandCompleted;");
+        StringAssert.Contains(hostCoordinatorSource, "terminalModule.IsCurrentSession");
+        Assert.IsFalse(hostCoordinatorSource.Contains("Reflection", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void SavedTabContractsRemainOwnedByTerminalAndSeparateFromHostComposition()
     {
         Assert.AreSame(typeof(TerminalModule).Assembly, typeof(TerminalSavedTab).Assembly);

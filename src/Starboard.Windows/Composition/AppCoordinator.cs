@@ -18,6 +18,7 @@ internal sealed class AppCoordinator : IDisposable
     private readonly PreferencesModule preferencesModule;
     private readonly DesktopIntegrationModule desktopIntegrationModule;
     private readonly TerminalModule terminalModule;
+    private readonly CommandCompletionNotificationCoordinator commandCompletionNotificationCoordinator;
 
     private MainWindow? mainWindow;
     private SettingsApplicationService? settingsApplicationService;
@@ -31,6 +32,11 @@ internal sealed class AppCoordinator : IDisposable
         preferencesModule = new PreferencesModule(diagnosticLog);
         desktopIntegrationModule = new DesktopIntegrationModule(diagnosticLog, ApplyPanelOpacity);
         terminalModule = new TerminalModule(diagnosticLog);
+        commandCompletionNotificationCoordinator = new CommandCompletionNotificationCoordinator(
+            terminalModule.IsCurrentSession,
+            desktopIntegrationModule.SetCommandCompletionNotificationSettings,
+            desktopIntegrationModule.NotifyCommandCompletion);
+        terminalModule.CommandCompleted += HandleCommandCompleted;
         desktopIntegrationModule.PanelVisibilityToggleRequested += HandlePanelVisibilityToggleRequested;
         desktopIntegrationModule.PanelActivationToggleRequested += HandlePanelActivationToggleRequested;
         desktopIntegrationModule.PanelSummonRequested += HandlePanelSummonRequested;
@@ -72,11 +78,11 @@ internal sealed class AppCoordinator : IDisposable
         var desktopResult = desktopIntegrationModule.ApplySettings(SettingsApplicationService.ToDesktopSettings(settings));
         var effectiveSettings = SettingsApplicationService.WithDesktopSettings(settings,
                                                                                desktopResult.EffectiveSettings);
-        ApplyHostAppearance(effectiveSettings);
+        ApplyHostSettings(effectiveSettings);
 
         settingsApplicationService = new SettingsApplicationService(preferencesModule, terminalModule,
                                                                     desktopIntegrationModule, settings,
-                                                                    effectiveSettings, ApplyHostAppearance,
+                                                                    effectiveSettings, ApplyHostSettings,
                                                                     diagnosticLog);
         settingsWindowController = new SettingsWindowController(CreateSettingsWindow);
 
@@ -112,6 +118,8 @@ internal sealed class AppCoordinator : IDisposable
         }
 
         isDisposed = true;
+        terminalModule.CommandCompleted -= HandleCommandCompleted;
+        commandCompletionNotificationCoordinator.Stop();
         desktopIntegrationModule.PanelVisibilityToggleRequested -= HandlePanelVisibilityToggleRequested;
         desktopIntegrationModule.PanelActivationToggleRequested -= HandlePanelActivationToggleRequested;
         desktopIntegrationModule.PanelSummonRequested -= HandlePanelSummonRequested;
@@ -161,6 +169,12 @@ internal sealed class AppCoordinator : IDisposable
         }
 
         TogglePanelVisibilityFromTray();
+    }
+
+    private void HandleCommandCompleted(object? sender, TerminalCommandCompletedEventArgs eventArguments)
+    {
+        _ = sender;
+        commandCompletionNotificationCoordinator.HandleCompletion(eventArguments.Completion);
     }
 
     private void HandlePanelActivationToggleRequested(object? sender, EventArgs eventArguments)
@@ -350,6 +364,12 @@ internal sealed class AppCoordinator : IDisposable
         var window = mainWindow
             ?? throw new InvalidOperationException("The main window is unavailable.");
         window.ApplyAppearance(settings, PreferencesModule.GetTheme(settings.Theme));
+    }
+
+    private void ApplyHostSettings(AppSettings settings)
+    {
+        ApplyHostAppearance(settings);
+        commandCompletionNotificationCoordinator.ApplySettings(settings.CommandCompletionNotificationsEnabled);
     }
 
     private void ApplyPanelOpacity(double opacity)

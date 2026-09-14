@@ -245,7 +245,7 @@ Windows ConPTY에서 marker 위치에 보정 heuristic이 필요하고 command l
 
 초기 notification-capable shell은 `pwsh.exe`와 `powershell.exe`다. PowerShell의
 `PSConsoleHostReadLine` hook에서 실행 직전 start를 보내고 다음 `prompt` 진입에서 종료와 exit code를
-보내는 adapter를 후속 단계에서 연결한다. integration을 주입할 수 없거나 restricted language/profile
+보내는 adapter를 private named-pipe control channel에 연결한다. integration을 주입할 수 없거나 restricted language/profile
 충돌로 완전한 start/finish 쌍을 보장하지 못하면 해당 generation은 미지원이다. `cmd.exe`와 custom
 shell도 명시적인 양방향 hook이 확보되기 전에는 완료 알림을 만들지 않는다. 지원 범위를 넓히기 위해
 prompt 모양이나 output 정지 fallback을 추가하지 않는다.
@@ -269,10 +269,18 @@ tracker를 `Unavailable`로 만든다. 그 세대에서는 누락을 허용하�
 
 Preferences schema 7의 `commandCompletionNotificationsEnabled`는 기본 `false`인 opt-in이다. missing,
 partial 및 schema 6 이하 JSON은 값이 없으면 계속 `false`로 normalize된다. 적용 결과의 transition을
-composition root가 받아 Terminal의 관찰 설정과 DesktopIntegration 표시 정책을 조정한다. Terminal
-completion event를 받을 때 host는 현재 session ID/generation과 다시 비교한 뒤 동일 metadata를
+composition root가 받아 DesktopIntegration 표시 정책을 조정한다. `TerminalModule.CommandCompleted`는
+module 내부 tracker가 만든 metadata-only event만 공개하고 `TerminalModule.IsCurrentSession`은 coordinator의
+lock 아래에서 해당 session ID/generation이 아직 등록된 같은 shell lifetime인지 확인한다. Terminal
+completion event를 받을 때 host는 이 공개 경계로 현재 generation을 다시 확인한 뒤 동일 metadata를
 `CommandCompletionNotificationRequest`로 변환한다. DesktopIntegration은 고정된 제품 문구와 성공/실패
 상태만 표시하며 panel activation, foreground 전환이나 focus 이동을 요청하지 않는다.
+
+host는 종료 시작 시 Terminal event 구독을 제거하고 notification coordinator를 먼저 stop한 다음 Terminal
+session을 정리하고 마지막에 DesktopIntegration tray를 해제한다. 따라서 이미 제거·restart된 session,
+새 generation으로 교체된 shell, 종료 뒤 도착한 callback은 새 탭이나 살아 있는 tray로 전달되지 않는다.
+renderer 복구는 shell session generation을 바꾸거나 completion을 합성하지 않으므로 같은 공개 검증을
+우회하지 않는다.
 
 Terminal completion event와 DesktopIntegration request에는 session ID/generation, execution ID와 exit
 result만 있으며 command, output, prompt, working directory, tab 이름 또는 사용자 제공 문자열이 없다.

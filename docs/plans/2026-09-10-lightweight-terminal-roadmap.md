@@ -80,6 +80,20 @@ Starboard는 작업표시줄에 붙어 빠르게 명령을 입력하고 결과�
 - [x] 관련 Terminal, Preferences, Architecture test project와 `git diff --check`를 통과시킨다. 실제 shell
   hook/control channel과 Windows notification UI 연결은 이 계약 확정 다음 구현 단계로 남긴다.
 
+### 통합 단계 — completion-notification-integration
+
+- [x] `TerminalModule`이 metadata-only 완료 event를 공개하고, module 내부 coordinator가 session ID와
+  generation이 현재 수명인지 lock 아래 재검증하는 공개 진입점을 제공한다. restart·remove·shutdown으로
+  폐기된 수명은 `false`이며 host는 reflection이나 renderer/output 분석을 사용하지 않는다.
+- [x] composition root는 시작 시 적용 설정을 DesktopIntegration에 전달하고 Terminal 공개 event를
+  구독한다. 완료 시 현재 generation을 다시 확인한 뒤에만 generic notification request로 변환하며,
+  종료 시작 시 구독과 전달을 먼저 차단해 늦은 callback이 tray 수명보다 오래 남지 않게 한다.
+- [x] 정상·실패·중복·늦은 완료, 설정 on/off, restart/remove/renderer recovery/shutdown 경계와 기존
+  new-output 상태를 자동 검증한다. portable 검사는 사용자 설정·workspace·saved tabs·log·WebView2 data와
+  command/output capture artifact가 포함되지 않는지 확인한다.
+- [x] 지정된 Terminal test, solution restore/build/test, C# 정렬 및 diff 검사를 실행하고 실제 Windows
+  notification, focus, 100/125/150/200% DPI는 수행 여부를 `docs/test-plan.md`에 자동 검증과 구분해 기록한다.
+
 ## PATH-DROP-01 — 파일·폴더 경로를 안전하게 입력
 
 ### 목표와 범위
@@ -277,6 +291,9 @@ workspace/saved-tabs, logs와 WebView2 data는 거부한다.
   기본 비활성화 schema 7 설정과 DesktopIntegration 조정 request를 확정했다. 지정된 Terminal 247개,
   Preferences 36개, Architecture 9개와 전체 415개 자동 테스트가 통과했다. 실제 PowerShell hook,
   control channel과 Windows 알림 표시는 다음 구현 단계다.
+- [x] 2026-09-14: TerminalModule 공개 event와 current-generation 재검증, host opt-in 조정 및 종료 전
+  전달 차단을 연결했다. exact Debug 전체 436개와 portable Release 전체 436개, 개인정보 제외·재현 ZIP·
+  추출 smoke가 통과했다. 실제 Windows 알림/focus/DPI 관찰은 NOTIFY-006~007에 `Not run`으로 남겼다.
 - [x] 2026-09-11: PATH-DROP-01의 shell별 인용, 확인 미리보기, renderer/session
   generation 경계와 WebView2 additional-object 연결을 구현했다. renderer build,
   Terminal 214개와 전체 377개 자동 테스트가 통과했고 실제 Explorer drop·IME·focus

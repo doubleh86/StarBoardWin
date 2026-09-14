@@ -37,6 +37,18 @@ mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증�
 | ICON-005 | 100%, 125%, 150%, 200% 배율의 tray 선명도와 투명 가장자리 | 각 배율을 설정하고 Explorer/tray를 다시 열어 확인 | Not run — 100%도 아이콘 시각 관찰을 수행하지 않았고 나머지 배율 변경 권한 없음 |
 | ICON-006 | 실제 Explorer 재시작 뒤 동일 아이콘, 클릭과 menu 유지 | 사용자 desktop에서 Explorer 재시작 후 확인 | Not run — Explorer 재시작은 사용자 shell에 영향을 주므로 이 작업에서 수행하지 않음 |
 
+## COMMAND-NOTIFY-01 완료 알림 통합 검증
+
+| ID | 범위 | 방법 | 상태 |
+|---|---|---|---|
+| NOTIFY-001 | 명시적 start/finish, exit result와 중복·역순 signal 억제 | Terminal lifecycle unit/integration tests | Passed (automated) |
+| NOTIFY-002 | restart·remove·shell exit·dispose 뒤 이전 session generation 거부 | coordinator lifetime tests | Passed (automated) |
+| NOTIFY-003 | host 공개 Terminal event/재검증 경계와 metadata-only module 계약 | Architecture 및 host integration tests | Passed (automated) |
+| NOTIFY-004 | opt-in off/on 전달, stale generation과 host stop 뒤 전달 억제 | `CommandCompletionNotificationCoordinatorTests`와 DesktopIntegration tests | Passed (simulated) |
+| NOTIFY-005 | package에서 settings/workspace/saved-tabs/log/WebView2 data와 command/history/output capture 제외 | portable publish·ZIP·추출 content 검사 | Passed (automated) |
+| NOTIFY-006 | 실제 Windows 알림이 명령 종료당 한 번 표시되고 panel activation/focus 변화가 없음 | 사용자 interactive desktop에서 PowerShell 긴 명령과 foreground app을 함께 관찰 | Not run — terminal/tray UI 입력·알림 시각 관찰을 수행하지 않음 |
+| NOTIFY-007 | 100/125/150/200%에서 알림과 panel geometry/focus 회귀 없음 | 각 DPI에서 실제 notification과 panel을 관찰 | Not run — 이번 실행은 DPI 설정이나 실제 화면을 조작하지 않음 |
+
 ## 현재 개발 환경
 
 | 항목 | 값 |
@@ -56,6 +68,20 @@ mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증�
 fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
+
+- 실행일: 2026-09-14 (run `20260911-112715-513680-257ccf40`, 완료 알림 통합)
+- 지정 SDK의 exact Terminal test 260개와 Debug solution restore/build(경고·오류 0), 전체 436개
+  test가 sandbox 밖에서 통과했다(Architecture 10, Terminal 260, DesktopIntegration 85,
+  Preferences 36, Integration 45). sandbox 안의 exact SDK 명령은 기본 병렬 worker/IPC 제약으로
+  출력 없는 exit 1 또는 정체, PowerShell named-pipe test timeout을 보였으며 단일-node fallback과
+  sandbox 밖 동일 argv 결과를 구분했다.
+- current session generation 재검증, restart/remove/dispose 이후 stale 수명, 중복 finish, opt-in
+  off/on, host stop 이후 late callback, metadata-only public surface와 기존 new-output/restart/renderer
+  recovery·expand/focus 계약을 자동 또는 simulation으로 확인했다. 실제 Windows 알림 풍선과 foreground
+  focus, 100/125/150/200% DPI 화면은 수행하지 않아 NOTIFY-006~007을 `Not run`으로 유지한다.
+- portable Release build/test 436개와 self-contained publish, 사용자 data 및 command/history/output
+  capture 제외, 재현 ZIP·추출 smoke가 통과했다. ZIP SHA-256은
+  `d824849c3c5fbef99e659393f31f45b94feae70ff9292e042d3c71c08660c6db`다.
 
 - 실행일: 2026-09-11 (run `20260911-073617-996439-56532a1d`, terminal URL open)
 - renderer `npm ci`와 source→dist build가 통과했다. sandbox에서 esbuild child spawn이

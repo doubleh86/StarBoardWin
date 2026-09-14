@@ -785,6 +785,7 @@ public sealed class TerminalSessionCoordinatorTests
         factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Started(executionId));
         factory.Sessions[0].RaiseOutput("prompt-like output must remain ordinary output");
         factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Finished(executionId, 7));
+        factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Finished(executionId, 7));
 
         Assert.HasCount(1, starts);
         Assert.AreEqual(expectedSession, starts[0].Session);
@@ -796,6 +797,33 @@ public sealed class TerminalSessionCoordinatorTests
         Assert.AreEqual(expectedSession, completions[0].Session);
         Assert.AreEqual(executionId, completions[0].ExecutionId);
         Assert.AreEqual(7, completions[0].ExitResult.ExitCode);
+    }
+
+    [TestMethod]
+    public async Task IsCurrentSessionRejectsRestartedRemovedAndDisposedLifetimes()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var second = await coordinator.AddAsync(CancellationToken.None);
+        var firstLifetime = FindOutputState(coordinator.NewOutputState, first.SessionId).Session;
+        var secondLifetime = FindOutputState(coordinator.NewOutputState, second.SessionId).Session;
+
+        Assert.IsTrue(coordinator.IsCurrentSession(firstLifetime));
+        Assert.IsTrue(coordinator.IsCurrentSession(secondLifetime));
+
+        await coordinator.RestartAsync(first.SessionId, CancellationToken.None);
+        var restartedLifetime = FindOutputState(coordinator.NewOutputState, first.SessionId).Session;
+
+        Assert.IsFalse(coordinator.IsCurrentSession(firstLifetime));
+        Assert.IsTrue(coordinator.IsCurrentSession(restartedLifetime));
+
+        factory.Sessions[1].RaiseExit(0);
+        Assert.IsTrue(await coordinator.CloseAsync(second.SessionId, CancellationToken.None));
+        Assert.IsFalse(coordinator.IsCurrentSession(secondLifetime));
+
+        await coordinator.DisposeAsync();
+        Assert.IsFalse(coordinator.IsCurrentSession(restartedLifetime));
     }
 
     [TestMethod]
