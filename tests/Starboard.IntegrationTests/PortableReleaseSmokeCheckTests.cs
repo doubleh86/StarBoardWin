@@ -26,6 +26,18 @@ public sealed class PortableReleaseSmokeCheckTests
     }
 
     [TestMethod]
+    public void PortablePackageBuildIsolatesGeneratedInputsAndUsesSingleNode()
+    {
+        var source = ReadRepositoryFile("scripts", "package-portable.ps1");
+
+        StringAssert.Contains(source, "\"build-server\"");
+        StringAssert.Contains(source, "\"shutdown\"");
+        StringAssert.Contains(source, "\"--disable-build-servers\"");
+        StringAssert.Contains(source, "\"-maxcpucount:1\"");
+        StringAssert.Contains(source, "\"-p:ArtifactsPath=$buildArtifactsPath\"");
+    }
+
+    [TestMethod]
     public void DisplayTextIncludesAvailableShortBuildCommit()
     {
         var buildInfo = new ProductBuildInfo("1.2.3", "0123456789abcdef0123456789abcdef01234567");

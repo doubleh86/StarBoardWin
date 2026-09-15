@@ -94,6 +94,25 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-15 (run `20260915-073031-990510-914d5fc7`, integration build repair)
+- 지정 SDK restore는 성공했다. 첫 Debug build의 최초 오류는 Terminal WPF markup cache
+  삭제 `Access denied`였고 DesktopIntegration test cache/coverage 쓰기에도 같은 증상이
+  나타났다. 파일은 read-only가 아니며 현재 사용자 Modify ACL이 있었다. build server
+  정상 종료 뒤 동일 Debug build는 경고·오류 0개로 통과해 source/project 충돌이 아닌
+  ignored `bin/obj` 생성 입력의 일시적 경쟁으로 판정했다.
+- 전체 Debug test 518개가 통과했다(Architecture 13, Terminal 300,
+  DesktopIntegration 110, Preferences 37, Integration 58). virtual desktop fallback,
+  renderer/shell failure recovery, diagnostic log privacy/rotation과 portable deny-list의
+  기존 focused regression test와 package build 격리 검사가 포함된다. 최종 suite 전 한 번
+  실패한 기존 ConPTY tab 검사는 첫 shell marker 시작이 10초를 초과한 건이며, 해당 test
+  단독 재실행(7초)과 이어진 전체 suite에서 통과해 일시적 host 시작 지연으로 구분했다.
+- portable Release build/test 518개, self-contained publish, deterministic ZIP/checksum,
+  추출 smoke가 통과했다. ZIP 501개 entry의 별도 검사에서도 settings/workspace/saved-tabs,
+  logs, WebView2 user data, database/dump/PDB/temp/backup 패턴은 0건이었다. ZIP SHA-256은
+  `93edf4cac885380442da24f564d3d1c0b80c94042c6b71dc4e73d919adcbc23a`다.
+- 실제 virtual desktop/Explorer, renderer process kill, WebView2 Runtime 제거,
+  multi-monitor/DPI와 IME는 수행하지 않았다. 관련 VD-006 및 manual matrix는 `Not run` 또는
+  기존 `Blocked` 상태를 유지한다.
 - 실행일: 2026-09-15 (run `20260915-073031-990510-914d5fc7`, virtual desktop integration)
 - 지정 SDK solution restore와 Debug build는 경고·오류 0개로 통과했다. 전체 자동 test
   504개가 통과했다(Architecture 13, Terminal 294, DesktopIntegration 110,
