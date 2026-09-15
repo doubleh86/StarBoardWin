@@ -28,6 +28,110 @@ public sealed class RendererProtocolTests
     }
 
     [TestMethod]
+    public void TryParseNewTabCarriesProfileRequestAndExactSessionGeneration()
+    {
+        const string Json = """
+            {"version":2,"type":"new-tab","sessionId":"10000000000000000000000000000001","payload":{"requestId":"40000000000000000000000000000001","sessionGeneration":7,"profileId":"wsl:Ubuntu-24.04"}}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(RendererMessageType.NewTab, message.Type);
+        Assert.AreEqual("40000000000000000000000000000001", message.NewTabRequest?.RequestId.ToString());
+        Assert.AreEqual(SessionId.Value, message.NewTabRequest?.Session.SessionId);
+        Assert.AreEqual(7, message.NewTabRequest?.Session.Generation);
+        Assert.AreEqual("wsl:Ubuntu-24.04", message.NewTabRequest?.ProfileId.ToString());
+    }
+
+    [TestMethod]
+    public void TryParseDuplicateTabCarriesRequestAndExactSourceGeneration()
+    {
+        const string Json = """
+            {"version":2,"type":"duplicate-tab","sessionId":"10000000000000000000000000000001","payload":{"requestId":"40000000000000000000000000000001","sessionGeneration":7}}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(RendererMessageType.DuplicateTab, message.Type);
+        Assert.AreEqual("40000000000000000000000000000001",
+                        message.TabDuplicateRequest?.RequestId.ToString());
+        Assert.AreEqual(SessionId.Value, message.TabDuplicateRequest?.SourceSession.SessionId);
+        Assert.AreEqual(7, message.TabDuplicateRequest?.SourceSession.Generation);
+    }
+
+    [TestMethod]
+    [DataRow("new-tab", "00000000000000000000000000000000", 7, "shell:pwsh")]
+    [DataRow("new-tab", "40000000000000000000000000000001", 0, "shell:pwsh")]
+    [DataRow("new-tab", "40000000000000000000000000000001", 7, "shell:unknown")]
+    [DataRow("duplicate-tab", "00000000000000000000000000000000", 7, "shell:pwsh")]
+    [DataRow("duplicate-tab", "40000000000000000000000000000001", 0, "shell:pwsh")]
+    public void TryParseTabRequestWithInvalidCorrelationRejectsMessage(string type, string requestId,
+                                                                       long sessionGeneration, string profileId)
+    {
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = 2,
+                                                type,
+                                                sessionId = SessionId.ToString(),
+                                                payload = new { requestId, sessionGeneration, profileId },
+                                            });
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(message);
+    }
+
+    [TestMethod]
+    public void TryParseCollapsedHeightChangeCarriesCommitAndRollbackTarget()
+    {
+        const string Json = """
+            {"version":2,"type":"change-collapsed-height","payload":{"requestId":"50000000000000000000000000000001","phase":"commit","requestedHeightDip":360,"lastSavedHeightDip":200}}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(RendererMessageType.ChangeCollapsedHeight, message.Type);
+        Assert.AreEqual(TerminalCollapsedHeightChangePhase.Commit,
+                        message.CollapsedHeightChangeRequest?.Phase);
+        Assert.AreEqual(360, message.CollapsedHeightChangeRequest?.RequestedHeightDip);
+        Assert.AreEqual(200, message.CollapsedHeightChangeRequest?.LastSavedHeightDip);
+    }
+
+    [TestMethod]
+    [DataRow("preview", 95, 200)]
+    [DataRow("commit", 721, 200)]
+    [DataRow("unknown", 360, 200)]
+    public void TryParseCollapsedHeightChangeWithInvalidPayloadRejectsMessage(string phase,
+                                                                              double requestedHeightDip,
+                                                                              double lastSavedHeightDip)
+    {
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = 2,
+                                                type = "change-collapsed-height",
+                                                payload = new
+                                                {
+                                                    requestId = "50000000000000000000000000000001",
+                                                    phase,
+                                                    requestedHeightDip,
+                                                    lastSavedHeightDip,
+                                                },
+                                            });
+
+        var parsed = RendererProtocol.TryParse(json, out var message);
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(message);
+    }
+
+    [TestMethod]
     public void TryParseRendererReadyCarriesRendererInstanceIdentity()
     {
         const string Json = """
@@ -318,6 +422,51 @@ public sealed class RendererProtocolTests
         Assert.AreEqual("apply-appearance", root.GetProperty("type").GetString());
         Assert.IsFalse(root.TryGetProperty("sessionId", out _));
         Assert.AreEqual("Cascadia Mono", root.GetProperty("payload").GetProperty("fontFamily").GetString());
+    }
+
+    [TestMethod]
+    public void SerializeLaunchProfileQueryResultKeepsWslIdentityAndFailureDistinct()
+    {
+        var profiles = new[]
+        {
+            TerminalLaunchProfile.CreateBuiltIn(TerminalShellKind.Pwsh, "PowerShell 7"),
+            TerminalLaunchProfile.CreateWsl("Ubuntu-24.04", "Ubuntu 24.04"),
+        };
+        var result = new TerminalLaunchProfileQueryResult(TerminalLaunchProfileQueryStatus.WslDiscoveryFailed,
+                                                          profiles, "WSL 목록을 불러오지 못했습니다.");
+
+        var json = RendererProtocol.SerializeLaunchProfileQueryResult(result);
+        using var document = JsonDocument.Parse(json);
+        var payload = document.RootElement.GetProperty("payload");
+        var wsl = payload.GetProperty("profiles")[1];
+
+        Assert.AreEqual("launch-profiles-result", document.RootElement.GetProperty("type").GetString());
+        Assert.IsFalse(document.RootElement.TryGetProperty("sessionId", out _));
+        Assert.AreEqual("wsl-discovery-failed", payload.GetProperty("status").GetString());
+        Assert.AreEqual("wsl:Ubuntu-24.04", wsl.GetProperty("profileId").GetString());
+        Assert.AreEqual("wsl-distribution", wsl.GetProperty("kind").GetString());
+        Assert.AreEqual("Ubuntu-24.04", wsl.GetProperty("wslDistributionName").GetString());
+        Assert.AreEqual(JsonValueKind.Null, wsl.GetProperty("shellKind").ValueKind);
+    }
+
+    [TestMethod]
+    public void SerializeCollapsedHeightChangeResultPreservesRollbackCorrelation()
+    {
+        var requestId = new TerminalCollapsedHeightChangeRequestId(
+            Guid.Parse("50000000-0000-0000-0000-000000000001"));
+        var result = new TerminalCollapsedHeightChangeResult(requestId,
+                                                             TerminalCollapsedHeightChangeStatus.Reverted, 200,
+                                                             "높이를 저장하지 못했습니다.");
+
+        var json = RendererProtocol.SerializeCollapsedHeightChangeResult(result);
+        using var document = JsonDocument.Parse(json);
+        var payload = document.RootElement.GetProperty("payload");
+
+        Assert.AreEqual("collapsed-height-change-result", document.RootElement.GetProperty("type").GetString());
+        Assert.AreEqual("50000000000000000000000000000001", payload.GetProperty("requestId").GetString());
+        Assert.AreEqual("reverted", payload.GetProperty("status").GetString());
+        Assert.AreEqual(200, payload.GetProperty("appliedHeightDip").GetDouble());
+        Assert.AreEqual("높이를 저장하지 못했습니다.", payload.GetProperty("failureMessage").GetString());
     }
 
     [TestMethod]

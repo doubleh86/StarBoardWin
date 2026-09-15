@@ -127,6 +127,39 @@ public sealed class ModuleBoundaryTests
     }
 
     [TestMethod]
+    public void LaunchAndHeightCoordinationContractsRemainOnTerminalPublicBoundary()
+    {
+        var contractTypes = new[]
+        {
+            typeof(TerminalLaunchProfile),
+            typeof(TerminalLaunchProfileQueryResult),
+            typeof(TerminalTabRequestId),
+            typeof(TerminalNewTabRequest),
+            typeof(TerminalTabDuplicateRequest),
+            typeof(TerminalCollapsedHeightChangeRequest),
+            typeof(TerminalCollapsedHeightChangeResult),
+            typeof(TerminalCollapsedHeightChangeCallback),
+        };
+
+        foreach (var type in contractTypes)
+        {
+            Assert.AreSame(typeof(TerminalModule).Assembly, type.Assembly);
+            Assert.AreEqual("Starboard.Modules.Terminal.Contracts", type.Namespace);
+            Assert.IsTrue(type.IsPublic);
+        }
+
+        var callback = typeof(TerminalCollapsedHeightChangeCallback).GetMethod("Invoke");
+        Assert.IsNotNull(callback);
+        Assert.AreEqual(typeof(ValueTask<TerminalCollapsedHeightChangeResult>), callback.ReturnType);
+        CollectionAssert.AreEqual(new[]
+                                  {
+                                      typeof(TerminalCollapsedHeightChangeRequest),
+                                      typeof(CancellationToken),
+                                  },
+                                  callback.GetParameters().Select(parameter => parameter.ParameterType).ToArray());
+    }
+
+    [TestMethod]
     public void TerminalPanelVisibilityLifecycleIsExposedOnlyThroughModuleEntryPoint()
     {
         var visibilityMethod = typeof(TerminalModule).GetMethod(nameof(TerminalModule.NotifyPanelVisibilityChanged),

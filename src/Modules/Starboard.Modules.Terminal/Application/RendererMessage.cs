@@ -7,6 +7,8 @@ internal enum RendererMessageType
 {
     Ready,
     NewTab,
+    DuplicateTab,
+    ChangeCollapsedHeight,
     SelectSession,
     SelectNext,
     SelectPrevious,
@@ -40,4 +42,7 @@ internal sealed record RendererMessage(RendererMessageType Type, TerminalSession
                                        TerminalSavedTabLaunchRequest? SavedTabLaunchRequest = null,
                                        TerminalSavedTabLaunchCancellation? SavedTabLaunchCancellation = null,
                                        Guid? RendererInstanceId = null, long SessionGeneration = 0,
-                                       TerminalUrlOpenTarget? UrlOpenTarget = null);
+                                       TerminalUrlOpenTarget? UrlOpenTarget = null,
+                                       TerminalNewTabRequest? NewTabRequest = null,
+                                       TerminalTabDuplicateRequest? TabDuplicateRequest = null,
+                                       TerminalCollapsedHeightChangeRequest? CollapsedHeightChangeRequest = null);

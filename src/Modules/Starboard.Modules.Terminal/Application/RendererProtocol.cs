@@ -14,6 +14,8 @@ internal static class RendererProtocol
         "saved-tabs-snapshot",
         "saved-tab-operation-result",
         "saved-tab-launch-result",
+        "launch-profiles-result",
+        "collapsed-height-change-result",
     ];
 
     private static readonly HashSet<string> _sessionHostMessageTypes =
@@ -114,6 +116,41 @@ internal static class RendererProtocol
                                       });
     }
 
+    internal static string SerializeLaunchProfileQueryResult(TerminalLaunchProfileQueryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        var profiles = result.Profiles.Select(profile => new
+        {
+            profileId = profile.ProfileId.ToString(),
+            kind = FormatLaunchProfileKind(profile.Kind),
+            profile.DisplayName,
+            shellKind = profile.ShellKind is null ? null : FormatShellKind(profile.ShellKind.Value),
+            profile.WslDistributionName,
+        }).ToArray();
+
+        return SerializeGlobalMessage("launch-profiles-result",
+                                      new
+                                      {
+                                          status = FormatLaunchProfileQueryStatus(result.Status),
+                                          profiles,
+                                          result.FailureMessage,
+                                      });
+    }
+
+    internal static string SerializeCollapsedHeightChangeResult(TerminalCollapsedHeightChangeResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return SerializeGlobalMessage("collapsed-height-change-result",
+                                      new
+                                      {
+                                          requestId = result.RequestId.ToString(),
+                                          status = FormatCollapsedHeightChangeStatus(result.Status),
+                                          result.AppliedHeightDip,
+                                          result.FailureMessage,
+                                      });
+    }
+
     internal static bool TryParse(string json, out RendererMessage? message)
     {
         message = null;
@@ -140,7 +177,9 @@ internal static class RendererProtocol
             message = type switch
             {
                 "ready" => ParseRendererReady(root, payload),
-                "new-tab" => ParseGlobal(RendererMessageType.NewTab, root, payload),
+                "new-tab" => ParseNewTab(root, payload),
+                "duplicate-tab" => ParseDuplicateTab(root, payload),
+                "change-collapsed-height" => ParseCollapsedHeightChange(root, payload),
                 "select-session" => ParseSession(RendererMessageType.SelectSession, root, payload),
                 "select-next" => ParseGlobal(RendererMessageType.SelectNext, root, payload),
                 "select-previous" => ParseGlobal(RendererMessageType.SelectPrevious, root, payload),
@@ -172,6 +211,62 @@ internal static class RendererProtocol
         catch (JsonException)
         {
             return false;
+        }
+    }
+
+    private static RendererMessage? ParseNewTab(JsonElement root, JsonElement payload)
+    {
+        if (TryParseTabRequestToken(root, payload, out var token) == false ||
+            payload.TryGetProperty("profileId", out var profileIdElement) == false ||
+            profileIdElement.ValueKind != JsonValueKind.String ||
+            TerminalLaunchProfileId.TryCreate(profileIdElement.GetString(), out var profileId) == false)
+        {
+            return null;
+        }
+
+        var request = new TerminalNewTabRequest(token, profileId);
+        return new RendererMessage(RendererMessageType.NewTab, new TerminalSessionId(token.Session.SessionId),
+                                   SessionGeneration: token.Session.Generation, NewTabRequest: request);
+    }
+
+    private static RendererMessage? ParseDuplicateTab(JsonElement root, JsonElement payload)
+    {
+        if (TryParseTabRequestToken(root, payload, out var token) == false)
+        {
+            return null;
+        }
+
+        var request = new TerminalTabDuplicateRequest(token);
+        return new RendererMessage(RendererMessageType.DuplicateTab, new TerminalSessionId(token.Session.SessionId),
+                                   SessionGeneration: token.Session.Generation, TabDuplicateRequest: request);
+    }
+
+    private static RendererMessage? ParseCollapsedHeightChange(JsonElement root, JsonElement payload)
+    {
+        if (root.TryGetProperty("sessionId", out _) == true || payload.ValueKind != JsonValueKind.Object ||
+            TryParseCompactRequestId(payload, out var requestIdentifier) == false ||
+            payload.TryGetProperty("phase", out var phaseElement) == false ||
+            phaseElement.ValueKind != JsonValueKind.String ||
+            TryParseCollapsedHeightChangePhase(phaseElement.GetString(), out var phase) == false ||
+            payload.TryGetProperty("requestedHeightDip", out var requestedHeightElement) == false ||
+            requestedHeightElement.TryGetDouble(out var requestedHeightDip) == false ||
+            payload.TryGetProperty("lastSavedHeightDip", out var lastSavedHeightElement) == false ||
+            lastSavedHeightElement.TryGetDouble(out var lastSavedHeightDip) == false)
+        {
+            return null;
+        }
+
+        try
+        {
+            var request = new TerminalCollapsedHeightChangeRequest(
+                new TerminalCollapsedHeightChangeRequestId(requestIdentifier), phase,
+                requestedHeightDip, lastSavedHeightDip);
+            return new RendererMessage(RendererMessageType.ChangeCollapsedHeight,
+                                       CollapsedHeightChangeRequest: request);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
         }
     }
 
@@ -326,6 +421,31 @@ internal static class RendererProtocol
         return Guid.TryParseExact(value, "N", out identifier) && identifier != Guid.Empty;
     }
 
+    private static bool TryParseCompactRequestId(JsonElement payload, out Guid requestId)
+    {
+        requestId = default;
+        return payload.TryGetProperty("requestId", out var requestIdElement) &&
+               requestIdElement.ValueKind == JsonValueKind.String &&
+               TryParseCompactGuid(requestIdElement.GetString(), out requestId);
+    }
+
+    private static bool TryParseTabRequestToken(JsonElement root, JsonElement payload,
+                                                out TerminalTabRequestToken token)
+    {
+        token = default;
+        if (TryParseSessionId(root, out var sessionId) == false || payload.ValueKind != JsonValueKind.Object ||
+            TryParseCompactRequestId(payload, out var requestId) == false ||
+            payload.TryGetProperty("sessionGeneration", out var generationElement) == false ||
+            generationElement.TryGetInt64(out var sessionGeneration) == false || sessionGeneration < 1)
+        {
+            return false;
+        }
+
+        token = new TerminalTabRequestToken(new TerminalTabRequestId(requestId),
+                                            new TerminalSessionReference(sessionId.Value, sessionGeneration));
+        return true;
+    }
+
     private static bool TryParseShellKind(string? value, out TerminalShellKind shellKind)
     {
         shellKind = value switch
@@ -372,6 +492,44 @@ internal static class RendererProtocol
             TerminalShellKind.Cmd => "cmd",
             _ => throw new ArgumentOutOfRangeException(nameof(shellKind), shellKind,
                                                        "The renderer cannot serialize an unsupported shell kind."),
+        };
+    }
+
+    private static string FormatLaunchProfileKind(TerminalLaunchProfileKind kind)
+    {
+        return kind switch
+        {
+            TerminalLaunchProfileKind.BuiltInShell => "built-in-shell",
+            TerminalLaunchProfileKind.WslDistribution => "wsl-distribution",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind,
+                                                       "The renderer cannot serialize an unsupported profile kind."),
+        };
+    }
+
+    private static string FormatLaunchProfileQueryStatus(TerminalLaunchProfileQueryStatus status)
+    {
+        return status switch
+        {
+            TerminalLaunchProfileQueryStatus.Succeeded => "succeeded",
+            TerminalLaunchProfileQueryStatus.WslUnavailable => "wsl-unavailable",
+            TerminalLaunchProfileQueryStatus.WslDiscoveryFailed => "wsl-discovery-failed",
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status,
+                                                       "The renderer cannot serialize an unsupported profile " +
+                                                       "query status."),
+        };
+    }
+
+    private static string FormatCollapsedHeightChangeStatus(TerminalCollapsedHeightChangeStatus status)
+    {
+        return status switch
+        {
+            TerminalCollapsedHeightChangeStatus.Applied => "applied",
+            TerminalCollapsedHeightChangeStatus.Saved => "saved",
+            TerminalCollapsedHeightChangeStatus.Reverted => "reverted",
+            TerminalCollapsedHeightChangeStatus.Failed => "failed",
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status,
+                                                       "The renderer cannot serialize an unsupported height " +
+                                                       "change status."),
         };
     }
 
@@ -616,5 +774,18 @@ internal static class RendererProtocol
         };
 
         return value is "confirmed" or "cancelled";
+    }
+
+    private static bool TryParseCollapsedHeightChangePhase(string? value,
+                                                           out TerminalCollapsedHeightChangePhase phase)
+    {
+        phase = value switch
+        {
+            "preview" => TerminalCollapsedHeightChangePhase.Preview,
+            "commit" => TerminalCollapsedHeightChangePhase.Commit,
+            _ => default,
+        };
+
+        return value is "preview" or "commit";
     }
 }
