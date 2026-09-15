@@ -9,21 +9,19 @@ internal static class WindowPlacementService
 {
     internal static void ConfigureToolWindow(nint windowHandle)
     {
+        var currentWindowStyle = NativeMethods.GetWindowLongPtrW(windowHandle, NativeMethods.WindowLongStyle);
+        var updatedWindowStyle = new nint(currentWindowStyle.ToInt64() | NativeMethods.WindowStyleThickFrame);
+        SetWindowStyle(windowHandle, NativeMethods.WindowLongStyle, updatedWindowStyle);
+
         var currentStyle = NativeMethods.GetWindowLongPtrW(windowHandle, NativeMethods.WindowLongExtendedStyle);
         var updatedStyle = new nint(currentStyle.ToInt64() | NativeMethods.ExtendedStyleToolWindow);
-
-        Marshal.SetLastPInvokeError(0);
-        var previousStyle = NativeMethods.SetWindowLongPtrW(windowHandle, NativeMethods.WindowLongExtendedStyle,
-                                                            updatedStyle);
-        if (previousStyle == 0 && Marshal.GetLastPInvokeError() != 0)
-        {
-            throw new Win32Exception(Marshal.GetLastPInvokeError());
-        }
+        SetWindowStyle(windowHandle, NativeMethods.WindowLongExtendedStyle, updatedStyle);
 
         if (NativeMethods.SetWindowPos(windowHandle, NativeMethods.NotTopMost, 0, 0, 0, 0,
                                        NativeMethods.SetWindowPositionNoSize |
                                        NativeMethods.SetWindowPositionNoMove |
-                                       NativeMethods.SetWindowPositionNoActivate) == false)
+                                       NativeMethods.SetWindowPositionNoActivate |
+                                       NativeMethods.SetWindowPositionFrameChanged) == false)
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }
@@ -70,6 +68,16 @@ internal static class WindowPlacementService
             {
                 _ = NativeMethods.AttachThreadInput(currentThreadIdentifier, foregroundThreadIdentifier, false);
             }
+        }
+    }
+
+    private static void SetWindowStyle(nint windowHandle, int styleIndex, nint updatedStyle)
+    {
+        Marshal.SetLastPInvokeError(0);
+        var previousStyle = NativeMethods.SetWindowLongPtrW(windowHandle, styleIndex, updatedStyle);
+        if (previousStyle == 0 && Marshal.GetLastPInvokeError() != 0)
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
         }
     }
 }

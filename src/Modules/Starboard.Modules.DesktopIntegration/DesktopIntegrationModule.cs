@@ -32,6 +32,7 @@ public sealed class DesktopIntegrationModule : IDisposable
     private PanelWindowState state = new(PanelUserVisibility.Visible, PanelMode.Collapsed, PanelEngagement.Idle, null);
     private PanelOptions options = new(200);
     private PanelWindowPolicyDecision? lastDecision;
+    private DesktopGeometrySnapshot? lastGeometry;
     private DesktopSettings effectiveSettings = CreateDefaultSettings();
     private CommandCompletionNotificationSettings commandCompletionNotificationSettings;
     private HotkeySettings configuredHotkeys = new("Ctrl+Alt+E", "Ctrl+Alt+S");
@@ -43,6 +44,10 @@ public sealed class DesktopIntegrationModule : IDisposable
     private bool activationHotKeyRegistered;
     private bool geometryFailureReported;
     private bool fullscreenFailureReported;
+    private Guid resizeRequestId;
+    private double resizeLastSavedHeightDip;
+    private bool hasResizePreview;
+    private bool isResizeInProgress;
     private bool isAttached;
     private bool isDisposed;
 
@@ -92,6 +97,12 @@ public sealed class DesktopIntegrationModule : IDisposable
     public event EventHandler<ShortcutGuideRequestEventArgs>? ShortcutGuideRequested;
 
     public event Action<bool>? PanelPresentationRequested;
+
+    /// <summary>
+    /// Raises live preview values during native sizing and one commit request when sizing ends.
+    /// The host can map the commit to the existing collapsed-height persistence path.
+    /// </summary>
+    public event EventHandler<PanelCollapsedHeightChangeEventArgs>? PanelCollapsedHeightChangeRequested;
 
     public event EventHandler? ExitRequested;
 
@@ -286,7 +297,32 @@ public sealed class DesktopIntegrationModule : IDisposable
 
     public bool HandleWindowMessage(WindowMessage message)
     {
+        var handled = HandleWindowMessage(message, out var result);
+
+        // Legacy hosts cannot return a nonzero LRESULT. Leave those messages to
+        // DefWindowProc until they adopt the result-bearing overload.
+        return handled == true && result == 0;
+    }
+
+    /// <summary>
+    /// Handles a native window message and returns the LRESULT required by Win32.
+    /// The host must return <paramref name="result"/> when this method returns true.
+    /// </summary>
+    public bool HandleWindowMessage(WindowMessage message, out nint result)
+    {
         ObjectDisposedException.ThrowIf(isDisposed, this);
+
+        if (TryHandlePanelResizeMessage(message, out result, out var heightChange) == true)
+        {
+            if (heightChange is not null)
+            {
+                PanelCollapsedHeightChangeRequested?.Invoke(this, heightChange);
+            }
+
+            return true;
+        }
+
+        result = 0;
 
         if (message.MessageId == WindowMessageHotKey && message.WordParameter == ActivationHotKeyIdentifier)
         {
@@ -535,6 +571,10 @@ public sealed class DesktopIntegrationModule : IDisposable
         lock (stateLock)
         {
             state = state.ToggleMode();
+            if (state.Mode == PanelMode.Expanded)
+            {
+                ClearResizeSession();
+            }
         }
 
         Reconcile();
@@ -572,6 +612,225 @@ public sealed class DesktopIntegrationModule : IDisposable
         }
     }
 
+    private bool TryHandlePanelResizeMessage(WindowMessage message, out nint result,
+                                             out PanelCollapsedHeightChangeEventArgs? heightChange)
+    {
+        result = 0;
+        heightChange = null;
+
+        if (message.MessageId == NativeMethods.WindowMessageNonClientHitTest)
+        {
+            return TryHandleTopEdgeHitTest(message, out result);
+        }
+
+        if (message.MessageId == NativeMethods.WindowMessageEnterSizeMove)
+        {
+            return TryBeginResizeSession();
+        }
+
+        if (message.MessageId == NativeMethods.WindowMessageSizing)
+        {
+            return TryPreviewResize(message, out result, out heightChange);
+        }
+
+        if (message.MessageId == NativeMethods.WindowMessageExitSizeMove)
+        {
+            return TryCommitResize(out heightChange);
+        }
+
+        if (message.MessageId == NativeMethods.WindowMessageNonClientLeftButtonDoubleClick)
+        {
+            return TryResetCollapsedHeight(message, out heightChange);
+        }
+
+        return false;
+    }
+
+    private bool TryHandleTopEdgeHitTest(WindowMessage message, out nint result)
+    {
+        result = 0;
+        lock (stateLock)
+        {
+            if (lastGeometry is null || state.LastSafeCollapsedBounds is not PixelRect bounds)
+            {
+                return false;
+            }
+
+            var point = SizingMessageAdapter.CaptureScreenPoint(message);
+            if (CanResizeCollapsedPanel() == true &&
+                PanelResizeCalculator.IsTopResizeHit(bounds, lastGeometry.Monitor.Dpi, point.X, point.Y) == true)
+            {
+                result = NativeMethods.HitTestTop;
+                return true;
+            }
+
+            // WS_THICKFRAME is present only to let Windows run the top sizing loop.
+            // Every other point remains client area, including all points while expanded.
+            result = NativeMethods.HitTestClient;
+            return true;
+        }
+    }
+
+    private bool TryBeginResizeSession()
+    {
+        lock (stateLock)
+        {
+            if (CanResizeCollapsedPanel() == false)
+            {
+                return false;
+            }
+
+            resizeRequestId = Guid.NewGuid();
+            resizeLastSavedHeightDip = effectiveSettings.CollapsedHeightDip;
+            hasResizePreview = false;
+            isResizeInProgress = true;
+
+            return true;
+        }
+    }
+
+    private bool TryPreviewResize(WindowMessage message, out nint result,
+                                  out PanelCollapsedHeightChangeEventArgs? heightChange)
+    {
+        result = 0;
+        heightChange = null;
+        lock (stateLock)
+        {
+            if (isResizeInProgress == false || message.WordParameter != NativeMethods.SizingEdgeTop)
+            {
+                return false;
+            }
+
+            var proposedBounds = SizingMessageAdapter.CaptureBounds(message);
+            var geometry = CaptureLatestResizeGeometry();
+            if (geometry.Taskbar.Edge != TaskbarEdge.Bottom)
+            {
+                ClearResizeSession();
+                return false;
+            }
+
+            var resized = PanelResizeCalculator.CalculateTopResize(geometry.Taskbar, geometry.Monitor.Dpi,
+                                                                   proposedBounds.Top);
+            SizingMessageAdapter.ApplyBounds(message, resized.Bounds);
+            options = options with { CollapsedHeightDip = resized.HeightDip };
+            state = state.RememberSafeCollapsedBounds(resized.Bounds);
+            hasResizePreview = true;
+            heightChange = new PanelCollapsedHeightChangeEventArgs(resizeRequestId,
+                                                                   PanelCollapsedHeightChangePhase.Preview,
+                                                                   resized.HeightDip, resizeLastSavedHeightDip);
+            result = new nint(1);
+
+            return true;
+        }
+    }
+
+    private bool TryCommitResize(out PanelCollapsedHeightChangeEventArgs? heightChange)
+    {
+        heightChange = null;
+        lock (stateLock)
+        {
+            if (isResizeInProgress == false)
+            {
+                return false;
+            }
+
+            var shouldCommit = hasResizePreview;
+            var requestId = resizeRequestId;
+            var lastSavedHeightDip = resizeLastSavedHeightDip;
+            ClearResizeSession();
+            if (shouldCommit == false)
+            {
+                return false;
+            }
+
+            heightChange = new PanelCollapsedHeightChangeEventArgs(requestId,
+                                                                   PanelCollapsedHeightChangePhase.Commit,
+                                                                   options.CollapsedHeightDip, lastSavedHeightDip);
+
+            return true;
+        }
+    }
+
+    private bool TryResetCollapsedHeight(WindowMessage message,
+                                         out PanelCollapsedHeightChangeEventArgs? heightChange)
+    {
+        heightChange = null;
+        if (message.WordParameter != NativeMethods.HitTestTop)
+        {
+            return false;
+        }
+
+        lock (stateLock)
+        {
+            if (CanResizeCollapsedPanel() == false)
+            {
+                return false;
+            }
+
+            var previousOptions = options;
+            var previousState = state;
+            try
+            {
+                var geometry = CaptureLatestResizeGeometry();
+                var resized = PanelResizeCalculator.CalculateHeight(geometry.Taskbar, geometry.Monitor.Dpi,
+                                                                    PanelResizeCalculator.DefaultHeightDip);
+                var requestId = Guid.NewGuid();
+                var lastSavedHeightDip = effectiveSettings.CollapsedHeightDip;
+                options = options with { CollapsedHeightDip = resized.HeightDip };
+                state = state.RememberSafeCollapsedBounds(resized.Bounds);
+                ClearResizeSession();
+                runtime.PlaceWithoutActivation(windowHandle, resized.Bounds);
+                heightChange = new PanelCollapsedHeightChangeEventArgs(requestId,
+                                                                       PanelCollapsedHeightChangePhase.Commit,
+                                                                       resized.HeightDip, lastSavedHeightDip);
+
+                return true;
+            }
+            catch (Exception exception) when (IsRecoverablePlatformFailure(exception) == true)
+            {
+                options = previousOptions;
+                state = previousState;
+                diagnosticLog.Write(DiagnosticLevel.Warning, "DesktopIntegration", "ResetCollapsedHeight",
+                                    "The default collapsed height could not be applied; the current height remains active.",
+                                    exception);
+                return true;
+            }
+        }
+    }
+
+    private DesktopGeometrySnapshot CaptureLatestResizeGeometry()
+    {
+        try
+        {
+            var geometry = runtime.CaptureGeometry(windowHandle);
+            lastGeometry = geometry;
+
+            return geometry;
+        }
+        catch (Exception exception) when (IsRecoverablePlatformFailure(exception) == true && lastGeometry is not null)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "DesktopIntegration", "CaptureResizeGeometry",
+                                "Current display data was unavailable during resize; the last safe monitor geometry is in use.",
+                                exception);
+            return lastGeometry!;
+        }
+    }
+
+    private bool CanResizeCollapsedPanel()
+    {
+        return state.Mode == PanelMode.Collapsed &&
+            lastGeometry is not null &&
+            lastGeometry.Taskbar.Edge == TaskbarEdge.Bottom;
+    }
+
+    private void ClearResizeSession()
+    {
+        resizeRequestId = Guid.Empty;
+        resizeLastSavedHeightDip = 0;
+        hasResizePreview = false;
+        isResizeInProgress = false;
+    }
+
     private void Reconcile()
     {
         bool? requestedVisibility = null;
@@ -586,6 +845,7 @@ public sealed class DesktopIntegrationModule : IDisposable
             try
             {
                 var geometry = runtime.CaptureGeometry(windowHandle);
+                lastGeometry = geometry;
                 var fullscreen = runtime.CaptureFullscreen(windowHandle, geometry.Monitor);
                 LogCaptureRecovery(geometry, fullscreen);
 
@@ -599,7 +859,11 @@ public sealed class DesktopIntegrationModule : IDisposable
                                                        geometry.TrackingState, geometry.Monitor,
                                                        state.LastSafeCollapsedBounds);
                 var decision = PanelWindowPolicy.Decide(input);
-                ApplyGeometry(decision, geometry);
+                if (isResizeInProgress == false)
+                {
+                    ApplyGeometry(decision, geometry);
+                }
+
                 lastDecision = decision;
 
                 var shouldBeVisible = decision.Presentation == PanelWindowPresentation.Visible;

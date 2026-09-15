@@ -20,13 +20,25 @@ internal static partial class NativeMethods
     internal const uint DwmWindowAttributeExtendedFrameBounds = 9;
     internal const uint DwmWindowAttributeCloaked = 14;
 
+    internal const int WindowMessageNonClientHitTest = 0x0084;
+    internal const int WindowMessageNonClientLeftButtonDoubleClick = 0x00A3;
+    internal const int WindowMessageSizing = 0x0214;
+    internal const int WindowMessageEnterSizeMove = 0x0231;
+    internal const int WindowMessageExitSizeMove = 0x0232;
+    internal const int HitTestClient = 1;
+    internal const int HitTestTop = 12;
+    internal const int SizingEdgeTop = 3;
+
+    internal const int WindowLongStyle = -16;
     internal const int WindowLongExtendedStyle = -20;
+    internal const long WindowStyleThickFrame = 0x00040000L;
     internal const long ExtendedStyleToolWindow = 0x00000080L;
 
     internal const uint SetWindowPositionNoSize = 0x0001;
     internal const uint SetWindowPositionNoMove = 0x0002;
     internal const uint SetWindowPositionNoZOrder = 0x0004;
     internal const uint SetWindowPositionNoActivate = 0x0010;
+    internal const uint SetWindowPositionFrameChanged = 0x0020;
     internal const uint SetWindowPositionShowWindow = 0x0040;
 
     internal const uint ModifierAlt = 0x0001;
