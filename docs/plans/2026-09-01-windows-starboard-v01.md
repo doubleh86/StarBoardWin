@@ -907,8 +907,8 @@ portable 배포이며 가상 데스크톱 pinning과 WSL/custom shell은 후속 
 
 예상: 4~6시간 + 실제 환경 확인
 
-- [ ] 공식 `IVirtualDesktopManager` adapter와 no-op fallback을 구현한다.
-- [ ] 공식 API로 불가능한 pinning을 capability로 명확히 보고한다.
+- [x] 공식 `IVirtualDesktopManager` adapter와 no-op fallback을 구현한다.
+- [x] 공식 API로 불가능한 pinning을 capability로 명확히 보고한다.
 - [ ] renderer process failure, shell crash와 ConPTY creation failure를 검증한다.
 - [ ] WebView2 runtime missing error와 offline installer 안내를 작성한다.
 - [ ] DiagnosticLog rotation과 privacy filter를 검증한다.

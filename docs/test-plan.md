@@ -67,8 +67,28 @@ mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증�
 위 환경 값은 2026-09-01에 확인했다. 실제 monitor 수, taskbar 위치, scaling과
 fullscreen application 종류는 실행할 때 별도로 기록한다.
 
+## VIRTUAL-DESKTOP-01 공식 API와 fallback 검증
+
+| ID | 범위 | 방법 | 상태 |
+|---|---|---|---|
+| VD-001 | 공식 조회/이동 adapter가 panel HWND와 desktop ID를 보존 | `VirtualDesktopServiceTests`의 fake manager | Passed (simulated) |
+| VD-002 | COM 초기화 실패 시 no-op capability와 unavailable/unsupported 결과 | factory failure unit test | Passed (automated) |
+| VD-003 | 조회 또는 이동 호출 실패 뒤 adapter 단일 해제와 영구 fallback | failover service unit tests | Passed (automated) |
+| VD-004 | module entry point가 attached panel HWND만 사용하고 종료 시 service dispose | module facade unit test | Passed (simulated) |
+| VD-005 | public type은 Contracts/module 경계만 사용하고 pinning operation 미노출 | `ModuleBoundaryTests` reflection 검사 | Passed (automated) |
+| VD-006 | 실제 Windows virtual desktop에서 current 상태/ID와 명시적 이동 결과 일치 | 두 desktop을 만들고 panel 상태 조회 후 대상 ID 이동, terminal session/focus 유지 관찰 | Not run — interactive virtual desktop 생성·전환과 panel UI 관찰을 수행하지 않음 |
+
+`IVirtualDesktopManager`에는 desktop 열거·생성·전환과 모든-desktop pinning API가
+없으므로 VD-006의 대상 desktop ID 확보는 진단용 helper 또는 별도 test window로
+수동 준비해야 한다. 제품 API가 pinning을 지원하는 것으로 표시하는 검증은 하지
+않으며 `CanPinWindowToAllDesktops=false`가 기대 결과다.
+
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-15 (run `20260915-073031-990510-914d5fc7`, virtual desktop integration)
+- 지정 SDK solution restore와 Debug build는 경고·오류 0개로 통과했다. 전체 자동 test
+  504개가 통과했다(Architecture 13, Terminal 294, DesktopIntegration 110,
+  Preferences 37, Integration 50). 실제 virtual desktop UI 전환·이동은 수행하지 않았다.
 - 실행일: 2026-09-15 (run `20260915-022255-752257-23c5de81`, terminal convenience release gate)
 - renderer `npm run build`가 통과했고 source 재생성 뒤 committed `dist`에 diff가 없었다. sandbox의
   esbuild child-process 실행은 `EPERM`이었으며, 허용된 동일 명령으로만 build를 완료했다.

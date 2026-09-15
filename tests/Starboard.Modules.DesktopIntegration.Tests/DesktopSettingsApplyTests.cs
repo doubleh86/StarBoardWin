@@ -247,6 +247,33 @@ public sealed class DesktopSettingsApplyTests
         Assert.AreEqual(0, runtime.ActivationRequestCount);
     }
 
+    [TestMethod]
+    public void VirtualDesktopOperations_AttachedPanel_UsePanelHandleAndDisposeAdapter()
+    {
+        var runtime = new FakeRuntime();
+        var virtualDesktopService = new FakeVirtualDesktopService();
+        var desktopId = Guid.Parse("40000000-0000-0000-0000-000000000004");
+
+        using (var module = new DesktopIntegrationModule(new NullDiagnosticLog(), runtime,
+                                                         new FakeStartupRegistration(), virtualDesktopService, false))
+        {
+            module.Attach(new nint(73), new PanelOptions(200));
+
+            var state = module.CapturePanelVirtualDesktopState();
+            var moveResult = module.MovePanelToVirtualDesktop(desktopId);
+
+            Assert.AreEqual(VirtualDesktopWindowStateStatus.Available, state.Status);
+            Assert.AreEqual(VirtualDesktopMoveStatus.Moved, moveResult);
+            Assert.AreEqual(new nint(73), virtualDesktopService.LastCapturedWindowHandle);
+            Assert.AreEqual(new nint(73), virtualDesktopService.LastMovedWindowHandle);
+            Assert.AreEqual(desktopId, virtualDesktopService.LastMovedDesktopId);
+            Assert.IsTrue(module.VirtualDesktopCapabilities.CanQueryWindowState);
+            Assert.IsFalse(module.VirtualDesktopCapabilities.CanPinWindowToAllDesktops);
+        }
+
+        Assert.AreEqual(1, virtualDesktopService.DisposeCallCount);
+    }
+
     private static DesktopIntegrationModule CreateAttachedModule(FakeRuntime runtime,
                                                                  FakeStartupRegistration startupRegistration)
     {
@@ -464,6 +491,39 @@ public sealed class DesktopSettingsApplyTests
             {
                 throw new InvalidOperationException("Startup registration failed.");
             }
+        }
+    }
+
+    private sealed class FakeVirtualDesktopService : IVirtualDesktopService
+    {
+        public VirtualDesktopCapabilities Capabilities { get; } = new(true, true, false);
+
+        public nint LastCapturedWindowHandle { get; private set; }
+
+        public nint LastMovedWindowHandle { get; private set; }
+
+        public Guid LastMovedDesktopId { get; private set; }
+
+        public int DisposeCallCount { get; private set; }
+
+        public VirtualDesktopWindowState CaptureWindowState(nint windowHandle)
+        {
+            LastCapturedWindowHandle = windowHandle;
+
+            return new VirtualDesktopWindowState(VirtualDesktopWindowStateStatus.Available, true, Guid.NewGuid());
+        }
+
+        public VirtualDesktopMoveStatus MoveWindowToDesktop(nint windowHandle, Guid desktopId)
+        {
+            LastMovedWindowHandle = windowHandle;
+            LastMovedDesktopId = desktopId;
+
+            return VirtualDesktopMoveStatus.Moved;
+        }
+
+        public void Dispose()
+        {
+            DisposeCallCount++;
         }
     }
 

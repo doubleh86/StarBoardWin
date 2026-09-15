@@ -26,6 +26,7 @@ public sealed class DesktopIntegrationModule : IDisposable
     private readonly bool enablePeriodicReconciliation;
     private readonly IDesktopIntegrationRuntime runtime;
     private readonly IStartupRegistration startupRegistration;
+    private readonly IVirtualDesktopService virtualDesktopService;
     private readonly Lock stateLock = new();
 
     private System.Threading.Timer? reconciliationTimer;
@@ -53,32 +54,56 @@ public sealed class DesktopIntegrationModule : IDisposable
 
     public DesktopIntegrationModule(IDiagnosticLog diagnosticLog, Action<double> applyPanelOpacity)
         : this(diagnosticLog, new WindowsDesktopIntegrationRuntime(diagnosticLog, applyPanelOpacity),
-               new RegistryStartupRegistration(new ProcessExecutablePathProvider()), true)
+               new RegistryStartupRegistration(new ProcessExecutablePathProvider()),
+               VirtualDesktopServiceFactory.Create(diagnosticLog), true)
     {
     }
 
     internal DesktopIntegrationModule(IDiagnosticLog diagnosticLog, IDesktopIntegrationRuntime runtime,
                                       bool enablePeriodicReconciliation)
         : this(diagnosticLog, runtime, new RegistryStartupRegistration(new ProcessExecutablePathProvider()),
-               enablePeriodicReconciliation)
+               new FallbackVirtualDesktopService(), enablePeriodicReconciliation)
     {
     }
 
     internal DesktopIntegrationModule(IDiagnosticLog diagnosticLog, IDesktopIntegrationRuntime runtime,
                                       IStartupRegistration startupRegistration, bool enablePeriodicReconciliation)
+        : this(diagnosticLog, runtime, startupRegistration, new FallbackVirtualDesktopService(),
+               enablePeriodicReconciliation)
+    {
+    }
+
+    internal DesktopIntegrationModule(IDiagnosticLog diagnosticLog, IDesktopIntegrationRuntime runtime,
+                                      IStartupRegistration startupRegistration,
+                                      IVirtualDesktopService virtualDesktopService,
+                                      bool enablePeriodicReconciliation)
     {
         ArgumentNullException.ThrowIfNull(diagnosticLog);
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentNullException.ThrowIfNull(startupRegistration);
+        ArgumentNullException.ThrowIfNull(virtualDesktopService);
 
         this.diagnosticLog = diagnosticLog;
         this.runtime = runtime;
         this.startupRegistration = startupRegistration;
+        this.virtualDesktopService = virtualDesktopService;
         this.enablePeriodicReconciliation = enablePeriodicReconciliation;
         TaskbarCreatedMessage = runtime.TaskbarCreatedMessage;
     }
 
     public uint TaskbarCreatedMessage { get; }
+
+    public VirtualDesktopCapabilities VirtualDesktopCapabilities
+    {
+        get
+        {
+            lock (stateLock)
+            {
+                ObjectDisposedException.ThrowIf(isDisposed, this);
+                return virtualDesktopService.Capabilities;
+            }
+        }
+    }
 
     public event EventHandler? PanelVisibilityToggleRequested;
 
@@ -580,6 +605,31 @@ public sealed class DesktopIntegrationModule : IDisposable
         Reconcile();
     }
 
+    public VirtualDesktopWindowState CapturePanelVirtualDesktopState()
+    {
+        lock (stateLock)
+        {
+            ObjectDisposedException.ThrowIf(isDisposed, this);
+            EnsurePanelIsAttached();
+            return virtualDesktopService.CaptureWindowState(windowHandle);
+        }
+    }
+
+    public VirtualDesktopMoveStatus MovePanelToVirtualDesktop(Guid desktopId)
+    {
+        if (desktopId == Guid.Empty)
+        {
+            throw new ArgumentException("A non-empty virtual desktop identifier is required.", nameof(desktopId));
+        }
+
+        lock (stateLock)
+        {
+            ObjectDisposedException.ThrowIf(isDisposed, this);
+            EnsurePanelIsAttached();
+            return virtualDesktopService.MoveWindowToDesktop(windowHandle, desktopId);
+        }
+    }
+
     public void Dispose()
     {
         lock (stateLock)
@@ -608,7 +658,16 @@ public sealed class DesktopIntegrationModule : IDisposable
                 runtime.UnregisterHotKey(windowHandle, ActivationHotKeyIdentifier);
             }
 
+            virtualDesktopService.Dispose();
             runtime.Dispose();
+        }
+    }
+
+    private void EnsurePanelIsAttached()
+    {
+        if (isAttached == false || windowHandle == 0)
+        {
+            throw new InvalidOperationException("Virtual desktop operations are unavailable before the panel is attached.");
         }
     }
 

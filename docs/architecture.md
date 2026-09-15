@@ -604,16 +604,39 @@ work area만 차지하므로 fullscreen으로 분류하지 않는다.
 
 ## Virtual desktop
 
-공식 `IVirtualDesktopManager`는 다음 범위만 제공한다.
+DesktopIntegration module은 Windows 10 desktop app부터 문서화된
+`IVirtualDesktopManager` COM class를 생성하고 panel HWND에 대해서만 다음 범위를
+제공한다.
 
 - window가 현재 desktop에 있는지 확인
 - window가 속한 desktop ID 조회
-- window를 특정 desktop으로 이동
+- caller가 명시적으로 제공한 desktop ID로 window 이동
 
-모든 desktop pinning과 desktop switch event는 공식 public contract에 없다.
-v0.1 기본 구현은 공식 API availability와 current-desktop 상태만 보고하며 pinning을
-지원한다고 가장하지 않는다. fallback은 no-op + capability result다. undocumented
-COM adapter는 기본 범위에 포함하지 않는다.
+module entry point는 이 세 동작의 availability를 `VirtualDesktopCapabilities`로
+보고한다. 상태 조회는 현재 desktop 여부와 desktop ID를 한 snapshot으로 반환하고,
+이동은 `Moved`, 첫 native 실패의 `Failed`, 이미 fallback인 경우의 `Unsupported`를
+구분한다. 앱이 desktop을 열거·생성·삭제하거나 현재 desktop을 전환하지 않으므로
+virtual desktop 전환은 사용자에게만 남는다.
+
+COM activation 또는 HRESULT 기반 호출이 실패하면 adapter는 첫 실패에서 COM RCW를
+해제하고 process lifetime 동안 no-op service로 전환한다. 이후 조회는
+`Unavailable`, 이동은 `Unsupported`, capability는 모두 false이며 panel 배치,
+terminal session과 앱 종료는 계속 동작한다. 정상 종료에서도 module이 adapter를
+dispose하고 전용 RCW에 `FinalReleaseComObject`를 적용해 COM 참조를 결정적으로
+정리한다.
+
+모든 desktop pinning과 desktop switch notification은 공식 public contract에 없다.
+따라서 `CanPinWindowToAllDesktops`는 supported adapter에서도 항상 false이고 pinning
+operation 자체를 public entry point로 노출하지 않는다. undocumented Shell COM
+interface나 Windows build별 GUID는 사용하지 않는다. 향후 pinning을 검토하더라도
+별도 optional adapter, feature detection과 no-op fallback 없이는 지원 capability로
+표시할 수 없다.
+
+공식 interface와 CLSID 자체는 문서화돼 있지만 구현 주체는 Windows Shell이다.
+Windows 업데이트, Explorer/COM 등록 손상, group policy 또는 호출 중 Shell 재시작은
+activation과 이후 HRESULT 호출을 실패시킬 수 있다. Starboard는 이를 기능 비활성화로
+격리하며, 실행 중 자동 재활성화는 하지 않는다. 복구된 Shell API를 다시 사용하려면
+앱을 재시작한다.
 
 ## Settings와 theme
 
@@ -771,7 +794,8 @@ portable update는 파일을 제자리 교체하거나 시작 프로그램 경�
 | taskbar auto-hide event 누락 | event + reconciliation | last safe frame |
 | secondary taskbar 공식 열거 부재 | system taskbar 정본 | optional isolated adapter |
 | fullscreen 오탐 | work area와 monitor bounds 구분 | 기본 normal z-order 유지, 필요 시 conceal 정책 off |
-| virtual desktop pin 부재 | capability를 명시 | no-op fallback |
+| virtual desktop COM activation/HRESULT 실패 | 첫 실패를 기록하고 adapter 해제 | process lifetime no-op; 앱 재시작 때 재시도 |
+| 공식 virtual desktop pinning API 부재 | capability를 항상 false로 명시하고 operation 미노출 | undocumented adapter를 기본 구현에 포함하지 않음 |
 | IME/WebView shortcut 충돌 | composition-aware input, selection-aware copy | shortcut remap |
 
 ## 근거

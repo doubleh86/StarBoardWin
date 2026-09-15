@@ -240,6 +240,44 @@ public sealed class ModuleBoundaryTests
     }
 
     [TestMethod]
+    public void VirtualDesktopIntegrationExposesDocumentedOperationsWithoutPinningEntryPoint()
+    {
+        var contractTypes = new[]
+        {
+            typeof(VirtualDesktopCapabilities),
+            typeof(VirtualDesktopWindowStateStatus),
+            typeof(VirtualDesktopWindowState),
+            typeof(VirtualDesktopMoveStatus),
+        };
+
+        foreach (var type in contractTypes)
+        {
+            Assert.AreSame(typeof(DesktopIntegrationModule).Assembly, type.Assembly);
+            Assert.AreEqual("Starboard.Modules.DesktopIntegration.Contracts", type.Namespace);
+            Assert.IsTrue(type.IsPublic);
+        }
+
+        var captureMethod = typeof(DesktopIntegrationModule).GetMethod(
+            nameof(DesktopIntegrationModule.CapturePanelVirtualDesktopState), BindingFlags.Instance | BindingFlags.Public);
+        var moveMethod = typeof(DesktopIntegrationModule).GetMethod(
+            nameof(DesktopIntegrationModule.MovePanelToVirtualDesktop), BindingFlags.Instance | BindingFlags.Public);
+        var pinningMethods = typeof(DesktopIntegrationModule)
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+            .Where(method => method.Name.Contains("Pin", StringComparison.OrdinalIgnoreCase))
+            .Select(method => method.Name)
+            .ToArray();
+
+        Assert.IsNotNull(captureMethod);
+        Assert.AreEqual(typeof(VirtualDesktopWindowState), captureMethod.ReturnType);
+        Assert.IsNotNull(moveMethod);
+        Assert.AreEqual(typeof(VirtualDesktopMoveStatus), moveMethod.ReturnType);
+        CollectionAssert.AreEqual(new[] { typeof(Guid) },
+                                  moveMethod.GetParameters().Select(parameter => parameter.ParameterType).ToArray());
+        Assert.AreEqual(0, pinningMethods.Length,
+                        "The documented IVirtualDesktopManager contract does not provide window pinning.");
+    }
+
+    [TestMethod]
     public void ProductionProjectsDoNotReferenceTestProjects()
     {
         var root = FindSolutionRoot();
