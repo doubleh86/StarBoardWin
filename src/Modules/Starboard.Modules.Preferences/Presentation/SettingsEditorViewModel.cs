@@ -195,6 +195,20 @@ internal sealed class SettingsEditorViewModel : INotifyPropertyChanged, INotifyD
         completion.TrySetResult(new SettingsEditorOutcome(SettingsEditorCompletionKind.Canceled, originalSettings));
     }
 
+    internal void SynchronizeCollapsedHeight(double collapsedHeightDip)
+    {
+        if (isCompleted == true || IsSaving == true || double.IsFinite(collapsedHeightDip) == false ||
+            collapsedHeightDip < 96 || collapsedHeightDip > 720)
+        {
+            return;
+        }
+
+        originalSettings = originalSettings with { CollapsedHeightDip = collapsedHeightDip };
+        collapsedHeightText = collapsedHeightDip.ToString(CultureInfo.InvariantCulture);
+        OnPropertyChanged(nameof(CollapsedHeightText));
+        Validate();
+    }
+
     internal async Task SaveAsync(CancellationToken cancellationToken)
     {
         if (isCompleted == true || IsSaving == true)

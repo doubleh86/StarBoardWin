@@ -9,6 +9,7 @@ internal static class SettingsEditorSessionFactory
         var viewModel = new SettingsEditorViewModel(currentSettings, saveHandler);
         var view = new SettingsEditorView(viewModel);
 
-        return new SettingsEditorSession(view, viewModel.Completion, viewModel.Cancel);
+        return new SettingsEditorSession(view, viewModel.Completion, viewModel.Cancel,
+                                         viewModel.SynchronizeCollapsedHeight);
     }
 }

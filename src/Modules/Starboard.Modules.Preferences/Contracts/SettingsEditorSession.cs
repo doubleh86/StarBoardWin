@@ -9,12 +9,15 @@ namespace Starboard.Modules.Preferences.Contracts;
 public sealed class SettingsEditorSession
 {
     private readonly Action cancel;
+    private readonly Action<double> synchronizeCollapsedHeight;
 
-    internal SettingsEditorSession(FrameworkElement content, Task<SettingsEditorOutcome> completion, Action cancel)
+    internal SettingsEditorSession(FrameworkElement content, Task<SettingsEditorOutcome> completion, Action cancel,
+                                   Action<double> synchronizeCollapsedHeight)
     {
         Content = content;
         Completion = completion;
         this.cancel = cancel;
+        this.synchronizeCollapsedHeight = synchronizeCollapsedHeight;
     }
 
     public FrameworkElement Content { get; }
@@ -24,5 +27,10 @@ public sealed class SettingsEditorSession
     public void Cancel()
     {
         cancel();
+    }
+
+    public void SynchronizeCollapsedHeight(double collapsedHeightDip)
+    {
+        synchronizeCollapsedHeight(collapsedHeightDip);
     }
 }

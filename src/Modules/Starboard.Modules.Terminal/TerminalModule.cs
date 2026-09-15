@@ -19,7 +19,8 @@ public sealed class TerminalModule : IDisposable
     private volatile bool isCapturingShutdownStatus;
     private bool isDisposed;
 
-    public TerminalModule(IDiagnosticLog diagnosticLog)
+    public TerminalModule(IDiagnosticLog diagnosticLog,
+                          TerminalCollapsedHeightChangeCallback? collapsedHeightChangeCallback = null)
     {
         sessionCoordinator = new TerminalSessionCoordinator(new ConPtySessionFactory(diagnosticLog), diagnosticLog);
         var workspaceStore = new FileTerminalWorkspaceStore(FileTerminalWorkspaceStore.GetDefaultPath());
@@ -28,7 +29,8 @@ public sealed class TerminalModule : IDisposable
         savedTabService = new TerminalSavedTabService(savedTabStore, sessionCoordinator, diagnosticLog);
         workspacePersistence.StatusChanged += HandleWorkspacePersistenceStatusChanged;
         sessionCoordinator.CommandCompleted += HandleCommandCompleted;
-        terminalView = new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence, savedTabService);
+        terminalView = new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence, savedTabService,
+                                        collapsedHeightChangeCallback ?? RejectCollapsedHeightChange);
     }
 
     public event EventHandler<TerminalCommandCompletedEventArgs>? CommandCompleted;
@@ -74,6 +76,20 @@ public sealed class TerminalModule : IDisposable
         }
 
         terminalView.Dispatcher.Invoke(() => terminalView.NotifyPanelVisibilityChanged(isVisible));
+    }
+
+    public ValueTask<TerminalCollapsedHeightChangeResult> RequestCollapsedHeightChangeAsync(
+        TerminalCollapsedHeightChangeRequest request, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        ArgumentNullException.ThrowIfNull(request);
+        if (terminalView.Dispatcher.CheckAccess() == true)
+        {
+            return terminalView.RequestCollapsedHeightChangeAsync(request, cancellationToken);
+        }
+
+        return terminalView.Dispatcher.Invoke(
+            () => terminalView.RequestCollapsedHeightChangeAsync(request, cancellationToken));
     }
 
     public bool IsCurrentSession(TerminalSessionReference session)
@@ -144,6 +160,15 @@ public sealed class TerminalModule : IDisposable
         }
 
         CommandCompleted?.Invoke(this, new TerminalCommandCompletedEventArgs(completion));
+    }
+
+    private static ValueTask<TerminalCollapsedHeightChangeResult> RejectCollapsedHeightChange(
+        TerminalCollapsedHeightChangeRequest request, CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        return ValueTask.FromResult(new TerminalCollapsedHeightChangeResult(
+            request.RequestId, TerminalCollapsedHeightChangeStatus.Failed, request.LastSavedHeightDip,
+            "패널 높이 저장 기능을 사용할 수 없습니다."));
     }
 
     internal static TerminalWorkspacePersistenceResult CreateShutdownResult(TerminalWorkspaceSaveStatus? status)

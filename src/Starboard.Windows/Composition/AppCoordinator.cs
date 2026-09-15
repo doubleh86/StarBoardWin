@@ -19,6 +19,7 @@ internal sealed class AppCoordinator : IDisposable
     private readonly DesktopIntegrationModule desktopIntegrationModule;
     private readonly TerminalModule terminalModule;
     private readonly CommandCompletionNotificationCoordinator commandCompletionNotificationCoordinator;
+    private readonly CancellationTokenSource lifetimeCancellation = new();
 
     private MainWindow? mainWindow;
     private SettingsApplicationService? settingsApplicationService;
@@ -31,7 +32,7 @@ internal sealed class AppCoordinator : IDisposable
         diagnosticLog = new FileDiagnosticLog();
         preferencesModule = new PreferencesModule(diagnosticLog);
         desktopIntegrationModule = new DesktopIntegrationModule(diagnosticLog, ApplyPanelOpacity);
-        terminalModule = new TerminalModule(diagnosticLog);
+        terminalModule = new TerminalModule(diagnosticLog, ApplyCollapsedHeightChangeAsync);
         commandCompletionNotificationCoordinator = new CommandCompletionNotificationCoordinator(
             terminalModule.IsCurrentSession,
             desktopIntegrationModule.SetCommandCompletionNotificationSettings,
@@ -41,6 +42,7 @@ internal sealed class AppCoordinator : IDisposable
         desktopIntegrationModule.PanelActivationToggleRequested += HandlePanelActivationToggleRequested;
         desktopIntegrationModule.PanelSummonRequested += HandlePanelSummonRequested;
         desktopIntegrationModule.PanelPresentationRequested += HandlePanelPresentationRequested;
+        desktopIntegrationModule.PanelCollapsedHeightChangeRequested += HandlePanelCollapsedHeightChangeRequested;
         desktopIntegrationModule.SettingsRequested += HandleSettingsRequested;
         desktopIntegrationModule.ExitRequested += HandleExitRequested;
     }
@@ -118,20 +120,23 @@ internal sealed class AppCoordinator : IDisposable
         }
 
         isDisposed = true;
+        lifetimeCancellation.Cancel();
         terminalModule.CommandCompleted -= HandleCommandCompleted;
         commandCompletionNotificationCoordinator.Stop();
         desktopIntegrationModule.PanelVisibilityToggleRequested -= HandlePanelVisibilityToggleRequested;
         desktopIntegrationModule.PanelActivationToggleRequested -= HandlePanelActivationToggleRequested;
         desktopIntegrationModule.PanelSummonRequested -= HandlePanelSummonRequested;
         desktopIntegrationModule.PanelPresentationRequested -= HandlePanelPresentationRequested;
+        desktopIntegrationModule.PanelCollapsedHeightChangeRequested -= HandlePanelCollapsedHeightChangeRequested;
         desktopIntegrationModule.SettingsRequested -= HandleSettingsRequested;
         desktopIntegrationModule.ExitRequested -= HandleExitRequested;
         settingsWindowController?.Dispose();
-        settingsApplicationService?.Dispose();
         var workspaceResult = await terminalModule.ShutdownAsync();
         LogWorkspaceShutdownResult(workspaceResult);
+        settingsApplicationService?.Dispose();
         desktopIntegrationModule.Dispose();
         mainWindow?.Close();
+        lifetimeCancellation.Dispose();
     }
 
     private void LogWorkspaceShutdownResult(TerminalWorkspacePersistenceResult result)
@@ -232,6 +237,56 @@ internal sealed class AppCoordinator : IDisposable
         }
 
         ApplyPanelPresentation(isVisible);
+    }
+
+    private void HandlePanelCollapsedHeightChangeRequested(
+        object? sender, PanelCollapsedHeightChangeEventArgs eventArguments)
+    {
+        _ = sender;
+        var phase = eventArguments.Phase switch
+        {
+            PanelCollapsedHeightChangePhase.Preview => TerminalCollapsedHeightChangePhase.Preview,
+            PanelCollapsedHeightChangePhase.Commit => TerminalCollapsedHeightChangePhase.Commit,
+            _ => throw new ArgumentOutOfRangeException(nameof(eventArguments)),
+        };
+        var request = new TerminalCollapsedHeightChangeRequest(
+            new TerminalCollapsedHeightChangeRequestId(eventArguments.RequestId), phase,
+            eventArguments.RequestedHeightDip, eventArguments.LastSavedHeightDip);
+        _ = ProcessPanelCollapsedHeightChangeAsync(request);
+    }
+
+    private async Task ProcessPanelCollapsedHeightChangeAsync(TerminalCollapsedHeightChangeRequest request)
+    {
+        try
+        {
+            _ = await terminalModule.RequestCollapsedHeightChangeAsync(request, lifetimeCancellation.Token);
+        }
+        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested == true)
+        {
+            return;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ObjectDisposedException)
+        {
+            if (isDisposed == false)
+            {
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Host", "ChangeCollapsedHeight",
+                                    "The panel height request could not be completed.", exception);
+            }
+        }
+    }
+
+    private ValueTask<TerminalCollapsedHeightChangeResult> ApplyCollapsedHeightChangeAsync(
+        TerminalCollapsedHeightChangeRequest request, CancellationToken cancellationToken)
+    {
+        var applicationService = settingsApplicationService;
+        if (applicationService is null || isDisposed == true)
+        {
+            return ValueTask.FromResult(new TerminalCollapsedHeightChangeResult(
+                request.RequestId, TerminalCollapsedHeightChangeStatus.Failed, request.LastSavedHeightDip,
+                "패널 높이 저장 기능을 사용할 수 없습니다."));
+        }
+
+        return applicationService.ApplyCollapsedHeightChangeAsync(request, cancellationToken);
     }
 
     private void HandleExitRequested(object? sender, EventArgs eventArguments)

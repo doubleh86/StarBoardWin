@@ -492,6 +492,206 @@ public sealed class SettingsApplicationServiceTests
     }
 
     [TestMethod]
+    public async Task CollapsedHeightPreviewDoesNotApplyOrPersistSettings()
+    {
+        var previous = new AppSettings();
+        var applyCalls = 0;
+        var persistenceCalls = 0;
+        using var service = CreateService(previous,
+                                          settings =>
+                                          {
+                                              applyCalls++;
+                                              return TerminalApplied(settings, previous);
+                                          },
+                                          settings =>
+                                          {
+                                              applyCalls++;
+                                              return DesktopApplied(settings, previous);
+                                          },
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+                                              persistenceCalls++;
+
+                                              return Task.CompletedTask;
+                                          });
+        var request = CreateCollapsedHeightRequest(TerminalCollapsedHeightChangePhase.Preview, 320,
+                                                   previous.CollapsedHeightDip);
+
+        var result = await service.ApplyCollapsedHeightChangeAsync(request, CancellationToken.None);
+
+        Assert.AreEqual(TerminalCollapsedHeightChangeStatus.Applied, result.Status);
+        Assert.AreEqual(320, result.AppliedHeightDip);
+        Assert.AreEqual(0, applyCalls);
+        Assert.AreEqual(0, persistenceCalls);
+        Assert.AreEqual(previous, service.PersistedSettings);
+    }
+
+    [TestMethod]
+    public async Task CollapsedHeightCommitPersistsOnceAndSynchronizesOpenEditorValue()
+    {
+        var previous = new AppSettings();
+        var operations = new List<string>();
+        var synchronizedHeights = new List<double>();
+        using var service = CreateService(previous,
+                                          settings =>
+                                          {
+                                              operations.Add("terminal");
+                                              return TerminalApplied(settings, previous);
+                                          },
+                                          settings =>
+                                          {
+                                              operations.Add("desktop");
+                                              return DesktopApplied(settings, previous);
+                                          },
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+                                              operations.Add("persistence");
+
+                                              return Task.CompletedTask;
+                                          },
+                                          settings =>
+                                          {
+                                              _ = settings;
+                                              operations.Add("host");
+                                          });
+        service.CollapsedHeightChanged += synchronizedHeights.Add;
+        var requestId = new TerminalCollapsedHeightChangeRequestId(
+            Guid.Parse("50000000-0000-0000-0000-000000000001"));
+        var preview = new TerminalCollapsedHeightChangeRequest(requestId,
+                                                               TerminalCollapsedHeightChangePhase.Preview, 320,
+                                                               previous.CollapsedHeightDip);
+        var commit = new TerminalCollapsedHeightChangeRequest(requestId,
+                                                              TerminalCollapsedHeightChangePhase.Commit, 320,
+                                                              previous.CollapsedHeightDip);
+
+        _ = await service.ApplyCollapsedHeightChangeAsync(preview, CancellationToken.None);
+        var firstResult = await service.ApplyCollapsedHeightChangeAsync(commit, CancellationToken.None);
+        var duplicateResult = await service.ApplyCollapsedHeightChangeAsync(commit, CancellationToken.None);
+
+        Assert.AreEqual(TerminalCollapsedHeightChangeStatus.Saved, firstResult.Status);
+        Assert.AreSame(firstResult, duplicateResult);
+        CollectionAssert.AreEqual(SuccessfulApplyOperations, operations);
+        Assert.HasCount(1, synchronizedHeights);
+        Assert.AreEqual(320, synchronizedHeights[0]);
+        Assert.AreEqual(320, service.PersistedSettings.CollapsedHeightDip);
+        Assert.AreEqual(320, service.EffectiveSettings.CollapsedHeightDip);
+    }
+
+    [TestMethod]
+    public async Task CollapsedHeightPersistenceFailureRollsBackAndReportsSavedHeight()
+    {
+        var previous = new AppSettings();
+        var operations = new List<string>();
+        var synchronizedHeights = new List<double>();
+        using var service = CreateService(previous,
+                                          settings =>
+                                          {
+                                              operations.Add(settings.Appearance ==
+                                                             SettingsApplicationService.ToTerminalSettings(previous).Appearance
+                                                                 ? "terminal-apply"
+                                                                 : "terminal-rollback");
+                                              return TerminalApplied(settings, previous);
+                                          },
+                                          settings =>
+                                          {
+                                              operations.Add(settings.CollapsedHeightDip == 320
+                                                                 ? "desktop-apply"
+                                                                 : "desktop-rollback");
+                                              return DesktopApplied(settings, previous);
+                                          },
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+                                              operations.Add("persistence");
+
+                                              throw new IOException("Settings replace failed.");
+                                          },
+                                          settings => operations.Add(settings.CollapsedHeightDip == 320
+                                                                         ? "host-apply"
+                                                                         : "host-rollback"));
+        service.CollapsedHeightChanged += synchronizedHeights.Add;
+        var request = CreateCollapsedHeightRequest(TerminalCollapsedHeightChangePhase.Commit, 320,
+                                                   previous.CollapsedHeightDip);
+
+        var result = await service.ApplyCollapsedHeightChangeAsync(request, CancellationToken.None);
+
+        Assert.AreEqual(TerminalCollapsedHeightChangeStatus.Reverted, result.Status);
+        Assert.AreEqual(previous.CollapsedHeightDip, result.AppliedHeightDip);
+        Assert.IsNotNull(result.FailureMessage);
+        Assert.AreEqual(previous, service.PersistedSettings);
+        Assert.AreEqual(previous, service.EffectiveSettings);
+        Assert.HasCount(1, synchronizedHeights);
+        Assert.AreEqual(previous.CollapsedHeightDip, synchronizedHeights[0]);
+        CollectionAssert.Contains(operations, "desktop-rollback");
+        CollectionAssert.Contains(operations, "host-rollback");
+    }
+
+    [TestMethod]
+    public async Task StaleCollapsedHeightCommitCannotOverwriteNewerSettingsValue()
+    {
+        var previous = new AppSettings();
+        var persistenceCalls = 0;
+        using var service = CreateService(previous,
+                                          settings => TerminalApplied(settings, previous),
+                                          settings => DesktopApplied(settings, previous),
+                                          (settings, cancellationToken) =>
+                                          {
+                                              _ = settings;
+                                              _ = cancellationToken;
+                                              persistenceCalls++;
+
+                                              return Task.CompletedTask;
+                                          });
+        var newerSettings = previous with { CollapsedHeightDip = 280 };
+        _ = await service.ApplyValidatedAsync(newerSettings, CancellationToken.None);
+        var staleRequest = CreateCollapsedHeightRequest(TerminalCollapsedHeightChangePhase.Commit, 360,
+                                                        previous.CollapsedHeightDip);
+
+        var result = await service.ApplyCollapsedHeightChangeAsync(staleRequest, CancellationToken.None);
+
+        Assert.AreEqual(TerminalCollapsedHeightChangeStatus.Reverted, result.Status);
+        Assert.AreEqual(280, result.AppliedHeightDip);
+        Assert.AreEqual(1, persistenceCalls);
+        Assert.AreEqual(newerSettings, service.PersistedSettings);
+    }
+
+    [TestMethod]
+    public async Task DisposedServiceRejectsLateHeightPersistenceCompletionAndRestoresSavedValue()
+    {
+        var previous = new AppSettings();
+        var persistenceEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePersistence = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = CreateService(previous,
+                                    settings => TerminalApplied(settings, previous),
+                                    settings => DesktopApplied(settings, previous),
+                                    async (settings, cancellationToken) =>
+                                    {
+                                        _ = settings;
+                                        _ = cancellationToken;
+                                        persistenceEntered.SetResult();
+                                        await releasePersistence.Task;
+                                    });
+        var request = CreateCollapsedHeightRequest(TerminalCollapsedHeightChangePhase.Commit, 320,
+                                                   previous.CollapsedHeightDip);
+        var pendingResult = service.ApplyCollapsedHeightChangeAsync(request, CancellationToken.None).AsTask();
+        await persistenceEntered.Task;
+
+        service.Dispose();
+        releasePersistence.SetResult();
+        var result = await pendingResult;
+
+        Assert.AreEqual(TerminalCollapsedHeightChangeStatus.Reverted, result.Status);
+        Assert.AreEqual(previous.CollapsedHeightDip, result.AppliedHeightDip);
+        Assert.AreEqual(previous, service.PersistedSettings);
+        Assert.AreEqual(previous, service.EffectiveSettings);
+    }
+
+    [TestMethod]
     public async Task ApplyValidatedAsyncCanceledBeforeApplyDoesNotChangeLiveModules()
     {
         var previous = new AppSettings();
@@ -553,6 +753,13 @@ public sealed class SettingsApplicationServiceTests
             ExpandShortcut = "Ctrl+Shift+E",
             ActivationShortcut = "Ctrl+Shift+S",
         };
+    }
+
+    private static TerminalCollapsedHeightChangeRequest CreateCollapsedHeightRequest(
+        TerminalCollapsedHeightChangePhase phase, double requestedHeightDip, double lastSavedHeightDip)
+    {
+        return new TerminalCollapsedHeightChangeRequest(TerminalCollapsedHeightChangeRequestId.CreateNew(), phase,
+                                                        requestedHeightDip, lastSavedHeightDip);
     }
 
     private static TerminalSettingsApplyResult TerminalApplied(TerminalSettings settings, AppSettings previous)

@@ -15,7 +15,7 @@ public sealed class SavedTerminalTabsIntegrationTests
         StringAssert.Contains(source,
                               "new TerminalSavedTabService(savedTabStore, sessionCoordinator, diagnosticLog)");
         StringAssert.Contains(source,
-                              "new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence, savedTabService)");
+                              "new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence, savedTabService,");
 
         var viewShutdown = source.IndexOf("await terminalView.DisposeAsync();", StringComparison.Ordinal);
         var savedTabsShutdown = source.IndexOf("await savedTabService.DisposeAsync();", StringComparison.Ordinal);
@@ -44,6 +44,9 @@ public sealed class SavedTerminalTabsIntegrationTests
 
         StringAssert.Contains(source, "savedTabLaunchRequestIds.Add(request.RequestId) == false");
         StringAssert.Contains(source, "rendererGeneration == requestRendererGeneration");
+        StringAssert.Contains(source, "rendererOperationCancellation.Token");
+        StringAssert.Contains(source, "InvalidateRendererOperations();");
+        StringAssert.Contains(source, "case RendererMessageType.ChangeCollapsedHeight:");
         StringAssert.Contains(source, "RendererProtocol.SerializeSavedTabsSnapshot(");
         StringAssert.Contains(source, "await InitializeSavedTabsAsync(cancellationToken);");
         StringAssert.Contains(source, "await StartWorkspaceAsync(terminalOptions.RestoreWorkspaceOnLaunch,");

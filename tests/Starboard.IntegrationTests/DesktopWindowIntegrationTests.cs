@@ -236,6 +236,16 @@ public sealed class DesktopWindowIntegrationTests
                 Width = 900,
                 WindowStyle = WindowStyle.None,
             };
+            System.Windows.Shell.WindowChrome.SetWindowChrome(
+                window,
+                new System.Windows.Shell.WindowChrome
+                {
+                    CaptionHeight = 0,
+                    CornerRadius = new CornerRadius(0),
+                    GlassFrameThickness = new Thickness(0),
+                    ResizeBorderThickness = new Thickness(0),
+                    UseAeroCaptionButtons = false,
+                });
             window.Show();
 
             var windowHandle = new WindowInteropHelper(window).Handle;

@@ -24,6 +24,7 @@ internal partial class SettingsWindow : Window, ISettingsWindow
         BuildInfoText.Text = buildInfo.DisplayText;
         EditorContent.Content = session.Content;
         applicationService.StatusChanged += HandleStatusChanged;
+        applicationService.CollapsedHeightChanged += HandleCollapsedHeightChanged;
         Closing += HandleClosing;
         Closed += HandleClosed;
         UpdateStatus();
@@ -83,9 +84,21 @@ internal partial class SettingsWindow : Window, ISettingsWindow
         _ = eventArguments;
         isClosed = true;
         applicationService.StatusChanged -= HandleStatusChanged;
+        applicationService.CollapsedHeightChanged -= HandleCollapsedHeightChanged;
         Closing -= HandleClosing;
         Closed -= HandleClosed;
         EditorContent.Content = null;
+    }
+
+    private void HandleCollapsedHeightChanged(double collapsedHeightDip)
+    {
+        if (Dispatcher.CheckAccess() == false)
+        {
+            _ = Dispatcher.BeginInvoke(() => session.SynchronizeCollapsedHeight(collapsedHeightDip));
+            return;
+        }
+
+        session.SynchronizeCollapsedHeight(collapsedHeightDip);
     }
 
     private void UpdateStatus()

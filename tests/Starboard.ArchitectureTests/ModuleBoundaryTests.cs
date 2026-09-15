@@ -157,6 +157,35 @@ public sealed class ModuleBoundaryTests
                                       typeof(CancellationToken),
                                   },
                                   callback.GetParameters().Select(parameter => parameter.ParameterType).ToArray());
+
+        var requestMethod = typeof(TerminalModule).GetMethod(
+            nameof(TerminalModule.RequestCollapsedHeightChangeAsync), BindingFlags.Instance | BindingFlags.Public);
+        Assert.IsNotNull(requestMethod);
+        Assert.AreEqual(typeof(ValueTask<TerminalCollapsedHeightChangeResult>), requestMethod.ReturnType);
+        CollectionAssert.AreEqual(new[]
+                                  {
+                                      typeof(TerminalCollapsedHeightChangeRequest),
+                                      typeof(CancellationToken),
+                                  },
+                                  requestMethod.GetParameters().Select(parameter => parameter.ParameterType).ToArray());
+    }
+
+    [TestMethod]
+    public void HostCoordinatesPanelResizeThroughModuleContractsAndResultBearingWindowHook()
+    {
+        var root = FindSolutionRoot();
+        var coordinatorPath = Path.Combine(root, "src", "Starboard.Windows", "Composition", "AppCoordinator.cs");
+        var mainWindowPath = Path.Combine(root, "src", "Starboard.Windows", "Shell", "MainWindow.xaml.cs");
+        var coordinatorSource = File.ReadAllText(coordinatorPath);
+        var mainWindowSource = File.ReadAllText(mainWindowPath);
+
+        StringAssert.Contains(coordinatorSource,
+                              "desktopIntegrationModule.PanelCollapsedHeightChangeRequested +=");
+        StringAssert.Contains(coordinatorSource, "terminalModule.RequestCollapsedHeightChangeAsync");
+        StringAssert.Contains(mainWindowSource, "module.HandleWindowMessage(windowMessage, out result)");
+        StringAssert.Contains(mainWindowSource, "return result;");
+        Assert.IsFalse(coordinatorSource.Contains("WM_SIZING", StringComparison.Ordinal));
+        Assert.IsFalse(coordinatorSource.Contains("wsl.exe", StringComparison.OrdinalIgnoreCase));
     }
 
     [TestMethod]

@@ -23,8 +23,11 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
     private readonly Action<AppSettings> applyHostAppearance;
     private readonly IDiagnosticLog diagnosticLog;
     private readonly SemaphoreSlim applyLock = new(1, 1);
+    private readonly CancellationTokenSource disposalCancellation = new();
     private AppSettings persistedSettings;
     private AppSettings effectiveSettings;
+    private TerminalCollapsedHeightChangeRequestId? activeCollapsedHeightRequestId;
+    private TerminalCollapsedHeightChangeResult? completedCollapsedHeightChange;
     private bool? pendingWorkspacePersistenceState;
     private bool isDisposed;
 
@@ -74,6 +77,8 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
 
     internal event EventHandler? StatusChanged;
 
+    internal event Action<double>? CollapsedHeightChanged;
+
     internal AppSettings PersistedSettings => persistedSettings;
 
     internal AppSettings EffectiveSettings => effectiveSettings;
@@ -110,10 +115,65 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
         ArgumentNullException.ThrowIfNull(requestedSettings);
-        await applyLock.WaitAsync(cancellationToken);
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, disposalCancellation.Token);
+        await applyLock.WaitAsync(linkedCancellation.Token);
         try
         {
-            return await ApplyCoreAsync(requestedSettings, cancellationToken);
+            return await ApplyCoreAsync(requestedSettings, linkedCancellation.Token);
+        }
+        finally
+        {
+            applyLock.Release();
+        }
+    }
+
+    internal async ValueTask<TerminalCollapsedHeightChangeResult> ApplyCollapsedHeightChangeAsync(
+        TerminalCollapsedHeightChangeRequest request, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        ArgumentNullException.ThrowIfNull(request);
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, disposalCancellation.Token);
+        await applyLock.WaitAsync(linkedCancellation.Token);
+        try
+        {
+            linkedCancellation.Token.ThrowIfCancellationRequested();
+            if (request.Phase == TerminalCollapsedHeightChangePhase.Commit &&
+                completedCollapsedHeightChange?.RequestId == request.RequestId)
+            {
+                return completedCollapsedHeightChange;
+            }
+
+            if (request.LastSavedHeightDip != persistedSettings.CollapsedHeightDip)
+            {
+                return CreateStaleCollapsedHeightResult(request);
+            }
+
+            if (request.Phase == TerminalCollapsedHeightChangePhase.Preview)
+            {
+                activeCollapsedHeightRequestId = request.RequestId;
+                completedCollapsedHeightChange = null;
+
+                return new TerminalCollapsedHeightChangeResult(request.RequestId,
+                                                               TerminalCollapsedHeightChangeStatus.Applied,
+                                                               request.RequestedHeightDip);
+            }
+
+            if (activeCollapsedHeightRequestId is { } activeRequestId && activeRequestId != request.RequestId)
+            {
+                return CreateStaleCollapsedHeightResult(request);
+            }
+
+            activeCollapsedHeightRequestId = request.RequestId;
+            var requestedSettings = persistedSettings with { CollapsedHeightDip = request.RequestedHeightDip };
+            var applyResult = await ApplyCoreAsync(requestedSettings, linkedCancellation.Token);
+            var result = ToCollapsedHeightChangeResult(request, applyResult);
+            completedCollapsedHeightChange = result;
+            activeCollapsedHeightRequestId = null;
+            CollapsedHeightChanged?.Invoke(result.AppliedHeightDip);
+
+            return result;
         }
         finally
         {
@@ -129,7 +189,8 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         }
 
         isDisposed = true;
-        applyLock.Dispose();
+        disposalCancellation.Cancel();
+        disposalCancellation.Dispose();
     }
 
     internal static TerminalSettings ToTerminalSettings(AppSettings settings)
@@ -183,6 +244,7 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
     private async Task<PreferenceApplyResult> ApplyCoreAsync(AppSettings requestedSettings,
                                                              CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var request = new PreferenceApplyRequest(persistedSettings, requestedSettings);
         var failures = new List<PreferenceApplyFailure>();
         if (TryValidateRequest(requestedSettings, out var validationFailure) == false)
@@ -236,6 +298,7 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         try
         {
             await persistSettingsAsync(requestedSettings, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
         }
         catch (Exception exception)
         {
@@ -252,6 +315,34 @@ internal sealed class SettingsApplicationService : ISettingsEditorSaveHandler, I
         effectiveSettings = requestedSettings;
 
         return Complete(request, PreferenceApplyStatus.Applied, effectiveSettings, failures);
+    }
+
+    private TerminalCollapsedHeightChangeResult CreateStaleCollapsedHeightResult(
+        TerminalCollapsedHeightChangeRequest request)
+    {
+        return new TerminalCollapsedHeightChangeResult(
+            request.RequestId, TerminalCollapsedHeightChangeStatus.Reverted, persistedSettings.CollapsedHeightDip,
+            "패널 높이가 다른 설정 변경으로 갱신되어 마지막 저장값을 유지했습니다.");
+    }
+
+    private TerminalCollapsedHeightChangeResult ToCollapsedHeightChangeResult(
+        TerminalCollapsedHeightChangeRequest request, PreferenceApplyResult applyResult)
+    {
+        if (applyResult.Succeeded == true)
+        {
+            return new TerminalCollapsedHeightChangeResult(request.RequestId,
+                                                           TerminalCollapsedHeightChangeStatus.Saved,
+                                                           applyResult.PersistedSettings.CollapsedHeightDip);
+        }
+
+        var failureMessage = StatusMessage ?? "패널 높이를 저장하지 못했습니다.";
+        var status = applyResult.Status == PreferenceApplyStatus.FailedAndRestored
+            ? TerminalCollapsedHeightChangeStatus.Reverted
+            : TerminalCollapsedHeightChangeStatus.Failed;
+
+        return new TerminalCollapsedHeightChangeResult(request.RequestId, status,
+                                                       applyResult.EffectiveSettings.CollapsedHeightDip,
+                                                       failureMessage);
     }
 
     private async Task ApplyWorkspacePersistenceAsync(bool enabled, CancellationToken cancellationToken)

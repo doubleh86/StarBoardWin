@@ -67,7 +67,8 @@ public partial class MainWindow : Window
         }
 
         var windowMessage = new WindowMessage(windowHandle, message, unchecked((nuint)wordParameter), longParameter);
-        if (module.HandleWindowMessage(windowMessage) == true)
+        nint result = 0;
+        if (module.HandleWindowMessage(windowMessage, out result) == true)
         {
             handled = true;
         }
@@ -77,7 +78,7 @@ public partial class MainWindow : Window
             _ = Dispatcher.BeginInvoke(RefreshDesktopIntegrationAfterDpiChange);
         }
 
-        return 0;
+        return result;
     }
 
     private void HandleActivated(object? sender, EventArgs eventArguments)

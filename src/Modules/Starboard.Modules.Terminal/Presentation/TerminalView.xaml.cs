@@ -25,6 +25,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly TerminalSessionCoordinator sessionCoordinator;
     private readonly TerminalWorkspacePersistence workspacePersistence;
     private readonly TerminalSavedTabService savedTabService;
+    private readonly TerminalCollapsedHeightChangeCallback collapsedHeightChangeCallback;
     private readonly TerminalUrlOpenService urlOpenService;
     private readonly TerminalLaunchProfileCatalog launchProfileCatalog;
     private readonly Lock outputLock = new();
@@ -36,6 +37,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly HashSet<TerminalSavedTabRequestId> savedTabLaunchRequestIds = [];
     private readonly Dictionary<TerminalLaunchProfileId, TerminalLaunchProfile> launchProfiles = [];
     private readonly CancellationTokenSource lifetimeCancellation = new();
+    private CancellationTokenSource rendererOperationCancellation = new();
 
     private TaskCompletionSource rendererReady = CreateCompletionSource();
     private TerminalSettings? settings;
@@ -49,17 +51,21 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private bool isDisposed;
     private Guid rendererInstanceId;
     private long rendererGeneration;
+    private long collapsedHeightChangeSequence;
     private int columns = 80;
     private int rows = 24;
 
     internal TerminalView(IDiagnosticLog diagnosticLog, TerminalSessionCoordinator sessionCoordinator,
                           TerminalWorkspacePersistence workspacePersistence,
-                          TerminalSavedTabService savedTabService)
+                          TerminalSavedTabService savedTabService,
+                          TerminalCollapsedHeightChangeCallback collapsedHeightChangeCallback)
     {
         this.diagnosticLog = diagnosticLog;
         this.sessionCoordinator = sessionCoordinator;
         this.workspacePersistence = workspacePersistence;
         this.savedTabService = savedTabService;
+        ArgumentNullException.ThrowIfNull(collapsedHeightChangeCallback);
+        this.collapsedHeightChangeCallback = collapsedHeightChangeCallback;
         urlOpenService = new TerminalUrlOpenService(new TerminalExternalUrlLauncher());
         launchProfileCatalog = new TerminalLaunchProfileCatalog(new WslProcessRunner(), diagnosticLog);
         sessionCoordinator.WorkspaceChanged += Session_WorkspaceChanged;
@@ -221,6 +227,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         CancelPendingSafetyConfirmation(sendRendererCancellation: false);
         isDisposed = true;
+        collapsedHeightChangeSequence++;
+        rendererOperationCancellation.Cancel();
         lifetimeCancellation.Cancel();
         sessionCoordinator.WorkspaceChanged -= Session_WorkspaceChanged;
         sessionCoordinator.OutputReceived -= Session_OutputReceived;
@@ -229,6 +237,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         workspacePersistence.StatusChanged -= WorkspacePersistence_StatusChanged;
         Renderer.Dispose();
         rendererSessionGenerations.Clear();
+        rendererOperationCancellation.Dispose();
         lifetimeCancellation.Dispose();
 
         return ValueTask.CompletedTask;
@@ -311,6 +320,18 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         return workspacePersistence.SetEnabledAsync(enabled, cancellationToken);
     }
 
+    internal ValueTask<TerminalCollapsedHeightChangeResult> RequestCollapsedHeightChangeAsync(
+        TerminalCollapsedHeightChangeRequest request, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var task = ApplyCollapsedHeightChangeAsync(request, rendererGeneration, rendererInstanceId,
+                                                   rendererScoped: false, cancellationToken);
+
+        return new ValueTask<TerminalCollapsedHeightChangeResult>(task);
+    }
+
     private async Task StartWorkspaceAsync(bool restoreEnabled, CancellationToken cancellationToken)
     {
         var shell = defaultShell
@@ -345,17 +366,18 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
 
         launchProfileDiscoveryStarted = true;
-        _ = RefreshLaunchProfilesAsync(rendererGeneration);
+        _ = RefreshLaunchProfilesAsync(rendererGeneration, rendererOperationCancellation.Token);
     }
 
-    private async Task RefreshLaunchProfilesAsync(long requestRendererGeneration)
+    private async Task RefreshLaunchProfilesAsync(long requestRendererGeneration,
+                                                  CancellationToken cancellationToken)
     {
         try
         {
-            var result = await launchProfileCatalog.QueryAsync(lifetimeCancellation.Token);
+            var result = await launchProfileCatalog.QueryAsync(cancellationToken);
             PublishLaunchProfiles(result, requestRendererGeneration);
         }
-        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested == true)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested == true)
         {
             return;
         }
@@ -379,24 +401,27 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                                        long? requestRendererGeneration = null)
     {
         ArgumentNullException.ThrowIfNull(result);
-        launchProfiles.Clear();
-        foreach (var profile in result.Profiles)
-        {
-            launchProfiles[profile.ProfileId] = profile;
-        }
-
         if (isDisposed == true || rendererFailed == true || Renderer.CoreWebView2 is null ||
             (requestRendererGeneration.HasValue == true && rendererGeneration != requestRendererGeneration.Value))
         {
             return;
         }
 
+        launchProfiles.Clear();
+        foreach (var profile in result.Profiles)
+        {
+            launchProfiles[profile.ProfileId] = profile;
+        }
+
         PostRendererMessage(RendererProtocol.SerializeLaunchProfileQueryResult(result));
     }
 
-    private async Task LaunchProfileAsync(TerminalNewTabRequest request)
+    private async Task LaunchProfileAsync(TerminalNewTabRequest request, long requestRendererGeneration,
+                                          Guid requestRendererInstanceId, CancellationToken cancellationToken)
     {
-        if (isDisposed == true || launchProfiles.TryGetValue(request.ProfileId, out var profile) == false)
+        if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == false ||
+            launchProfiles.TryGetValue(request.ProfileId, out var profile) == false)
         {
             return;
         }
@@ -404,14 +429,19 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         try
         {
             CancelPendingSafetyConfirmation(sendRendererCancellation: true);
-            _ = await sessionCoordinator.LaunchProfileAsync(request, profile, launchProfileCatalog.Resolve,
-                                                            lifetimeCancellation.Token);
+            var result = await sessionCoordinator.LaunchProfileAsync(request, profile, launchProfileCatalog.Resolve,
+                                                                     cancellationToken);
+            if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                         cancellationToken) == false)
+            {
+                await RemoveStaleLaunchedTabAsync(result.Tab?.SessionId);
+            }
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException or OperationCanceledException or
             Win32Exception or UnauthorizedAccessException)
         {
-            if (isDisposed == false)
+            if (isDisposed == false && cancellationToken.IsCancellationRequested == false)
             {
                 diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "LaunchProfile",
                                     "A terminal launch profile could not start a tab.", exception);
@@ -419,9 +449,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
-    private async Task DuplicateTabAsync(TerminalTabDuplicateRequest request)
+    private async Task DuplicateTabAsync(TerminalTabDuplicateRequest request, long requestRendererGeneration,
+                                         Guid requestRendererInstanceId, CancellationToken cancellationToken)
     {
-        if (isDisposed == true)
+        if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == false)
         {
             return;
         }
@@ -429,19 +461,84 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         try
         {
             CancelPendingSafetyConfirmation(sendRendererCancellation: true);
-            _ = await sessionCoordinator.DuplicateAsync(request, launchProfileCatalog.Resolve,
-                                                        lifetimeCancellation.Token);
+            var result = await sessionCoordinator.DuplicateAsync(request, launchProfileCatalog.Resolve,
+                                                                 cancellationToken);
+            if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                         cancellationToken) == false)
+            {
+                await RemoveStaleLaunchedTabAsync(result.Tab?.SessionId);
+            }
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException or OperationCanceledException or
             Win32Exception or UnauthorizedAccessException)
         {
-            if (isDisposed == false)
+            if (isDisposed == false && cancellationToken.IsCancellationRequested == false)
             {
                 diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "DuplicateTab",
                                     "A terminal tab configuration could not be duplicated.", exception);
             }
         }
+    }
+
+    private async Task<TerminalCollapsedHeightChangeResult> ApplyCollapsedHeightChangeAsync(
+        TerminalCollapsedHeightChangeRequest request, long requestRendererGeneration,
+        Guid requestRendererInstanceId, bool rendererScoped, CancellationToken cancellationToken)
+    {
+        var requestSequence = ++collapsedHeightChangeSequence;
+        if (rendererScoped == true &&
+            CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == false)
+        {
+            return CreateUnavailableCollapsedHeightResult(request);
+        }
+
+        TerminalCollapsedHeightChangeResult result;
+        try
+        {
+            result = await collapsedHeightChangeCallback(request, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested == true)
+        {
+            return CreateUnavailableCollapsedHeightResult(request);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException or UnauthorizedAccessException or
+            ObjectDisposedException)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "ChangeCollapsedHeight",
+                                "The collapsed terminal height request failed without stopping active sessions.",
+                                exception);
+            result = new TerminalCollapsedHeightChangeResult(
+                request.RequestId, TerminalCollapsedHeightChangeStatus.Reverted, request.LastSavedHeightDip,
+                "패널 높이를 변경하지 못해 마지막 저장값을 유지했습니다.");
+        }
+
+        if (requestSequence == collapsedHeightChangeSequence &&
+            CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == true)
+        {
+            PostRendererMessage(RendererProtocol.SerializeCollapsedHeightChangeResult(result));
+        }
+
+        return result;
+    }
+
+    private bool CanApplyRendererCallback(long requestRendererGeneration, Guid requestRendererInstanceId,
+                                          CancellationToken cancellationToken)
+    {
+        return isDisposed == false && cancellationToken.IsCancellationRequested == false &&
+               rendererFailed == false && Renderer.CoreWebView2 is not null &&
+               rendererGeneration == requestRendererGeneration && requestRendererInstanceId != Guid.Empty &&
+               requestRendererInstanceId == rendererInstanceId;
+    }
+
+    private static TerminalCollapsedHeightChangeResult CreateUnavailableCollapsedHeightResult(
+        TerminalCollapsedHeightChangeRequest request)
+    {
+        return new TerminalCollapsedHeightChangeResult(
+            request.RequestId, TerminalCollapsedHeightChangeStatus.Failed, request.LastSavedHeightDip,
+            "패널 높이 변경 요청이 만료되었습니다.");
     }
 
     private void WorkspacePersistence_StatusChanged(TerminalWorkspaceSaveStatus status)
@@ -492,13 +589,23 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             case RendererMessageType.NewTab:
                 if (message.NewTabRequest is { } newTabRequest)
                 {
-                    _ = LaunchProfileAsync(newTabRequest);
+                    _ = LaunchProfileAsync(newTabRequest, rendererGeneration, rendererInstanceId,
+                                           rendererOperationCancellation.Token);
                 }
                 break;
             case RendererMessageType.DuplicateTab:
                 if (message.TabDuplicateRequest is { } tabDuplicateRequest)
                 {
-                    _ = DuplicateTabAsync(tabDuplicateRequest);
+                    _ = DuplicateTabAsync(tabDuplicateRequest, rendererGeneration, rendererInstanceId,
+                                          rendererOperationCancellation.Token);
+                }
+                break;
+            case RendererMessageType.ChangeCollapsedHeight:
+                if (message.CollapsedHeightChangeRequest is { } collapsedHeightChangeRequest)
+                {
+                    _ = ApplyCollapsedHeightChangeAsync(collapsedHeightChangeRequest, rendererGeneration,
+                                                        rendererInstanceId, rendererScoped: true,
+                                                        rendererOperationCancellation.Token);
                 }
                 break;
             case RendererMessageType.SelectSession:
@@ -599,25 +706,29 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             case RendererMessageType.CreateSavedTab:
                 if (message.SavedTabCreateRequest is { } createSavedTabRequest)
                 {
-                    _ = CreateSavedTabAsync(createSavedTabRequest, rendererGeneration);
+                    _ = CreateSavedTabAsync(createSavedTabRequest, rendererGeneration, rendererInstanceId,
+                                            rendererOperationCancellation.Token);
                 }
                 break;
             case RendererMessageType.UpdateSavedTab:
                 if (message.SavedTabUpdateRequest is { } updateSavedTabRequest)
                 {
-                    _ = UpdateSavedTabAsync(updateSavedTabRequest, rendererGeneration);
+                    _ = UpdateSavedTabAsync(updateSavedTabRequest, rendererGeneration, rendererInstanceId,
+                                            rendererOperationCancellation.Token);
                 }
                 break;
             case RendererMessageType.DeleteSavedTab:
                 if (message.SavedTabDeleteRequest is { } deleteSavedTabRequest)
                 {
-                    _ = DeleteSavedTabAsync(deleteSavedTabRequest, rendererGeneration);
+                    _ = DeleteSavedTabAsync(deleteSavedTabRequest, rendererGeneration, rendererInstanceId,
+                                            rendererOperationCancellation.Token);
                 }
                 break;
             case RendererMessageType.LaunchSavedTab:
                 if (message.SavedTabLaunchRequest is { } launchSavedTabRequest)
                 {
-                    StartSavedTabLaunch(launchSavedTabRequest, rendererGeneration);
+                    StartSavedTabLaunch(launchSavedTabRequest, rendererGeneration, rendererInstanceId,
+                                        rendererOperationCancellation.Token);
                 }
                 break;
             case RendererMessageType.CancelSavedTabLaunch:
@@ -631,99 +742,165 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
-    private async Task CreateSavedTabAsync(TerminalSavedTabCreateRequest request, long requestRendererGeneration)
+    private async Task CreateSavedTabAsync(TerminalSavedTabCreateRequest request, long requestRendererGeneration,
+                                           Guid requestRendererInstanceId, CancellationToken cancellationToken)
     {
-        try
+        if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == false)
         {
-            var result = await savedTabService.CreateAsync(request, lifetimeCancellation.Token);
-            CompleteSavedTabOperation(result, requestRendererGeneration);
-        }
-        catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
-        {
-            HandleSavedTabCallbackException("CreateSavedTab", exception);
-        }
-    }
-
-    private async Task UpdateSavedTabAsync(TerminalSavedTabUpdateRequest request, long requestRendererGeneration)
-    {
-        try
-        {
-            var result = await savedTabService.UpdateAsync(request, lifetimeCancellation.Token);
-            CompleteSavedTabOperation(result, requestRendererGeneration);
-        }
-        catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
-        {
-            HandleSavedTabCallbackException("UpdateSavedTab", exception);
-        }
-    }
-
-    private async Task DeleteSavedTabAsync(TerminalSavedTabDeleteRequest request, long requestRendererGeneration)
-    {
-        try
-        {
-            var result = await savedTabService.DeleteAsync(request, lifetimeCancellation.Token);
-            CompleteSavedTabOperation(result, requestRendererGeneration);
-        }
-        catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
-        {
-            HandleSavedTabCallbackException("DeleteSavedTab", exception);
-        }
-    }
-
-    private void CompleteSavedTabOperation(TerminalSavedTabOperationResult result, long requestRendererGeneration)
-    {
-        if (CanSendSavedTabResult(requestRendererGeneration) == true)
-        {
-            PostRendererMessage(RendererProtocol.SerializeSavedTabOperationResult(
-                result, sessionCoordinator.Snapshot.Tabs.Count));
             return;
         }
 
-        SyncSavedTabs();
+        try
+        {
+            var result = await savedTabService.CreateAsync(request, cancellationToken);
+            CompleteSavedTabOperation(result, requestRendererGeneration, requestRendererInstanceId,
+                                      cancellationToken);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
+        {
+            HandleSavedTabCallbackException("CreateSavedTab", exception, requestRendererGeneration,
+                                            requestRendererInstanceId, cancellationToken);
+        }
     }
 
-    private void StartSavedTabLaunch(TerminalSavedTabLaunchRequest request, long requestRendererGeneration)
+    private async Task UpdateSavedTabAsync(TerminalSavedTabUpdateRequest request, long requestRendererGeneration,
+                                           Guid requestRendererInstanceId, CancellationToken cancellationToken)
     {
+        if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == false)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await savedTabService.UpdateAsync(request, cancellationToken);
+            CompleteSavedTabOperation(result, requestRendererGeneration, requestRendererInstanceId,
+                                      cancellationToken);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
+        {
+            HandleSavedTabCallbackException("UpdateSavedTab", exception, requestRendererGeneration,
+                                            requestRendererInstanceId, cancellationToken);
+        }
+    }
+
+    private async Task DeleteSavedTabAsync(TerminalSavedTabDeleteRequest request, long requestRendererGeneration,
+                                           Guid requestRendererInstanceId, CancellationToken cancellationToken)
+    {
+        if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == false)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await savedTabService.DeleteAsync(request, cancellationToken);
+            CompleteSavedTabOperation(result, requestRendererGeneration, requestRendererInstanceId,
+                                      cancellationToken);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
+        {
+            HandleSavedTabCallbackException("DeleteSavedTab", exception, requestRendererGeneration,
+                                            requestRendererInstanceId, cancellationToken);
+        }
+    }
+
+    private void CompleteSavedTabOperation(TerminalSavedTabOperationResult result, long requestRendererGeneration,
+                                           Guid requestRendererInstanceId, CancellationToken cancellationToken)
+    {
+        if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == true)
+        {
+            PostRendererMessage(RendererProtocol.SerializeSavedTabOperationResult(
+                result, sessionCoordinator.Snapshot.Tabs.Count));
+        }
+    }
+
+    private void StartSavedTabLaunch(TerminalSavedTabLaunchRequest request, long requestRendererGeneration,
+                                     Guid requestRendererInstanceId, CancellationToken cancellationToken)
+    {
+        if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == false)
+        {
+            return;
+        }
+
         if (savedTabLaunchRequestIds.Add(request.RequestId) == false)
         {
             var duplicate = new TerminalSavedTabLaunchResult(
                 request.RequestId, request.SavedTabId, TerminalSavedTabLaunchStatus.DuplicateRequest, null, null);
-            CompleteSavedTabLaunch(duplicate, requestRendererGeneration);
+            CompleteSavedTabLaunch(duplicate, requestRendererGeneration, requestRendererInstanceId,
+                                   cancellationToken);
             return;
         }
 
-        _ = LaunchSavedTabAsync(request, requestRendererGeneration);
+        _ = LaunchSavedTabAsync(request, requestRendererGeneration, requestRendererInstanceId, cancellationToken);
     }
 
-    private async Task LaunchSavedTabAsync(TerminalSavedTabLaunchRequest request, long requestRendererGeneration)
+    private async Task LaunchSavedTabAsync(TerminalSavedTabLaunchRequest request, long requestRendererGeneration,
+                                           Guid requestRendererInstanceId, CancellationToken cancellationToken)
     {
         try
         {
-            var result = await savedTabService.LaunchAsync(request, lifetimeCancellation.Token);
-            CompleteSavedTabLaunch(result, requestRendererGeneration);
+            var result = await savedTabService.LaunchAsync(request, cancellationToken);
+            if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                         cancellationToken) == false)
+            {
+                await RemoveStaleLaunchedSessionAsync(result.Session);
+                return;
+            }
+
+            CompleteSavedTabLaunch(result, requestRendererGeneration, requestRendererInstanceId,
+                                   cancellationToken);
         }
         catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException)
         {
-            HandleSavedTabCallbackException("LaunchSavedTab", exception);
+            HandleSavedTabCallbackException("LaunchSavedTab", exception, requestRendererGeneration,
+                                            requestRendererInstanceId, cancellationToken);
         }
     }
 
-    private void CompleteSavedTabLaunch(TerminalSavedTabLaunchResult result, long requestRendererGeneration)
+    private void CompleteSavedTabLaunch(TerminalSavedTabLaunchResult result, long requestRendererGeneration,
+                                        Guid requestRendererInstanceId, CancellationToken cancellationToken)
     {
-        if (CanSendSavedTabResult(requestRendererGeneration) == true)
+        if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == true)
         {
             PostRendererMessage(RendererProtocol.SerializeSavedTabLaunchResult(
                 result, sessionCoordinator.Snapshot.Tabs.Count));
+        }
+    }
+
+    private async Task RemoveStaleLaunchedTabAsync(TerminalSessionId? sessionId)
+    {
+        if (sessionId is null)
+        {
             return;
         }
 
-        SyncSavedTabs();
+        foreach (var state in sessionCoordinator.NewOutputState.States)
+        {
+            if (state.Session.SessionId == sessionId.Value.Value)
+            {
+                await RemoveStaleLaunchedSessionAsync(state.Session);
+                return;
+            }
+        }
     }
 
-    private bool CanSendSavedTabResult(long requestRendererGeneration)
+    private async Task RemoveStaleLaunchedSessionAsync(TerminalSessionReference? session)
     {
-        return isDisposed == false && rendererFailed == false && Renderer.CoreWebView2 is not null &&
-               rendererGeneration == requestRendererGeneration;
+        if (session is not { } currentSession || sessionCoordinator.IsCurrentSession(currentSession) == false ||
+            lifetimeCancellation.IsCancellationRequested == true)
+        {
+            return;
+        }
+
+        _ = await sessionCoordinator.CloseAsync(new TerminalSessionId(currentSession.SessionId),
+                                                lifetimeCancellation.Token);
     }
 
     private void SyncSavedTabs()
@@ -738,9 +915,12 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             savedTabService.Snapshot, sessionCoordinator.Snapshot.Tabs.Count));
     }
 
-    private void HandleSavedTabCallbackException(string operation, Exception exception)
+    private void HandleSavedTabCallbackException(string operation, Exception exception,
+                                                 long requestRendererGeneration, Guid requestRendererInstanceId,
+                                                 CancellationToken cancellationToken)
     {
-        if (isDisposed == false && lifetimeCancellation.IsCancellationRequested == false)
+        if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == true)
         {
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", operation,
                                 "A saved terminal tab renderer request could not be completed.", exception);
@@ -834,6 +1014,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private void Core_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs eventArgs)
     {
         _ = sender;
+        InvalidateRendererOperations();
         CancelPendingSafetyConfirmation(sendRendererCancellation: false);
         rendererInstanceId = Guid.Empty;
         Renderer.AllowExternalDrop = false;
@@ -847,6 +1028,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private void Core_ProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs eventArgs)
     {
         _ = sender;
+        InvalidateRendererOperations();
         diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "RendererProcess",
                             $"The renderer process failed ({eventArgs.ProcessFailedKind}).");
         CancelPendingSafetyConfirmation(sendRendererCancellation: false);
@@ -856,6 +1038,20 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         rendererSessionGenerations.Clear();
         appearanceState?.MarkRendererUnavailable();
         ShowError("Terminal renderer가 중단됐습니다. shell session은 유지되며 renderer를 다시 연결할 수 있습니다.");
+    }
+
+    private void InvalidateRendererOperations()
+    {
+        if (isDisposed == true)
+        {
+            return;
+        }
+
+        collapsedHeightChangeSequence++;
+        rendererGeneration++;
+        rendererOperationCancellation.Cancel();
+        rendererOperationCancellation.Dispose();
+        rendererOperationCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCancellation.Token);
     }
 
     private async void RetryButton_Click(object sender, RoutedEventArgs eventArgs)
@@ -1671,6 +1867,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
         catch (Exception exception) when (exception is InvalidOperationException or COMException)
         {
+            InvalidateRendererOperations();
             CancelPendingSafetyConfirmation(sendRendererCancellation: false);
             rendererFailed = true;
             rendererInstanceId = Guid.Empty;

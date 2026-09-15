@@ -145,6 +145,24 @@ public sealed class SettingsEditorViewModelTests
         Assert.IsTrue(outcome.Settings.CommandCompletionNotificationsEnabled);
     }
 
+    [TestMethod]
+    public async Task SynchronizeCollapsedHeightUpdatesDraftAndCancellationSnapshot()
+    {
+        var saveHandler = new RecordingSaveHandler();
+        var viewModel = new SettingsEditorViewModel(new AppSettings { CollapsedHeightDip = 200 }, saveHandler)
+        {
+            CollapsedHeightText = "240",
+        };
+
+        viewModel.SynchronizeCollapsedHeight(320);
+        viewModel.Cancel();
+        var outcome = await viewModel.Completion;
+
+        Assert.AreEqual("320", viewModel.CollapsedHeightText);
+        Assert.AreEqual(320, outcome.Settings.CollapsedHeightDip);
+        Assert.AreEqual(0, saveHandler.SaveCount);
+    }
+
     private sealed class RecordingSaveHandler : ISettingsEditorSaveHandler
     {
         public int SaveCount { get; private set; }
