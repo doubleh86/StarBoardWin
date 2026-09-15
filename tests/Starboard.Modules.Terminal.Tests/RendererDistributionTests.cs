@@ -77,10 +77,34 @@ public sealed class RendererDistributionTests
 
         Assert.IsTrue(html.IndexOf("id=\"session-tabs\"", StringComparison.Ordinal) <
                       html.IndexOf("id=\"new-tab\"", StringComparison.Ordinal));
-        StringAssert.Contains(styles, ".tab-list{display:flex;flex:1 1 auto");
+        StringAssert.Contains(styles, ".tab-list{display:flex;flex:0 1 auto;min-width:0;overflow-x:auto");
         StringAssert.Contains(styles, ".tab-item[data-selected=true]");
         StringAssert.Contains(styles, ".terminal-mount{background-color:var(--color-canvas)");
         StringAssert.Contains(styles, ".xterm{height:100%;padding:var(--space-xs) var(--space-sm) calc(var(--space-xs) + 6px)}");
+    }
+
+    [TestMethod]
+    public void BundledRendererKeepsTabControlsOutsideScrollableListAndAddsDefaultProfileTab()
+    {
+        var html = ReadRendererAsset("index.html");
+        var source = ReadRendererSource("index.ts");
+        var script = ReadRendererAsset("app.js");
+        var styles = ReadRendererAsset("app.css");
+        var tabListIndex = html.IndexOf("id=\"session-tabs\"", StringComparison.Ordinal);
+        var newTabIndex = html.IndexOf("id=\"new-tab\"", StringComparison.Ordinal);
+        var savedTabsIndex = html.IndexOf("id=\"saved-tabs\"", StringComparison.Ordinal);
+
+        Assert.IsTrue(tabListIndex >= 0);
+        Assert.IsTrue(newTabIndex > tabListIndex);
+        Assert.IsTrue(savedTabsIndex > newTabIndex);
+        StringAssert.Contains(styles, ".tab-list{display:flex;flex:0 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden");
+        StringAssert.Contains(styles, ".new-tab{width:32px;height:31px;flex:0 0 32px");
+        StringAssert.Contains(styles, ".saved-tabs{width:32px;height:31px;flex:0 0 32px");
+        StringAssert.Contains(source, "newTabButton.addEventListener(\"click\", () => {");
+        StringAssert.Contains(source, "launchDefaultProfile();");
+        StringAssert.Contains(source, "newTabButton.disabled === false");
+        StringAssert.Contains(source, "savedTabsButton.addEventListener(\"click\", () => {");
+        StringAssert.Contains(script, "new-tab");
     }
 
     [TestMethod]
@@ -94,7 +118,7 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(script, "compositionstart");
         StringAssert.Contains(script, "isComposing");
         StringAssert.Contains(script, "\\uD0ED \\uC774\\uB984 \\uBCC0\\uACBD");
-        StringAssert.Contains(styles, ".tab-list{display:flex;flex:1 1 auto");
+        StringAssert.Contains(styles, ".tab-list{display:flex;flex:0 1 auto;min-width:0;overflow-x:auto");
         StringAssert.Contains(styles, ".tab-item{display:grid;flex:0 0 auto;grid-template-columns:minmax(0,138px) 28px");
         StringAssert.Contains(styles, ".tab-name-dialog");
         Assert.IsFalse(styles.Contains(".tab-rename-input", StringComparison.Ordinal));
