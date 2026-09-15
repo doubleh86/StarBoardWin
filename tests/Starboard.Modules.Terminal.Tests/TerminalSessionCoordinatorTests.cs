@@ -10,9 +10,9 @@ namespace Starboard.Modules.Terminal.Tests;
 [TestClass]
 public sealed class TerminalSessionCoordinatorTests
 {
-    private static readonly ShellLaunchSpec TestShell = new("pwsh.exe", "-NoLogo", Path.GetTempPath());
+    private static readonly ShellLaunchSpec TestShell = new("pwsh.exe", ["-NoLogo"], Path.GetTempPath());
 
-    private static readonly ShellLaunchSpec UpdatedShell = new("powershell.exe", "-NoLogo", Path.GetTempPath());
+    private static readonly ShellLaunchSpec UpdatedShell = new("powershell.exe", ["-NoLogo"], Path.GetTempPath());
 
     [TestMethod]
     public async Task StartAsyncFirstTabStartsAndActivatesDedicatedSession()
@@ -115,7 +115,8 @@ public sealed class TerminalSessionCoordinatorTests
             Assert.AreEqual(3, factory.StartRequests.Count);
             Assert.AreEqual(Path.GetFullPath(startingDirectory), factory.StartRequests[2].Shell.WorkingDirectory);
             Assert.AreEqual(TestShell.ExecutablePath, factory.StartRequests[2].Shell.ExecutablePath);
-            Assert.AreEqual(TestShell.Arguments, factory.StartRequests[2].Shell.Arguments);
+            CollectionAssert.AreEqual(TestShell.Arguments.ToArray(),
+                                      factory.StartRequests[2].Shell.Arguments.ToArray());
         }
         finally
         {
@@ -631,7 +632,7 @@ public sealed class TerminalSessionCoordinatorTests
 
         var customFactory = new FakeTerminalSessionFactory();
         await using var customCoordinator = CreateCoordinator(customFactory);
-        var customShell = new ShellLaunchSpec("custom-shell.exe", string.Empty, Path.GetTempPath());
+        var customShell = new ShellLaunchSpec("custom-shell.exe", [], Path.GetTempPath());
         var customTab = await customCoordinator.StartAsync(customShell, null, null, ShellResolver.Resolve,
                                                            80, 24, CancellationToken.None);
         var customSession = FindOutputState(customCoordinator.NewOutputState, customTab.SessionId).Session;
@@ -710,6 +711,131 @@ public sealed class TerminalSessionCoordinatorTests
 
         Assert.AreEqual(2, factory.StartRequests.Count);
         Assert.AreEqual(2, factory.Sessions.Count);
+    }
+
+    [TestMethod]
+    public async Task LaunchProfileAsyncWslCreatesIndependentSessionAndIsolatesLaunchFailure()
+    {
+        var factory = new FakeTerminalSessionFactory
+        {
+            FailureStartNumber = 3,
+        };
+        await using var coordinator = CreateCoordinator(factory);
+        var source = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var sourceReference = FindOutputState(coordinator.NewOutputState, source.SessionId).Session;
+        var profile = TerminalLaunchProfile.CreateWsl("개발 Ubuntu");
+        var wslShell = new ShellLaunchSpec("C:\\Windows\\wsl.exe",
+                                           ["--distribution", "개발 Ubuntu", "--cd", "~"],
+                                           Path.GetTempPath());
+        var firstRequest = new TerminalNewTabRequest(
+            new TerminalTabRequestId(CreateGuid(501)), sourceReference, profile.ProfileId);
+
+        var launched = await coordinator.LaunchProfileAsync(firstRequest, profile, _ => wslShell,
+                                                            CancellationToken.None);
+        var failingRequest = new TerminalNewTabRequest(
+            new TerminalTabRequestId(CreateGuid(502)), sourceReference, profile.ProfileId);
+        var failed = await coordinator.LaunchProfileAsync(failingRequest, profile, _ => wslShell,
+                                                          CancellationToken.None);
+
+        Assert.AreEqual(TerminalTabLaunchStatus.Started, launched.Status);
+        Assert.IsNotNull(launched.Tab);
+        Assert.AreNotEqual(source.SessionId, launched.Tab.SessionId);
+        Assert.AreEqual(profile.ProfileId, launched.Tab.LaunchProfile?.ProfileId);
+        Assert.AreEqual(TerminalTabLaunchStatus.Failed, failed.Status);
+        Assert.AreEqual(TerminalSessionState.Running, FindTab(coordinator.Snapshot, source.SessionId).State);
+        Assert.AreEqual(0, factory.Sessions[0].DisposeCount);
+        CollectionAssert.AreEqual(wslShell.Arguments.ToArray(), factory.StartRequests[1].Shell.Arguments.ToArray());
+    }
+
+    [TestMethod]
+    public async Task DuplicateAsyncCopiesOnlyConfigurationAndRejectsRepeatedRequest()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var source = await coordinator.StartAsync(TestShell, TerminalShellKind.Pwsh, null, ShellResolver.Resolve,
+                                                  80, 24, CancellationToken.None);
+        Assert.IsTrue(coordinator.Rename(source.SessionId, "서버"));
+        var sourceReference = FindOutputState(coordinator.NewOutputState, source.SessionId).Session;
+        var request = new TerminalTabDuplicateRequest(new TerminalTabRequestId(CreateGuid(601)), sourceReference);
+
+        var duplicated = await coordinator.DuplicateAsync(request, _ => TestShell, CancellationToken.None);
+        var repeated = await coordinator.DuplicateAsync(request, _ => TestShell, CancellationToken.None);
+
+        Assert.AreEqual(TerminalTabLaunchStatus.Started, duplicated.Status);
+        Assert.IsNotNull(duplicated.Tab);
+        Assert.AreEqual("서버 (2)", duplicated.Tab.Name);
+        Assert.AreEqual(source.StartingDirectory, duplicated.Tab.StartingDirectory);
+        Assert.AreEqual(source.LaunchProfile?.ProfileId, duplicated.Tab.LaunchProfile?.ProfileId);
+        Assert.AreNotEqual(source.SessionId, duplicated.Tab.SessionId);
+        Assert.AreNotEqual(source.ConfigurationId, duplicated.Tab.ConfigurationId);
+        Assert.AreEqual(2, factory.Sessions.Count);
+        Assert.AreEqual(TerminalTabLaunchStatus.DuplicateRequest, repeated.Status);
+    }
+
+    [TestMethod]
+    public async Task ProfileRequestsAtCapacityAndAfterRestartRemovalOrDisposeNeverStartSession()
+    {
+        var profile = TerminalLaunchProfile.CreateBuiltIn(TerminalShellKind.Pwsh, "PowerShell 7");
+
+        var capacityFactory = new FakeTerminalSessionFactory();
+        await using var capacityCoordinator = CreateCoordinator(capacityFactory, maximumTabs: 1);
+        var capacitySource = await capacityCoordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var capacityReference = FindOutputState(capacityCoordinator.NewOutputState, capacitySource.SessionId).Session;
+        var capacityRequest = new TerminalNewTabRequest(new TerminalTabRequestId(CreateGuid(701)),
+                                                        capacityReference, profile.ProfileId);
+        var capacity = await capacityCoordinator.LaunchProfileAsync(capacityRequest, profile, _ => TestShell,
+                                                                    CancellationToken.None);
+        Assert.AreEqual(TerminalTabLaunchStatus.TabLimitReached, capacity.Status);
+        Assert.AreEqual(1, capacityFactory.StartRequests.Count);
+
+        var staleFactory = new FakeTerminalSessionFactory();
+        var staleCoordinator = CreateCoordinator(staleFactory);
+        var staleSource = await staleCoordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var staleReference = FindOutputState(staleCoordinator.NewOutputState, staleSource.SessionId).Session;
+        await staleCoordinator.RestartAsync(staleSource.SessionId, CancellationToken.None);
+        var restartedRequest = new TerminalTabDuplicateRequest(new TerminalTabRequestId(CreateGuid(702)),
+                                                               staleReference);
+        var restarted = await staleCoordinator.DuplicateAsync(restartedRequest, _ => TestShell,
+                                                               CancellationToken.None);
+        Assert.AreEqual(TerminalTabLaunchStatus.StaleSource, restarted.Status);
+
+        var removable = await staleCoordinator.AddAsync(CancellationToken.None);
+        var removedReference = FindOutputState(staleCoordinator.NewOutputState, removable.SessionId).Session;
+        staleFactory.Sessions[2].RaiseExit(0);
+        Assert.IsTrue(await staleCoordinator.CloseAsync(removable.SessionId, CancellationToken.None));
+        var removedRequest = new TerminalTabDuplicateRequest(new TerminalTabRequestId(CreateGuid(703)),
+                                                             removedReference);
+        var removed = await staleCoordinator.DuplicateAsync(removedRequest, _ => TestShell, CancellationToken.None);
+        Assert.AreEqual(TerminalTabLaunchStatus.StaleSource, removed.Status);
+
+        var currentReference = FindOutputState(staleCoordinator.NewOutputState, staleSource.SessionId).Session;
+        await staleCoordinator.DisposeAsync();
+        var disposedRequest = new TerminalTabDuplicateRequest(new TerminalTabRequestId(CreateGuid(704)),
+                                                              currentReference);
+        var disposed = await staleCoordinator.DuplicateAsync(disposedRequest, _ => TestShell,
+                                                              CancellationToken.None);
+        Assert.AreEqual(TerminalTabLaunchStatus.Unavailable, disposed.Status);
+        Assert.AreEqual(3, staleFactory.StartRequests.Count);
+    }
+
+    [TestMethod]
+    public async Task DuplicateAsyncAtDefaultEightTabLimitDoesNotCreateNinthSession()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var source = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var sourceReference = FindOutputState(coordinator.NewOutputState, source.SessionId).Session;
+        for (var index = 1; index < 8; index++)
+        {
+            _ = await coordinator.AddAsync(CancellationToken.None);
+        }
+
+        var request = new TerminalTabDuplicateRequest(new TerminalTabRequestId(CreateGuid(705)), sourceReference);
+        var result = await coordinator.DuplicateAsync(request, _ => TestShell, CancellationToken.None);
+
+        Assert.AreEqual(TerminalTabLaunchStatus.TabLimitReached, result.Status);
+        Assert.HasCount(8, coordinator.Snapshot.Tabs);
+        Assert.HasCount(8, factory.Sessions);
     }
 
     [TestMethod]

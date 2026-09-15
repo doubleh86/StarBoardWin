@@ -10,8 +10,8 @@ namespace Starboard.Modules.Terminal.Tests;
 [TestClass]
 public sealed class ShellCommandLifecycleIntegrationTests
 {
-    private static readonly ShellLaunchSpec PowerShell = new("pwsh.exe", "-NoLogo", Path.GetTempPath());
-    private static readonly ShellLaunchSpec Cmd = new("cmd.exe", "/Q", Path.GetTempPath());
+    private static readonly ShellLaunchSpec PowerShell = new("pwsh.exe", ["-NoLogo"], Path.GetTempPath());
+    private static readonly ShellLaunchSpec Cmd = new("cmd.exe", ["/Q"], Path.GetTempPath());
 
     [TestMethod]
     public async Task PowerShellUsesPrivateControlChannelAndIgnoresNestedPromptAsCompletion()

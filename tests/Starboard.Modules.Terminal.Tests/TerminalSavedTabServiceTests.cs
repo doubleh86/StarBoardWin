@@ -229,12 +229,12 @@ public sealed class TerminalSavedTabServiceTests
             TerminalShellKind.Cmd => "C:\\shells\\cmd.exe",
             _ => throw new FileNotFoundException(),
         };
-        return new ShellLaunchSpec(executable, string.Empty, "C:\\");
+        return new ShellLaunchSpec(executable, [], "C:\\");
     }
 
     private static ShellLaunchSpec CreateShell(string directory)
     {
-        return new ShellLaunchSpec("C:\\shells\\pwsh.exe", "-NoLogo", directory);
+        return new ShellLaunchSpec("C:\\shells\\pwsh.exe", ["-NoLogo"], directory);
     }
 
     private static TerminalSavedTabsLoadResult CreateEmptyLoadResult()

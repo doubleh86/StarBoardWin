@@ -91,7 +91,8 @@ internal sealed class ConPtySession : ITerminalSession
                 },
                 AttributeList = processAttributeList.DangerousGetHandle(),
             };
-            var commandLine = new StringBuilder($"\"{launchSpec.ExecutablePath}\" {launchSpec.Arguments}".TrimEnd());
+            var commandLine = new StringBuilder(WindowsCommandLineBuilder.Build(launchSpec.ExecutablePath,
+                                                                                launchSpec.Arguments));
             var securityAttributeSize = Marshal.SizeOf<SecurityAttributes>();
             var processAttributes = new SecurityAttributes
             {

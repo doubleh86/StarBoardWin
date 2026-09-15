@@ -128,9 +128,9 @@ internal static class ShellResolver
     private static ShellLaunchSpec CreateSpec(string executablePath, string workingDirectory)
     {
         var fileName = Path.GetFileName(executablePath);
-        var arguments = fileName.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase)
-            ? "/Q"
-            : "-NoLogo";
+        string[] arguments = fileName.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase)
+            ? ["/Q"]
+            : ["-NoLogo"];
 
         return new ShellLaunchSpec(executablePath, arguments, workingDirectory);
     }

@@ -36,10 +36,16 @@ internal sealed class TerminalTabRegistry
 
     internal TerminalTab Add(string startingDirectory, TerminalShellKind? shellKind = TerminalShellKind.Automatic)
     {
-        return Add(startingDirectory, shellKind, null);
+        return Add(startingDirectory, shellKind, null, null);
     }
 
     internal TerminalTab Add(string startingDirectory, TerminalShellKind? shellKind, string? name)
+    {
+        return Add(startingDirectory, shellKind, name, null);
+    }
+
+    internal TerminalTab Add(string startingDirectory, TerminalShellKind? shellKind, string? name,
+                             TerminalLaunchProfile? launchProfile)
     {
         if (IsAtCapacity == true)
         {
@@ -75,7 +81,7 @@ internal sealed class TerminalTabRegistry
         }
 
         var tab = new TerminalTab(sessionId, configurationId, normalizedName, startingDirectory,
-                                  shellKind, TerminalSessionState.Starting, null);
+                                  shellKind, launchProfile, TerminalSessionState.Starting, null);
         nextTabNumber++;
         tabs.Add(tab);
         ActiveSessionId = sessionId;
@@ -104,7 +110,7 @@ internal sealed class TerminalTabRegistry
 
         var tab = new TerminalTab(sessionId, configuration.ConfigurationId, configuration.Name,
                                   configuration.StartingDirectory, configuration.ShellKind,
-                                  TerminalSessionState.Starting, null);
+                                  CreateBuiltInProfile(configuration.ShellKind), TerminalSessionState.Starting, null);
         tabs.Add(tab);
         ActiveSessionId = sessionId;
 
@@ -187,6 +193,18 @@ internal sealed class TerminalTabRegistry
         }
 
         tabs[index] = tabs[index] with { ShellKind = shellKind };
+    }
+
+    internal TerminalTab Duplicate(TerminalTab source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (Contains(source.SessionId) == false)
+        {
+            throw new InvalidOperationException("The source terminal tab does not exist.");
+        }
+
+        var duplicateName = CreateDuplicateName(source.Name);
+        return Add(source.StartingDirectory, source.ShellKind, duplicateName, source.LaunchProfile);
     }
 
     internal TerminalTabCloseResult? Close(TerminalSessionId sessionId)
@@ -301,5 +319,41 @@ internal sealed class TerminalTabRegistry
 
         normalizedName = trimmedName;
         return true;
+    }
+
+    private string CreateDuplicateName(string sourceName)
+    {
+        for (var suffix = 2; suffix < int.MaxValue; suffix++)
+        {
+            var candidate = $"{sourceName} ({suffix})";
+            if (StringInfo.ParseCombiningCharacters(candidate).Length > 32)
+            {
+                var suffixText = $" ({suffix})";
+                var availableElements = 32 - suffixText.Length;
+                candidate = new StringInfo(sourceName).SubstringByTextElements(0, Math.Max(0, availableElements)) +
+                            suffixText;
+            }
+
+            if (tabs.Any(tab => string.Equals(tab.Name, candidate, StringComparison.OrdinalIgnoreCase)) == false)
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException("A unique duplicate terminal tab name could not be created.");
+    }
+
+    private static TerminalLaunchProfile CreateBuiltInProfile(TerminalShellKind shellKind)
+    {
+        var displayName = shellKind switch
+        {
+            TerminalShellKind.Automatic => "Default shell",
+            TerminalShellKind.Pwsh => "PowerShell 7",
+            TerminalShellKind.PowerShell => "Windows PowerShell",
+            TerminalShellKind.Cmd => "Command Prompt",
+            _ => throw new ArgumentOutOfRangeException(nameof(shellKind), shellKind,
+                                                       "The terminal shell kind is not supported."),
+        };
+        return TerminalLaunchProfile.CreateBuiltIn(shellKind, displayName);
     }
 }

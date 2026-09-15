@@ -9,7 +9,7 @@ namespace Starboard.Modules.Terminal.Tests;
 [TestClass]
 public sealed class TerminalWorkspaceRestoreTests
 {
-    private static readonly ShellLaunchSpec _testShell = new("pwsh.exe", "-NoLogo", "C:\\Work");
+    private static readonly ShellLaunchSpec _testShell = new("pwsh.exe", ["-NoLogo"], "C:\\Work");
     private static readonly string[] _restoredTabNames = ["첫 탭", "실패 탭", "마지막 탭"];
 
     [TestMethod]
@@ -36,7 +36,7 @@ public sealed class TerminalWorkspaceRestoreTests
         _ = await coordinator.StartAsync(_testShell, TerminalShellKind.Automatic, configuration,
                                          kind => kind == TerminalShellKind.PowerShell
                                              ? throw new FileNotFoundException("Simulated missing shell.")
-                                             : new ShellLaunchSpec($"{kind}.exe", "", "C:\\Default"),
+                                             : new ShellLaunchSpec($"{kind}.exe", [], "C:\\Default"),
                                          80, 24, CancellationToken.None);
 
         var snapshot = coordinator.Snapshot;

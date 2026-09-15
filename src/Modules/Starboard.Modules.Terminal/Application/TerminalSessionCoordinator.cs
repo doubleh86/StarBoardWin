@@ -23,6 +23,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     private readonly Dictionary<TerminalSessionId, ShellLaunchSpec> tabShells = [];
     private readonly Dictionary<TerminalSessionId, long> sessionGenerations = [];
     private readonly Dictionary<TerminalSessionId, bool> newOutputStates = [];
+    private readonly HashSet<TerminalTabRequestId> handledTabRequests = [];
     private readonly Func<TerminalConfirmationRequestId> confirmationRequestIdFactory;
 
     private ShellLaunchSpec? defaultShell;
@@ -126,7 +127,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 TerminalWorkspaceSnapshot defaultSnapshot;
                 lock (stateLock)
                 {
-                    defaultTab = tabRegistry.Add(shell.WorkingDirectory, shellKind);
+                    defaultTab = tabRegistry.Add(shell.WorkingDirectory, shellKind, null,
+                                                 CreateBuiltInProfile(shellKind));
                     tabShells.Add(defaultTab.SessionId, shell);
                     InitializeSessionLifetimeLocked(defaultTab.SessionId);
                     defaultSnapshot = tabRegistry.CreateSnapshot();
@@ -207,7 +209,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             {
                 var shell = defaultShell
                     ?? throw new InvalidOperationException("The terminal shell has not been configured.");
-                tab = tabRegistry.Add(shell.WorkingDirectory, defaultShellKind);
+                tab = tabRegistry.Add(shell.WorkingDirectory, defaultShellKind, null,
+                                      CreateBuiltInProfile(defaultShellKind));
                 tabShells.Add(tab.SessionId, shell);
                 InitializeSessionLifetimeLocked(tab.SessionId);
                 CancelPendingInputConfirmationLocked();
@@ -264,6 +267,147 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 var generation = sessionGenerations[tab.SessionId];
                 return new TerminalSessionReference(tab.SessionId.Value, generation);
             }
+        }
+        finally
+        {
+            operationLock.Release();
+        }
+    }
+
+    internal async Task<TerminalTabLaunchResult> LaunchProfileAsync(
+        TerminalNewTabRequest request, TerminalLaunchProfile profile,
+        Func<TerminalLaunchProfile, ShellLaunchSpec> profileResolver, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(profileResolver);
+        if (request.ProfileId != profile.ProfileId)
+        {
+            throw new ArgumentException("The launch request and profile identifiers do not match.", nameof(profile));
+        }
+
+        await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var rejection = TryBeginTabRequest(request.Token);
+            if (rejection is not null)
+            {
+                return rejection;
+            }
+
+            ShellLaunchSpec? shell = null;
+            Exception? resolutionFailure = null;
+            try
+            {
+                shell = profileResolver(profile);
+            }
+            catch (Exception exception) when (IsRecoverableLaunchException(exception) == true)
+            {
+                resolutionFailure = exception;
+            }
+
+            TerminalTab tab;
+            TerminalWorkspaceSnapshot snapshot;
+            lock (stateLock)
+            {
+                var startingDirectory = shell?.WorkingDirectory ?? defaultShell?.WorkingDirectory ??
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                tab = tabRegistry.Add(startingDirectory, profile.ShellKind, profile.DisplayName, profile);
+                InitializeSessionLifetimeLocked(tab.SessionId);
+                CancelPendingInputConfirmationLocked();
+                if (shell is not null)
+                {
+                    tabShells.Add(tab.SessionId, shell);
+                }
+                else
+                {
+                    tabRegistry.SetState(tab.SessionId, TerminalSessionState.Failed);
+                }
+
+                snapshot = tabRegistry.CreateSnapshot();
+            }
+
+            WorkspaceChanged?.Invoke(snapshot);
+            if (resolutionFailure is not null)
+            {
+                LogLaunchFailure("ResolveLaunchProfile", resolutionFailure);
+                return new TerminalTabLaunchResult(TerminalTabLaunchStatus.Failed, tab,
+                                                   "선택한 터미널 프로필을 실행할 수 없습니다.");
+            }
+
+            return await StartRequestedTabAsync(tab).ConfigureAwait(false);
+        }
+        finally
+        {
+            operationLock.Release();
+        }
+    }
+
+    internal async Task<TerminalTabLaunchResult> DuplicateAsync(
+        TerminalTabDuplicateRequest request, Func<TerminalLaunchProfile, ShellLaunchSpec> profileResolver,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(profileResolver);
+        await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var rejection = TryBeginTabRequest(request.Token);
+            if (rejection is not null)
+            {
+                return rejection;
+            }
+
+            TerminalTab source;
+            ShellLaunchSpec? shell;
+            lock (stateLock)
+            {
+                source = tabRegistry.GetRequired(new TerminalSessionId(request.SourceSession.SessionId));
+                tabShells.TryGetValue(source.SessionId, out shell);
+            }
+
+            Exception? resolutionFailure = null;
+            if (shell is null && source.LaunchProfile is not null)
+            {
+                try
+                {
+                    shell = profileResolver(source.LaunchProfile);
+                }
+                catch (Exception exception) when (IsRecoverableLaunchException(exception) == true)
+                {
+                    resolutionFailure = exception;
+                }
+            }
+
+            TerminalTab duplicate;
+            TerminalWorkspaceSnapshot snapshot;
+            lock (stateLock)
+            {
+                duplicate = tabRegistry.Duplicate(source);
+                InitializeSessionLifetimeLocked(duplicate.SessionId);
+                CancelPendingInputConfirmationLocked();
+                if (shell is not null)
+                {
+                    tabShells.Add(duplicate.SessionId, shell with { WorkingDirectory = source.StartingDirectory });
+                }
+                else
+                {
+                    tabRegistry.SetState(duplicate.SessionId, TerminalSessionState.Failed);
+                }
+
+                snapshot = tabRegistry.CreateSnapshot();
+            }
+
+            WorkspaceChanged?.Invoke(snapshot);
+            if (shell is null)
+            {
+                LogLaunchFailure("ResolveDuplicateProfile", resolutionFailure ??
+                    new InvalidOperationException("The source tab has no reusable launch profile."));
+                return new TerminalTabLaunchResult(TerminalTabLaunchStatus.Failed, duplicate,
+                                                   "탭 구성을 복제했지만 새 세션을 실행할 수 없습니다.");
+            }
+
+            return await StartRequestedTabAsync(duplicate).ConfigureAwait(false);
         }
         finally
         {
@@ -792,6 +936,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 tabShells.Clear();
                 sessionGenerations.Clear();
                 newOutputStates.Clear();
+                handledTabRequests.Clear();
             }
 
             foreach (var entry in ownedSessions)
@@ -949,6 +1094,70 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
             throw;
         }
+    }
+
+    private async Task<TerminalTabLaunchResult> StartRequestedTabAsync(TerminalTab tab)
+    {
+        try
+        {
+            await StartSessionAsync(tab.SessionId).ConfigureAwait(false);
+            lock (stateLock)
+            {
+                return new TerminalTabLaunchResult(TerminalTabLaunchStatus.Started,
+                                                   tabRegistry.GetRequired(tab.SessionId));
+            }
+        }
+        catch (Exception exception) when (IsRecoverableLaunchException(exception) == true)
+        {
+            return new TerminalTabLaunchResult(TerminalTabLaunchStatus.Failed,
+                                               GetTabIfPresent(tab.SessionId),
+                                               "새 터미널 세션을 실행할 수 없습니다.");
+        }
+    }
+
+    private TerminalTabLaunchResult? TryBeginTabRequest(TerminalTabRequestToken token)
+    {
+        lock (stateLock)
+        {
+            if (isDisposed == true || isStarted == false)
+            {
+                return new TerminalTabLaunchResult(TerminalTabLaunchStatus.Unavailable, null);
+            }
+
+            var sourceSessionId = new TerminalSessionId(token.Session.SessionId);
+            if (sessionGenerations.TryGetValue(sourceSessionId, out var generation) == false ||
+                generation != token.Session.Generation || tabRegistry.Contains(sourceSessionId) == false)
+            {
+                return new TerminalTabLaunchResult(TerminalTabLaunchStatus.StaleSource, null);
+            }
+
+            if (handledTabRequests.Add(token.RequestId) == false)
+            {
+                return new TerminalTabLaunchResult(TerminalTabLaunchStatus.DuplicateRequest, null);
+            }
+
+            if (tabRegistry.IsAtCapacity == true)
+            {
+                return new TerminalTabLaunchResult(TerminalTabLaunchStatus.TabLimitReached, null,
+                                                   "터미널 탭은 최대 8개까지 실행할 수 있습니다.");
+            }
+
+            return null;
+        }
+    }
+
+    private TerminalTab? GetTabIfPresent(TerminalSessionId sessionId)
+    {
+        lock (stateLock)
+        {
+            return tabRegistry.Contains(sessionId) == true ? tabRegistry.GetRequired(sessionId) : null;
+        }
+    }
+
+    private void LogLaunchFailure(string operation, Exception exception)
+    {
+        diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", operation,
+                            "A requested terminal session could not be started.", exception);
     }
 
     private bool SelectCore(Func<bool> select)
@@ -1448,6 +1657,30 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                NotSupportedException or
                UnauthorizedAccessException or
                System.ComponentModel.Win32Exception;
+    }
+
+    private static bool IsRecoverableLaunchException(Exception exception)
+    {
+        return IsRecoverableRestoreException(exception) || exception is ObjectDisposedException;
+    }
+
+    private static TerminalLaunchProfile? CreateBuiltInProfile(TerminalShellKind? shellKind)
+    {
+        if (shellKind is null)
+        {
+            return null;
+        }
+
+        var displayName = shellKind.Value switch
+        {
+            TerminalShellKind.Automatic => "Default shell",
+            TerminalShellKind.Pwsh => "PowerShell 7",
+            TerminalShellKind.PowerShell => "Windows PowerShell",
+            TerminalShellKind.Cmd => "Command Prompt",
+            _ => throw new ArgumentOutOfRangeException(nameof(shellKind), shellKind,
+                                                       "The terminal shell kind is not supported."),
+        };
+        return TerminalLaunchProfile.CreateBuiltIn(shellKind.Value, displayName);
     }
 
     private sealed class SessionEntry
