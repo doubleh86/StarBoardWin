@@ -14,10 +14,10 @@ const RendererInstanceId = crypto.randomUUID().replaceAll("-", "").toLowerCase()
 
 type GlobalRendererMessageType =
   | "ready"
-  | "new-tab"
   | "select-next"
   | "select-previous"
   | "renderer-error"
+  | "retry-launch-profiles"
   | "create-saved-tab"
   | "update-saved-tab"
   | "delete-saved-tab"
@@ -25,6 +25,8 @@ type GlobalRendererMessageType =
   | "cancel-saved-tab-launch";
 
 type SessionRendererMessageType =
+  | "new-tab"
+  | "duplicate-tab"
   | "select-session"
   | "input"
   | "resize"
@@ -58,6 +60,7 @@ type GlobalHostMessageType =
   | "initialize"
   | "apply-appearance"
   | "workspace-save-status"
+  | "launch-profiles-result"
   | "saved-tabs-snapshot"
   | "saved-tab-operation-result"
   | "saved-tab-launch-result";
@@ -109,10 +112,30 @@ type HostMessage =
     }
   | {
       version: number;
+      type: "launch-profiles-result";
+      sessionId?: never;
+      payload: LaunchProfilesPayload;
+    }
+  | {
+      version: number;
       type: SessionHostMessageType;
       sessionId: string;
       payload: Record<string, unknown>;
     };
+
+type LaunchProfile = {
+  profileId: string;
+  kind: "built-in-shell" | "wsl-distribution";
+  displayName: string;
+  shellKind: "pwsh" | "powershell" | "cmd" | null;
+  wslDistributionName: string | null;
+};
+
+type LaunchProfilesPayload = {
+  status: "succeeded" | "wsl-unavailable" | "wsl-discovery-failed";
+  profiles: LaunchProfile[];
+  failureMessage: string | null;
+};
 
 type AppearancePayload = {
   fontFamily: string;
@@ -298,6 +321,9 @@ let savedTabsDialogFocusReturnSessionId: string | undefined;
 let savedTabsSnapshot: SavedTabsSnapshotPayload | undefined;
 let savedTabsFeedback = "";
 let pendingSavedTabLaunchRequestId: string | undefined;
+let launchProfiles: LaunchProfilesPayload | undefined;
+const pendingProfileLaunches = new Set<string>();
+const pendingTabDuplicates = new Set<string>();
 let pendingConfirmation: PendingConfirmation | undefined;
 let searchOverlay: SearchOverlay | undefined;
 const suppressedConfirmationKeys = new Set<string>();
@@ -327,7 +353,8 @@ function isGlobalHostMessageType(value: string): value is GlobalHostMessageType 
   return (
     value === "initialize" ||
     value === "apply-appearance" ||
-    value === "workspace-save-status"
+    value === "workspace-save-status" ||
+    value === "launch-profiles-result"
   );
 }
 
@@ -393,6 +420,13 @@ function parseHostMessage(value: unknown): HostMessage | undefined {
 
   if (value.type === "saved-tab-launch-result") {
     if (value.sessionId !== undefined || isSavedTabLaunchResultPayload(payload) === false) {
+      return undefined;
+    }
+    return { version: ProtocolVersion, type: value.type, payload };
+  }
+
+  if (value.type === "launch-profiles-result") {
+    if (value.sessionId !== undefined || isLaunchProfilesPayload(payload) === false) {
       return undefined;
     }
     return { version: ProtocolVersion, type: value.type, payload };
@@ -992,6 +1026,19 @@ function showTabMenuAt(anchor: Pick<DOMRect, "left" | "bottom">, sessionId: stri
   addItem("왼쪽으로 이동", () => postSession("move-session", sessionId, { direction: "left" }), index === 0);
   addItem("오른쪽으로 이동", () => postSession("move-session", sessionId, { direction: "right" }), index === orderedSessions().length - 1);
   addItem("시작 폴더 설정", () => showStartingDirectoryEditor(sessionId));
+  const duplicateLimitReached = canAddSession === false || orderedSessions().length >= MaximumTabs;
+  addItem("이 탭 구성 복제", () => duplicateTab(sessionId), duplicateLimitReached);
+  if (duplicateLimitReached === true) {
+    const limit = document.createElement("p");
+    limit.id = "tab-context-menu-duplicate-limit";
+    limit.className = "tab-context-menu-limit";
+    limit.setAttribute("role", "status");
+    limit.textContent = `실행 탭 한도(${MaximumTabs}개)에 도달했습니다.`;
+    menu.append(limit);
+    const duplicateItem = menu.querySelector<HTMLButtonElement>("button:last-of-type");
+    duplicateItem?.setAttribute("aria-label", `${duplicateItem.textContent} (실행 탭 한도에 도달하여 사용할 수 없음)`);
+    duplicateItem?.setAttribute("aria-describedby", limit.id);
+  }
   const savedTabLimitReached = savedTabsSnapshot !== undefined &&
     savedTabsSnapshot.tabs.length >= savedTabsSnapshot.maximumSavedTabs;
   addItem("저장한 탭에 추가…", () => {
@@ -1056,6 +1103,101 @@ function dismissSavedTabsMenu(): void {
   savedTabsButton.setAttribute("aria-expanded", "false");
 }
 
+function profileLaunchKey(sessionId: string, profileId: string): string {
+  return `${sessionId}:${profileId}`;
+}
+
+function launchProfile(profile: LaunchProfile): void {
+  const source = activeSessionId === undefined ? undefined : sessions.get(activeSessionId);
+  if (source === undefined || canAddSession === false) {
+    return;
+  }
+
+  const key = profileLaunchKey(source.id, profile.profileId);
+  if (pendingProfileLaunches.has(key) === true) {
+    return;
+  }
+
+  pendingProfileLaunches.add(key);
+  focusTerminalOnNextActivation = true;
+  postSession("new-tab", source.id, {
+    requestId: createRequestId(),
+    sessionGeneration: source.sessionGeneration,
+    profileId: profile.profileId,
+  });
+  dismissSavedTabsMenu();
+}
+
+function launchDefaultProfile(): void {
+  const source = activeSessionId === undefined ? undefined : sessions.get(activeSessionId);
+  if (source === undefined) {
+    return;
+  }
+
+  const profile = launchProfiles?.profiles.find((candidate) =>
+    candidate.kind === "built-in-shell" && candidate.shellKind === source.shellKind,
+  ) ?? launchProfiles?.profiles.find((candidate) => candidate.kind === "built-in-shell");
+  if (profile !== undefined) {
+    launchProfile(profile);
+  }
+}
+
+function duplicateTab(sessionId: string): void {
+  const source = sessions.get(sessionId);
+  if (source === undefined || canAddSession === false) {
+    return;
+  }
+
+  const key = `${source.id}:${source.sessionGeneration}`;
+  if (pendingTabDuplicates.has(key) === true) {
+    return;
+  }
+
+  pendingTabDuplicates.add(key);
+  focusTerminalOnNextActivation = true;
+  postSession("duplicate-tab", source.id, {
+    requestId: createRequestId(),
+    sessionGeneration: source.sessionGeneration,
+  });
+}
+
+function appendLaunchProfilesMenu(menu: HTMLElement): void {
+  const heading = document.createElement("p");
+  heading.className = "saved-tabs-section-heading";
+  heading.textContent = "새 탭";
+  menu.append(heading);
+
+  for (const profile of launchProfiles?.profiles ?? []) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "launch-profile";
+    button.setAttribute("role", "menuitem");
+    button.textContent = profile.displayName;
+    button.disabled = canAddSession === false;
+    button.addEventListener("click", () => launchProfile(profile));
+    menu.append(button);
+  }
+
+  if (launchProfiles?.status === "wsl-discovery-failed") {
+    const failure = document.createElement("p");
+    failure.className = "saved-tabs-feedback is-error";
+    failure.setAttribute("role", "status");
+    failure.textContent = launchProfiles.failureMessage ?? "WSL 목록을 불러오지 못했습니다.";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "launch-profile-retry";
+    retry.setAttribute("role", "menuitem");
+    retry.textContent = "WSL 목록 다시 시도";
+    retry.addEventListener("click", () => postGlobal("retry-launch-profiles"));
+    menu.append(failure, retry);
+  }
+
+  const separator = document.createElement("div");
+  separator.className = "saved-tabs-menu-separator";
+  separator.setAttribute("role", "separator");
+  menu.append(separator);
+}
+
 function launchSavedTab(tab: SavedTab): void {
   if (savedTabsSnapshot === undefined || savedTabsSnapshot.runningTabCount >= savedTabsSnapshot.maximumRunningTabs) {
     savedTabsFeedback = "실행 탭 한도(8개)에 도달했습니다.";
@@ -1081,7 +1223,13 @@ function showSavedTabsMenu(): void {
   menu.style.right = `${Math.max(8, window.innerWidth - anchor.right)}px`;
   menu.style.top = `${anchor.bottom}px`;
 
+  appendLaunchProfilesMenu(menu);
+
   const snapshot = savedTabsSnapshot;
+  const savedHeading = document.createElement("p");
+  savedHeading.className = "saved-tabs-section-heading";
+  savedHeading.textContent = "저장한 탭";
+  menu.append(savedHeading);
   if (snapshot === undefined || snapshot.tabs.length === 0) {
     const empty = document.createElement("p");
     empty.className = "saved-tabs-empty";
@@ -2121,6 +2269,40 @@ function isSavedTabLaunchResultPayload(
   );
 }
 
+function isLaunchProfilesPayload(
+  payload: Record<string, unknown>,
+): payload is Record<string, unknown> & LaunchProfilesPayload {
+  const statuses: LaunchProfilesPayload["status"][] = [
+    "succeeded",
+    "wsl-unavailable",
+    "wsl-discovery-failed",
+  ];
+  if (
+    typeof payload.status !== "string" ||
+    statuses.includes(payload.status as LaunchProfilesPayload["status"]) === false ||
+    Array.isArray(payload.profiles) === false ||
+    (typeof payload.failureMessage !== "string" && payload.failureMessage !== null)
+  ) {
+    return false;
+  }
+
+  return payload.profiles.every((profile) => {
+    if (isRecord(profile) === false) {
+      return false;
+    }
+
+    return (
+      typeof profile.profileId === "string" && profile.profileId.trim().length > 0 &&
+      (profile.kind === "built-in-shell" || profile.kind === "wsl-distribution") &&
+      typeof profile.displayName === "string" &&
+      profile.displayName.trim().length > 0 &&
+      (profile.shellKind === "pwsh" || profile.shellKind === "powershell" ||
+        profile.shellKind === "cmd" || profile.shellKind === null) &&
+      (typeof profile.wslDistributionName === "string" || profile.wslDistributionName === null)
+    );
+  });
+}
+
 function isSessionPayload(
   payload: Record<string, unknown>,
 ): payload is Record<string, unknown> & SessionPayload {
@@ -2160,6 +2342,11 @@ function handleHostMessage(value: unknown): void {
   if (message.type === "workspace-save-status") {
     // The status is global: it describes workspace persistence, not a live shell.
     // The tab-management UI added in W2 presents this value without changing a session.
+    return;
+  }
+
+  if (message.type === "launch-profiles-result") {
+    launchProfiles = message.payload;
     return;
   }
 
@@ -2216,6 +2403,16 @@ function handleHostMessage(value: unknown): void {
   if (message.type === "session-upsert") {
     if (isSessionPayload(payload) === true) {
       upsertSession(sessionId, payload);
+      for (const key of pendingProfileLaunches) {
+        if (key.startsWith(`${sessionId}:`) === false) {
+          pendingProfileLaunches.delete(key);
+        }
+      }
+      for (const key of pendingTabDuplicates) {
+        if (key.startsWith(`${sessionId}:`) === false) {
+          pendingTabDuplicates.delete(key);
+        }
+      }
     }
     return;
   }
@@ -2333,8 +2530,7 @@ function handleApplicationShortcut(event: KeyboardEvent): void {
     handled = true;
   } else if (event.shiftKey === true && event.code === "KeyT") {
     if (newTabButton.disabled === false) {
-      focusTerminalOnNextActivation = true;
-      postGlobal("new-tab");
+      launchDefaultProfile();
     }
     handled = true;
   } else if (event.code === "Tab") {
@@ -2359,8 +2555,7 @@ function handleApplicationShortcut(event: KeyboardEvent): void {
 
 newTabButton.addEventListener("click", () => {
   if (newTabButton.disabled === false) {
-    focusTerminalOnNextActivation = true;
-    postGlobal("new-tab");
+    launchDefaultProfile();
   }
 });
 

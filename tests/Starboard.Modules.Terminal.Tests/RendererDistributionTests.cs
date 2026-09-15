@@ -155,6 +155,26 @@ public sealed class RendererDistributionTests
     }
 
     [TestMethod]
+    public void BundledRendererProvidesProfileLaunchRetryAndTabDuplicationWithoutGrowingTheTabStrip()
+    {
+        var source = ReadRendererSource("index.ts");
+        var script = ReadRendererAsset("app.js");
+        var styles = ReadRendererAsset("app.css");
+
+        StringAssert.Contains(source, "launch-profiles-result");
+        StringAssert.Contains(source, "retry-launch-profiles");
+        StringAssert.Contains(source, "postSession(\"new-tab\"");
+        StringAssert.Contains(source, "postSession(\"duplicate-tab\"");
+        StringAssert.Contains(source, "pendingProfileLaunches");
+        StringAssert.Contains(source, "pendingTabDuplicates");
+        StringAssert.Contains(script, "launch-profiles-result");
+        StringAssert.Contains(script, "duplicate-tab");
+        StringAssert.Contains(script, "\uC774 \uD0ED \uAD6C\uC131 \uBCF5\uC81C");
+        StringAssert.Contains(styles, ".saved-tabs-section-heading");
+        StringAssert.Contains(styles, ".tab-strip{display:flex;min-width:0;height:32px");
+    }
+
+    [TestMethod]
     public void BundledRendererContainsActiveTabOnlyOutputSearchRuntime()
     {
         var script = ReadRendererAsset("app.js");

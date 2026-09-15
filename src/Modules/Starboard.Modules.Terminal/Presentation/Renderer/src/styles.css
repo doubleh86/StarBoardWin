@@ -418,6 +418,28 @@ button:focus-visible {
   text-align: left;
 }
 
+.saved-tabs-section-heading {
+  margin: var(--space-3xs) var(--space-2xs) 0;
+  color: var(--color-neutral);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.saved-tabs-menu-separator {
+  height: var(--rule-width);
+  margin: var(--space-3xs) 0;
+  background: var(--color-rule);
+}
+
+.launch-profile,
+.launch-profile-retry {
+  padding: 0 var(--space-2xs);
+}
+
+.launch-profile-retry {
+  color: var(--color-accent) !important;
+}
+
 .saved-tab-launch {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
