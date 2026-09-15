@@ -144,9 +144,20 @@ backend concrete type을 참조하지 않는다. 합류는 P0 → P1-A/P1-B/P1-C
 
 - [x] 2026-09-14: 셸 프로필/WSL 선택, 패널 높이 drag와 탭 구성 복제를 다음 버전 후보로 구체화했다.
 - [x] 기존 `+` 위치 회귀와 현재 탭 저장 항목의 renderer 파일 충돌을 확인해 직렬 합류 조건으로 기록했다.
-- [ ] P0 계약 gate와 구현 작업 착수.
-- [ ] 실제 WSL/다중 DPI/WebView2 수동 검증.
+- [x] P0 계약 gate와 구현 작업 완료: immutable launch profile, WSL discovery/resolve,
+  duplicate request generation 및 collapsed-height callback을 각 module contract에 고정했다.
+- [x] P1-A/P1-B/P1-C와 P2 host 통합 완료: builtin/WSL profile menu, top-edge height drag와
+  현재 탭 구성 복제가 기존 session, focus, taskbar/DPI 정책을 보존하는 경로로 합류했다.
+- [x] P3 자동·portable gate 완료: renderer source/dist rebuild, Debug solution suite 및
+  self-contained portable publish/ZIP/checksum/extraction smoke를 실행했고 package에 settings,
+  workspace, saved tabs, logs, WebView2 data 및 command/output capture가 없음을 검사했다.
+- [ ] 실제 WSL 설치 환경, 다중 DPI/monitor/taskbar/focus 및 WebView2 mouse·keyboard·IME 수동 검증.
 
 ## 완료 요약
 
-기획만 완료했다. 제품 코드, renderer asset, 설정 schema와 사용자 파일은 변경하지 않았다.
+구현과 자동 release gate를 완료했다. WSL profile은 목록 조회와 새 session 실행에만 사용하며,
+첫 범위에서는 workspace 또는 saved-tabs schema에 저장하지 않는다. WSL을 선택한 tab은 앱을
+다시 시작하거나 workspace를 복원할 때 builtin 기본 tab으로 대체될 수 있다. `wsl.exe` 또는
+배포판 조회가 실패하면 builtin profile은 계속 제공되고 메뉴에 실패 상태와 재시도 경로를 보인다.
+실제 WebView2 입력·IME, 설치된 WSL, DPI/monitor/taskbar/focus 시나리오는 자동 결과와 혼동하지
+않도록 test plan에서 `Not run`으로 유지한다.

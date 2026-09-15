@@ -5,7 +5,7 @@ Starboard는 Windows 작업표시줄 바로 위에 계속 머무는 작은 termi
 수명 동안 유지하면서 현재 사용 중인 창의 focus를 불필요하게 빼앗지 않는 것을
 목표로 한다.
 
-현재 구현은 v0.1 portable release 기준이다. Windows 11 x64를 우선 지원하며
+현재 구현은 v0.2 portable release 기준이다. Windows 11 x64를 우선 지원하며
 Windows 10 1809 이상은 best-effort 대상이다.
 
 ## 현재 동작
@@ -16,6 +16,9 @@ Windows 10 1809 이상은 best-effort 대상이다.
 - bundled xterm.js와 local-only WebView2 renderer
 - 하나의 WebView2 안에서 탭별 xterm, scrollback과 shell 상태 유지
 - 최대 8개 탭, 탭별 독립 ConPTY process·working directory·interactive state와 이름·순서 변경
+- `+` 옆 새 탭 menu에서 PowerShell 7, Windows PowerShell, 명령 프롬프트와 발견된 WSL 배포판 선택
+- 축소 panel 상단 경계를 drag해 96~720 DIP 범위에서 높이 조절; double-click으로 200 DIP 복원
+- tab 우클릭 또는 `Shift+F10` menu에서 현재 탭의 이름·설정 시작 폴더·launch profile만 새 session으로 복제
 - `저장한 탭` 메뉴에서 이름·시작 폴더·셸을 최대 20개 저장하고 새 독립 탭으로 실행
 - terminal resize를 ConPTY cell size로 전달
 - shell/renderer 오류 surface와 shell restart
@@ -38,6 +41,13 @@ Windows 10 1809 이상은 best-effort 대상이다.
 실제 multi-monitor/mixed-DPI, taskbar auto-hide, fullscreen, IME와 로그인 자동 시작
 장비 검증은 아직 남아 있다. 구현 범위와 미수행 matrix는
 [`docs/test-plan.md`](docs/test-plan.md)를 참고한다.
+
+WSL은 설치된 distribution을 조회해 새 persistent session으로 실행하는 선택 profile이다.
+`wsl.exe`가 없거나 distribution 조회가 실패해도 PowerShell/CMD profile은 계속 사용할 수 있고,
+조회 실패는 menu의 재시도 가능한 상태로 표시한다. WSL tab은 항상 distribution의 Linux home에서
+시작하며 Windows 시작 폴더를 Linux path로 변환하지 않는다. WSL profile은 첫 범위에서 workspace와
+저장한 탭에 영속화되지 않으므로 앱 재시작 또는 workspace restore 뒤 builtin 기본 탭으로 대체될 수
+있다.
 
 `설정 > 작업공간 복원`은 기본적으로 꺼져 있다. 켜면 다음 시작에 탭 이름·순서,
 선택된 탭, 시작 폴더와 기본 shell 종류를 새 ConPTY process로 복원한다. 실행 중인

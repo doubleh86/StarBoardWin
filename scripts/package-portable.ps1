@@ -197,9 +197,13 @@ function Test-PortableContents {
         [System.IO.Path]::DirectorySeparatorChar
     $files = Get-ChildItem -LiteralPath $PublishDirectory -File -Recurse
     $sensitiveCaptureNames = @(
+        "command.txt",
         "command-history.txt",
         "command-output.txt",
-        "terminal-output.txt"
+        "terminal-command.txt",
+        "terminal-output.txt",
+        "terminal-transcript.txt",
+        "output.txt"
     )
     foreach ($file in $files) {
         $relativePath = $file.FullName.Substring($publishPrefix.Length).Replace("\", "/")

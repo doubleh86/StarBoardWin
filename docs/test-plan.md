@@ -69,6 +69,22 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-15 (run `20260915-022255-752257-23c5de81`, terminal convenience release gate)
+- renderer `npm run build`가 통과했고 source 재생성 뒤 committed `dist`에 diff가 없었다. sandbox의
+  esbuild child-process 실행은 `EPERM`이었으며, 허용된 동일 명령으로만 build를 완료했다.
+- 지정 SDK Debug restore와 build는 경고·오류 0개로 통과했다. 전체 자동 test 496개가
+  통과했다(Architecture 12, Terminal 294, DesktopIntegration 103, Preferences 37,
+  Integration 50). 여기에는 WSL profile discovery/UTF-16·UTF-8 parsing, timeout/failure
+  fallback, profile launch argument 및 duplicate/height renderer protocol simulation이 포함된다.
+- `package-portable.ps1`은 self-contained Release build/test(동일 496개), publish, deterministic
+  ZIP/checksum 재생성, 추출 smoke를 통과했다. ZIP SHA-256은
+  `b1b1e72bab774fdcf8e51a275e33f4826725abd0b6ac069b3bd43ecaf300b2db`다. publish·ZIP·추출본에
+  settings/workspace/saved-tabs primary·backup·temporary, logs, WebView2 data, PDB와
+  command/history/output capture가 없음을 자동으로 검사했다.
+- 실제 WebView2 mouse·keyboard·Korean IME, 설치된 WSL distribution, DPI·monitor·taskbar 및
+  focus는 실행하지 않았다. 자동/simulation 통과로 대체하지 않고 MAN-050~052를 `Not run`으로
+  유지한다.
+
 - 실행일: 2026-09-14 (run `20260911-112715-513680-257ccf40`, 완료 알림 통합)
 - 지정 SDK의 exact Terminal test 260개와 Debug solution restore/build(경고·오류 0), 전체 436개
   test가 sandbox 밖에서 통과했다(Architecture 10, Terminal 260, DesktopIntegration 85,
@@ -593,6 +609,18 @@ ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan c
 
 각 실행에서 OS build, monitor topology, scaling, taskbar edge/auto-hide, shell과 app
 build hash를 함께 기록한다.
+
+### 2026-09-15 terminal convenience release gate
+
+아래 항목은 이 release gate에서 실제 UI/OS 환경을 조작하지 않았다는 기록이다. WSL query와
+launch fallback, height/DPI geometry와 duplicate session lifetime은 fake process, pure geometry,
+renderer protocol 및 ConPTY integration으로만 검증됐다.
+
+| ID | Scenario | 확인 내용 | 상태 |
+| --- | --- | --- | --- |
+| MAN-050 | WebView2 terminal convenience UI | `+`/profile menu/tab menu와 top-edge drag의 mouse·keyboard, 좁은 폭, Korean IME, duplicate 뒤 기존 scrollback·input/focus 보존 | Not run — 실제 WebView2 terminal UI 입력 자동화를 수행하지 않았음 |
+| MAN-051 | installed WSL profile | 실제 `wsl.exe`/distribution discovery, Linux home launch, resize, exit와 query/launch failure message·retry | Not run — 이 환경에서 WSL 설치 상태를 변경하거나 terminal UI를 조작하지 않았음 |
+| MAN-052 | DPI, monitor, taskbar and focus | 100/125/150/200% 및 mixed DPI, monitor 이동, taskbar edge/auto-hide, fullscreen과 background focus preservation | Not run — display/taskbar/foreground를 변경하거나 panel을 시각적으로 관찰하지 않았음 |
 
 ### 2026-09-10 release·recovery 격리 검증
 

@@ -15,9 +15,13 @@ public sealed class PortableReleaseSmokeCheckTests
         StringAssert.Contains(source, "src/Starboard.Windows/Assets/Starboard.ico");
         StringAssert.Contains(source, "\"settings.json\"");
         StringAssert.Contains(source, "\"saved-tabs.json\"");
+        StringAssert.Contains(source, "\"saved-tabs.json.bak\"");
+        StringAssert.Contains(source, "\"saved-tabs.json.tmp\"");
         StringAssert.Contains(source, "\"workspace.json\"");
+        StringAssert.Contains(source, "\"workspace.json.bak\"");
         StringAssert.Contains(source, "\"command-history.txt\"");
         StringAssert.Contains(source, "\"command-output.txt\"");
+        StringAssert.Contains(source, "\"terminal-command.txt\"");
         StringAssert.Contains(source, "\"terminal-output.txt\"");
     }
 

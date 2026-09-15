@@ -371,7 +371,9 @@ tabpanel은 숨기기만 하므로 output buffer, scrollback과 emulator state�
 꺼진 설정은 남아 있는 workspace 파일보다 우선한다. 시작 시 기본 탭 하나를 만들고,
 설정 저장이 성공한 뒤에는 기존 workspace 파일을 삭제한다. 켜진 경우에만 Terminal이
 `%LOCALAPPDATA%/Starboard/workspace.json`을 읽고, 1~8개 탭의 구성 ID, 이름, 연속된
-순서, 시작 폴더, 제한된 shell kind와 활성 구성 ID를 복원한다.
+순서, 시작 폴더, 제한된 builtin shell kind와 활성 구성 ID를 복원한다. WSL distribution은
+동적 profile ID와 Linux home 의미를 가지므로 이 첫 범위의 workspace schema에는 저장하지 않는다.
+WSL tab은 다음 app start 또는 workspace restore에서 builtin 기본 tab으로 대체될 수 있다.
 
 workspace 저장은 64 KiB 상한과 strict validation을 거친 뒤 같은 directory의 flush된
 `.tmp` file을 `File.Replace`(최초 저장은 move)로 교체한다. 유효한 primary만 `.bak`으로
@@ -380,6 +382,22 @@ backup을 보존한 채 그 실행의 restore와 autosave를 중단한다. 복�
 session ID와 새 ConPTY process에 매핑하므로 PID, shell의 현재 state, history, command,
 output, scrollback, clipboard, environment는 복원하지 않는다. 개별 shell 또는 directory
 실패는 failed tab으로 격리해 이후 tab 복원을 계속한다.
+
+### Launch profiles and WSL
+
+새 탭 menu는 builtin PowerShell 7, Windows PowerShell, Command Prompt와 발견된 WSL
+distribution을 immutable `TerminalLaunchProfile`로 함께 표시한다. WSL distribution name은
+enum이나 settings schema가 아니라 runtime profile ID(`wsl:<distribution>`)의 data로 유지한다.
+`wsl.exe --list --quiet` 조회는 timeout/cancellation을 가진 인자 배열 process로 실행하며
+UTF-16 또는 UTF-8 출력을 decode한다. `wsl.exe`가 없거나 distribution이 없으면 builtin profile만
+남긴다. 조회 실패는 빈 결과로 위장하지 않고 menu에 실패와 retry를 보이되, 기존 session과 builtin
+launch를 막지 않는다.
+
+WSL profile launch는 `wsl.exe --distribution <name> --cd ~`로 distribution의 Linux home에서
+하나의 persistent ConPTY session을 시작한다. Windows 시작 폴더를 Linux path로 추측해 변환하지
+않는다. 실행 파일 또는 distribution이 launch 시점에 사라지면 새 tab 하나만 error state가 되고
+원본 tab과 다른 session은 계속 실행된다. saved-tabs도 builtin shell kind만 저장하므로 WSL profile은
+첫 범위에서 저장되지 않으며 saved tab 또는 workspace restore를 통해 재실행되지 않는다.
 
 ### Saved terminal tabs
 
@@ -390,7 +408,9 @@ renderer 입력을 소유하는 `TerminalView`에 전달한다. renderer가 준�
 workspace 파일을 삭제해도 saved-tabs 파일은 변경하지 않는다.
 
 저장 항목은 불변 ID, 32 text-element 이하 이름, 존재하는 local absolute 시작 폴더와
-`Automatic`/`Pwsh`/`PowerShell`/`Cmd` shell kind만 담는다. 최대 20개이며 64 KiB strict
+`Automatic`/`Pwsh`/`PowerShell`/`Cmd` builtin shell kind만 담는다. WSL profile은 dynamic
+distribution identity와 Linux 시작 위치를 안전하게 schema로 표현하지 않으므로 첫 범위에서 저장하지
+않는다. 최대 20개이며 64 KiB strict
 schema JSON을 같은 directory의 flush된 `.tmp`에서 원자 교체한다. 손상·누락·미래 schema와
 I/O timeout은 shell startup을 막지 않고, 미래 schema는 덮어쓰지 않는다. 이름이나 경로
 원문은 diagnostic log에 기록하지 않는다.
