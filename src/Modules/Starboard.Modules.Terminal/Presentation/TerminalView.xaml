@@ -2,7 +2,6 @@
              x:ClassModifier="internal"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
              Background="{DynamicResource CanvasBrush}"
              Focusable="False">
     <UserControl.Resources>
@@ -73,11 +72,7 @@
     </UserControl.Resources>
 
     <Grid>
-        <wv2:WebView2 x:Name="Renderer"
-                      AllowExternalDrop="False"
-                      AutomationProperties.Name="Starboard terminal tabs and sessions"
-                      CreationProperties="{x:Null}"
-                      Visibility="Collapsed" />
+        <Grid x:Name="RendererHost" />
 
         <Border x:Name="StatusSurface"
                 Background="{DynamicResource CanvasBrush}"
@@ -101,18 +96,27 @@
                                FontSize="12"
                                Foreground="{DynamicResource MutedBrush}"
                                Text="로컬 renderer와 shell session을 준비하고 있습니다."
-                               TextTrimming="CharacterEllipsis"
-                               TextWrapping="NoWrap" />
+                               TextTrimming="WordEllipsis"
+                               TextWrapping="Wrap" />
                 </StackPanel>
-                <Button x:Name="RetryButton"
-                        Grid.Column="1"
-                        Margin="16,0,0,0"
-                        VerticalAlignment="Center"
-                        Click="RetryButton_Click"
-                        Content="다시 시작"
-                        AutomationProperties.Name="Terminal renderer 다시 시작"
-                        Style="{StaticResource RetryButtonStyle}"
-                        Visibility="Collapsed" />
+                <StackPanel Grid.Column="1"
+                            Margin="16,0,0,0"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal">
+                    <Button x:Name="ExitButton"
+                            Margin="0,0,8,0"
+                            Click="ExitButton_Click"
+                            Content="앱 종료"
+                            AutomationProperties.Name="Starboard 종료"
+                            Style="{StaticResource RetryButtonStyle}"
+                            Visibility="Collapsed" />
+                    <Button x:Name="RetryButton"
+                            Click="RetryButton_Click"
+                            Content="다시 시도"
+                            AutomationProperties.Name="Terminal renderer 다시 시도"
+                            Style="{StaticResource RetryButtonStyle}"
+                            Visibility="Collapsed" />
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>

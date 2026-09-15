@@ -30,10 +30,13 @@ public sealed class TerminalModule : IDisposable
         workspacePersistence.StatusChanged += HandleWorkspacePersistenceStatusChanged;
         sessionCoordinator.CommandCompleted += HandleCommandCompleted;
         terminalView = new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence, savedTabService,
-                                        collapsedHeightChangeCallback ?? RejectCollapsedHeightChange);
+                                        collapsedHeightChangeCallback ?? RejectCollapsedHeightChange,
+                                        RequestExit);
     }
 
     public event EventHandler<TerminalCommandCompletedEventArgs>? CommandCompleted;
+
+    public event EventHandler? ExitRequested;
 
     public FrameworkElement Surface => terminalView;
 
@@ -160,6 +163,14 @@ public sealed class TerminalModule : IDisposable
         }
 
         CommandCompleted?.Invoke(this, new TerminalCommandCompletedEventArgs(completion));
+    }
+
+    private void RequestExit()
+    {
+        if (isDisposed == false)
+        {
+            ExitRequested?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private static ValueTask<TerminalCollapsedHeightChangeResult> RejectCollapsedHeightChange(

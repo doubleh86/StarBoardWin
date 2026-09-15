@@ -1899,6 +1899,8 @@ function upsertSession(sessionId: string, payload: SessionPayload): void {
   if (entry === undefined) {
     entry = createSession(sessionId, payload);
     sessions.set(sessionId, entry);
+  } else if (payload.sessionGeneration < entry.sessionGeneration) {
+    return;
   }
 
   entry.name = payload.name;
@@ -2480,13 +2482,21 @@ function handleHostMessage(value: unknown): void {
   }
 
   if (message.type === "new-output-state") {
-    if (isNewOutputStatePayload(payload) === true) {
+    if (
+      isNewOutputStatePayload(payload) === true &&
+      payload.sessionGeneration === entry.sessionGeneration
+    ) {
       setNewOutputState(entry, activeSessionId === sessionId ? false : payload.hasNewOutput);
     }
     return;
   }
 
-  if (message.type === "output" && typeof payload.data === "string") {
+  if (
+    message.type === "output" &&
+    typeof payload.data === "string" &&
+    isSessionGeneration(payload.sessionGeneration) === true &&
+    payload.sessionGeneration === entry.sessionGeneration
+  ) {
     entry.terminal.write(payload.data);
     if (payload.data.length > 0 && activeSessionId !== sessionId) {
       setNewOutputState(entry, true);

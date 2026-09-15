@@ -38,6 +38,7 @@ internal sealed class AppCoordinator : IDisposable
             desktopIntegrationModule.SetCommandCompletionNotificationSettings,
             desktopIntegrationModule.NotifyCommandCompletion);
         terminalModule.CommandCompleted += HandleCommandCompleted;
+        terminalModule.ExitRequested += HandleExitRequested;
         desktopIntegrationModule.PanelVisibilityToggleRequested += HandlePanelVisibilityToggleRequested;
         desktopIntegrationModule.PanelActivationToggleRequested += HandlePanelActivationToggleRequested;
         desktopIntegrationModule.PanelSummonRequested += HandlePanelSummonRequested;
@@ -122,6 +123,7 @@ internal sealed class AppCoordinator : IDisposable
         isDisposed = true;
         lifetimeCancellation.Cancel();
         terminalModule.CommandCompleted -= HandleCommandCompleted;
+        terminalModule.ExitRequested -= HandleExitRequested;
         commandCompletionNotificationCoordinator.Stop();
         desktopIntegrationModule.PanelVisibilityToggleRequested -= HandlePanelVisibilityToggleRequested;
         desktopIntegrationModule.PanelActivationToggleRequested -= HandlePanelActivationToggleRequested;

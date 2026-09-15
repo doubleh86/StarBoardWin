@@ -571,10 +571,10 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-004 | ConPTY resize | shell이 새 column/row를 보고 | Planned |
 | INT-005 | Unicode/한글 round trip | UTF-8 text 손실 없음 | Planned |
 | INT-006 | long-running command + interrupt | `Ctrl+C`로 prompt 복귀 | Planned |
-| INT-007 | shell explicit exit | restart surface state와 새 session 생성 | Planned |
+| INT-007 | shell explicit exit | restart surface state와 새 session 생성 | Passed (automated coordinator); 실제 renderer UI는 MAN-033 |
 | INT-008 | output drain + dispose | hang 없이 timeout 내 종료 | Passed |
 | INT-009 | bundled renderer load | network request 없이 ready message | Planned |
-| INT-010 | WebView2 process failure simulation | app 유지, surface recovery 또는 오류 표시 | Planned |
+| INT-010 | WebView2 process failure simulation | app 유지, surface recovery 또는 오류 표시 | Partial — control 교체·live-session resync·bounded backlog·old generation 거부 계약은 automated; 실제 process kill/reconnect UI는 MAN-033 |
 | INT-011 | 두 PowerShell session의 독립 상태 | environment, cwd, history와 background job이 서로 섞이지 않음 | Passed |
 | INT-012 | 한 session exit/restart/confirmed close | 같은 generation의 확인만 적용되고 tab 제거·PID 종료 뒤에도 다른 session의 interactive state가 그대로 유지됨 | Passed |
 | INT-013 | multi-session output drain + dispose | hidden GUI host가 8초 cleanup deadline 안에 정상 종료 | Passed |
@@ -588,6 +588,8 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-021 | renderer/shortcut/startup 적용 실패 | 저장하지 않고 이전 Terminal/Desktop snapshot으로 복구 | Passed (simulated) |
 | INT-022 | persistence 실패 | DesktopIntegration → Terminal 역순 rollback, 마지막 파일 유지 | Passed (simulated) |
 | INT-023 | rollback 실패 | persisted/effective 상태 분리 표시, 같은 draft로 재시도 성공 | Passed (simulated) |
+| INT-031 | terminal failure generation race | restart/remove/shutdown 뒤 이전 output/exit/renderer callback이 현재 generation을 변경하지 않음 | Passed (automated unit/source contract, 2026-09-15) |
+| INT-032 | WebView2 Runtime missing recovery contract | 고정된 offline 안내에 exception detail·command·output을 포함하지 않고 재시도와 host-owned 종료 제공 | Passed (automated unit/source contract, 2026-09-15); 실제 Runtime 제거 화면은 MAN-030 |
 | INT-024 | tray 설정 창 단일 수명 | 중복 창 없이 기존 창 활성화, 닫을 때 panel 활성화 호출 없음 | Passed (simulated) |
 | INT-025 | live appearance와 새-tab shell | 기존 session PID/cwd 유지, 변경 shell은 이후 tab만 사용 | Passed (module automated) |
 | INT-026 | build metadata 표시 | 설정 표시용 version/short commit이 assembly metadata에서 일관되게 생성됨 | Passed (automated) |

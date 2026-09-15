@@ -132,9 +132,23 @@ dependency 입력에서 파일 순서와 ZIP entry 시각을 고정해 다시 �
 
 portable package는 .NET Runtime을 포함하므로 별도 .NET 설치가 필요 없지만,
 **Microsoft Edge WebView2 Evergreen Runtime은 별도 필수 요구사항**이다. WebView2가
-없으면 Microsoft의 Evergreen Runtime을 설치한 뒤 다시 실행한다. 현재 앱 내부 오류
-surface는 Runtime 시작 실패와 재시도만 안내하며 offline installer를 직접 포함하거나
-실행하지 않는다.
+없으면 앱은 비정상 종료하지 않고 Runtime 누락 안내와 `다시 시도`, `앱 종료`를 표시한다.
+Runtime을 설치한 뒤 실행 중인 오류 surface에서 바로 다시 시도할 수 있다. 앱은 installer를
+포함하거나 자동 다운로드·실행하지 않는다.
+
+네트워크가 차단된 PC에는 다음 오프라인 절차를 사용한다.
+
+1. 인터넷에 연결된 신뢰할 수 있는 PC에서 Microsoft의
+   [WebView2 다운로드 페이지](https://developer.microsoft.com/microsoft-edge/webview2/)를 열고
+   **Evergreen Standalone Installer x64**를 받는다.
+2. 파일의 디지털 서명 게시자가 `Microsoft Corporation`인지 확인한 뒤 대상 PC로 복사한다.
+3. 대상 PC에서 installer를 실행하고 설치가 끝나면 Starboard의 `다시 시도`를 선택한다.
+4. 조직 정책으로 설치가 차단되면 `앱 종료`를 선택하고 시스템 관리자에게 Runtime 배포를 요청한다.
+
+Renderer process가 실행 중 중단되면 Starboard는 각 ConPTY와 shell process를 유지하고 세션별
+최대 4 MiB의 새 출력만 메모리에 보관한 뒤 새 WebView2 control에 다시 연결한다. 중단 전 renderer
+scrollback은 WebView process 메모리와 함께 사라져 복원되지 않으며 command와 terminal output은
+로그나 디스크에 저장하지 않는다.
 
 ## Portable 설치·업데이트·복귀
 

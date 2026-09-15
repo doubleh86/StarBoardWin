@@ -3,9 +3,11 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 using Microsoft.Win32;
 using Starboard.Modules.Terminal.Application;
 using Starboard.Modules.Terminal.Contracts;
@@ -26,6 +28,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly TerminalWorkspacePersistence workspacePersistence;
     private readonly TerminalSavedTabService savedTabService;
     private readonly TerminalCollapsedHeightChangeCallback collapsedHeightChangeCallback;
+    private readonly Action exitRequested;
     private readonly TerminalUrlOpenService urlOpenService;
     private readonly TerminalLaunchProfileCatalog launchProfileCatalog;
     private readonly Lock outputLock = new();
@@ -38,6 +41,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly Dictionary<TerminalLaunchProfileId, TerminalLaunchProfile> launchProfiles = [];
     private readonly CancellationTokenSource lifetimeCancellation = new();
     private CancellationTokenSource rendererOperationCancellation = new();
+    private WebView2 renderer;
 
     private TaskCompletionSource rendererReady = CreateCompletionSource();
     private TerminalSettings? settings;
@@ -47,6 +51,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private PendingSafetyConfirmation? pendingSafetyConfirmation;
     private bool savedTabsInitialized;
     private bool rendererFailed;
+    private bool rendererRequiresRecreation;
+    private bool webViewRuntimeUnavailable;
     private bool launchProfileDiscoveryStarted;
     private bool isDisposed;
     private Guid rendererInstanceId;
@@ -58,7 +64,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     internal TerminalView(IDiagnosticLog diagnosticLog, TerminalSessionCoordinator sessionCoordinator,
                           TerminalWorkspacePersistence workspacePersistence,
                           TerminalSavedTabService savedTabService,
-                          TerminalCollapsedHeightChangeCallback collapsedHeightChangeCallback)
+                          TerminalCollapsedHeightChangeCallback collapsedHeightChangeCallback,
+                          Action exitRequested)
     {
         this.diagnosticLog = diagnosticLog;
         this.sessionCoordinator = sessionCoordinator;
@@ -66,6 +73,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         this.savedTabService = savedTabService;
         ArgumentNullException.ThrowIfNull(collapsedHeightChangeCallback);
         this.collapsedHeightChangeCallback = collapsedHeightChangeCallback;
+        ArgumentNullException.ThrowIfNull(exitRequested);
+        this.exitRequested = exitRequested;
         urlOpenService = new TerminalUrlOpenService(new TerminalExternalUrlLauncher());
         launchProfileCatalog = new TerminalLaunchProfileCatalog(new WslProcessRunner(), diagnosticLog);
         sessionCoordinator.WorkspaceChanged += Session_WorkspaceChanged;
@@ -74,6 +83,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         sessionCoordinator.NewOutputStateChanged += Session_NewOutputStateChanged;
         workspacePersistence.StatusChanged += WorkspacePersistence_StatusChanged;
         InitializeComponent();
+        renderer = CreateRendererControl();
+        RendererHost.Children.Add(renderer);
         var canvas = ((SolidColorBrush)FindResource("CanvasBrush")).Color;
         SetRendererBackground(canvas);
     }
@@ -97,18 +108,20 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             await StartWorkspaceAsync(terminalOptions.RestoreWorkspaceOnLaunch, cancellationToken);
             ShowTerminal();
         }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or IOException or UnauthorizedAccessException or COMException or Win32Exception)
+        catch (Exception exception) when (IsRecoverableStartupException(exception) == true)
         {
             diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "Start",
                                 "The terminal session could not be started.", exception);
-            if (Renderer.CoreWebView2 is not null && sessionCoordinator.Snapshot.Tabs.Count > 0)
+            if (rendererFailed == false && renderer.CoreWebView2 is not null &&
+                sessionCoordinator.Snapshot.Tabs.Count > 0)
             {
                 ShowTerminal();
             }
             else
             {
-                ShowError(ToUserMessage(exception));
+                webViewRuntimeUnavailable = exception is WebView2RuntimeNotFoundException;
+                rendererRequiresRecreation = renderer.CoreWebView2 is null;
+                ShowError(ToUserMessage(exception), webViewRuntimeUnavailable);
             }
         }
     }
@@ -235,7 +248,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         sessionCoordinator.SessionExited -= Session_Exited;
         sessionCoordinator.NewOutputStateChanged -= Session_NewOutputStateChanged;
         workspacePersistence.StatusChanged -= WorkspacePersistence_StatusChanged;
-        Renderer.Dispose();
+        DetachRendererEvents(renderer.CoreWebView2);
+        renderer.Dispose();
         rendererSessionGenerations.Clear();
         rendererOperationCancellation.Dispose();
         lifetimeCancellation.Dispose();
@@ -253,7 +267,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private async Task InitializeRendererAsync(CancellationToken cancellationToken)
     {
-        if (Renderer.CoreWebView2 is not null)
+        if (renderer.CoreWebView2 is not null)
         {
             return;
         }
@@ -269,8 +283,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                                              "Starboard", "WebView2");
         var environment = await CoreWebView2Environment.CreateAsync(null, userDataDirectory, null);
 
-        await Renderer.EnsureCoreWebView2Async(environment);
-        var core = Renderer.CoreWebView2
+        await renderer.EnsureCoreWebView2Async(environment);
+        var core = renderer.CoreWebView2
             ?? throw new InvalidOperationException("WebView2 initialization returned no core instance.");
         ConfigureRenderer(core);
         appearanceState?.MarkRendererUnavailable();
@@ -278,6 +292,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         await rendererReady.Task.WaitAsync(cancellationToken);
         rendererFailed = false;
+        rendererRequiresRecreation = false;
+        webViewRuntimeUnavailable = false;
         SendInitializeMessage();
         PublishLaunchProfiles(launchProfileCatalog.QueryBuiltInProfiles());
         StartLaunchProfileDiscovery();
@@ -311,6 +327,42 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             eventArgs.Handled = true;
         };
         core.ProcessFailed += Core_ProcessFailed;
+    }
+
+    private void DetachRendererEvents(CoreWebView2? core)
+    {
+        if (core is null)
+        {
+            return;
+        }
+
+        core.WebMessageReceived -= Core_WebMessageReceived;
+        core.NavigationStarting -= Core_NavigationStarting;
+        core.ProcessFailed -= Core_ProcessFailed;
+    }
+
+    private static WebView2 CreateRendererControl()
+    {
+        var control = new WebView2
+        {
+            AllowExternalDrop = false,
+            Visibility = Visibility.Collapsed,
+        };
+        AutomationProperties.SetName(control, "Starboard terminal tabs and sessions");
+
+        return control;
+    }
+
+    private void RecreateRendererControl()
+    {
+        DetachRendererEvents(renderer.CoreWebView2);
+        RendererHost.Children.Remove(renderer);
+        renderer.Dispose();
+        renderer = CreateRendererControl();
+        RendererHost.Children.Add(renderer);
+        var canvas = ((SolidColorBrush)FindResource("CanvasBrush")).Color;
+        SetRendererBackground(canvas);
+        rendererRequiresRecreation = false;
     }
 
     internal Task<TerminalWorkspacePersistenceResult> SetWorkspacePersistenceEnabledAsync(
@@ -389,7 +441,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         finally
         {
             launchProfileDiscoveryStarted = false;
-            if (isDisposed == false && rendererFailed == false && Renderer.CoreWebView2 is not null &&
+            if (isDisposed == false && rendererFailed == false && renderer.CoreWebView2 is not null &&
                 rendererGeneration != requestRendererGeneration)
             {
                 StartLaunchProfileDiscovery();
@@ -401,7 +453,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                                        long? requestRendererGeneration = null)
     {
         ArgumentNullException.ThrowIfNull(result);
-        if (isDisposed == true || rendererFailed == true || Renderer.CoreWebView2 is null ||
+        if (isDisposed == true || rendererFailed == true || renderer.CoreWebView2 is null ||
             (requestRendererGeneration.HasValue == true && rendererGeneration != requestRendererGeneration.Value))
         {
             return;
@@ -528,7 +580,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                                           CancellationToken cancellationToken)
     {
         return isDisposed == false && cancellationToken.IsCancellationRequested == false &&
-               rendererFailed == false && Renderer.CoreWebView2 is not null &&
+               rendererFailed == false && renderer.CoreWebView2 is not null &&
                rendererGeneration == requestRendererGeneration && requestRendererInstanceId != Guid.Empty &&
                requestRendererInstanceId == rendererInstanceId;
     }
@@ -560,8 +612,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void Core_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
     {
-        _ = sender;
-        if (isDisposed == true)
+        if (isDisposed == true || ReferenceEquals(sender, renderer.CoreWebView2) == false)
         {
             return;
         }
@@ -580,7 +631,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 rendererInstanceId = message.RendererInstanceId
                     ?? throw new InvalidOperationException("A validated renderer-ready message has no instance identifier.");
                 rendererGeneration++;
-                Renderer.AllowExternalDrop = true;
+                renderer.AllowExternalDrop = true;
                 rendererReady.TrySetResult();
                 break;
             case RendererMessageType.RetryLaunchProfiles:
@@ -696,6 +747,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             case RendererMessageType.RendererError:
                 diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererRuntime",
                                     "The terminal renderer reported a local runtime error.");
+                MarkRendererFailed("Terminal renderer에서 복구할 수 없는 오류가 발생했습니다. " +
+                                   "shell session은 유지되며 renderer를 다시 연결할 수 있습니다.");
                 break;
             case RendererMessageType.ConfirmationResponse:
                 if (message.ConfirmationResponse is { } confirmationResponse)
@@ -906,7 +959,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private void SyncSavedTabs()
     {
         if (savedTabsInitialized == false || isDisposed == true || rendererFailed == true ||
-            Renderer.CoreWebView2 is null)
+            renderer.CoreWebView2 is null)
         {
             return;
         }
@@ -1013,11 +1066,16 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void Core_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs eventArgs)
     {
-        _ = sender;
+        if (ReferenceEquals(sender, renderer.CoreWebView2) == false)
+        {
+            eventArgs.Cancel = true;
+            return;
+        }
+
         InvalidateRendererOperations();
         CancelPendingSafetyConfirmation(sendRendererCancellation: false);
         rendererInstanceId = Guid.Empty;
-        Renderer.AllowExternalDrop = false;
+        renderer.AllowExternalDrop = false;
         var allowedPrefix = $"https://{RendererHostName}/";
         if (eventArgs.Uri.StartsWith(allowedPrefix, StringComparison.OrdinalIgnoreCase) == false)
         {
@@ -1027,17 +1085,34 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void Core_ProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs eventArgs)
     {
-        _ = sender;
-        InvalidateRendererOperations();
+        if (isDisposed == true || ReferenceEquals(sender, renderer.CoreWebView2) == false)
+        {
+            return;
+        }
+
         diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "RendererProcess",
                             $"The renderer process failed ({eventArgs.ProcessFailedKind}).");
+        MarkRendererFailed("Terminal renderer가 중단됐습니다. shell session은 유지되며 " +
+                           "renderer를 다시 연결할 수 있습니다.");
+    }
+
+    private void MarkRendererFailed(string message)
+    {
+        if (isDisposed == true || rendererFailed == true)
+        {
+            return;
+        }
+
+        InvalidateRendererOperations();
+        rendererReady.TrySetException(new InvalidOperationException("The terminal renderer stopped before it was ready."));
         CancelPendingSafetyConfirmation(sendRendererCancellation: false);
         rendererFailed = true;
+        rendererRequiresRecreation = true;
         rendererInstanceId = Guid.Empty;
-        Renderer.AllowExternalDrop = false;
+        renderer.AllowExternalDrop = false;
         rendererSessionGenerations.Clear();
         appearanceState?.MarkRendererUnavailable();
-        ShowError("Terminal renderer가 중단됐습니다. shell session은 유지되며 renderer를 다시 연결할 수 있습니다.");
+        ShowError(message, showExit: false);
     }
 
     private void InvalidateRendererOperations()
@@ -1067,13 +1142,19 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         var reconnectRendererOnly = rendererFailed &&
                                     sessionCoordinator.Snapshot.Tabs.Count > 0;
         RetryButton.IsEnabled = false;
+        ExitButton.IsEnabled = false;
         ShowLoading(reconnectRendererOnly
                         ? "terminal renderer를 다시 연결하고 있습니다."
                         : "shell session을 다시 시작하고 있습니다.");
 
         try
         {
-            if (Renderer.CoreWebView2 is null)
+            if (rendererRequiresRecreation == true)
+            {
+                RecreateRendererControl();
+            }
+
+            if (renderer.CoreWebView2 is null)
             {
                 rendererReady = CreateCompletionSource();
                 await InitializeRendererAsync(lifetimeCancellation.Token);
@@ -1085,9 +1166,10 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 rendererSessionIds.Clear();
                 rendererSessionGenerations.Clear();
                 appearanceState?.MarkRendererUnavailable();
-                Renderer.CoreWebView2.Navigate($"https://{RendererHostName}/index.html");
+                renderer.CoreWebView2.Navigate($"https://{RendererHostName}/index.html");
                 await rendererReady.Task.WaitAsync(lifetimeCancellation.Token);
                 rendererFailed = false;
+                webViewRuntimeUnavailable = false;
                 SendInitializeMessage();
                 SyncWorkspace(sessionCoordinator.Snapshot);
                 SchedulePendingOutputFlushes();
@@ -1117,16 +1199,28 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
             ShowTerminal();
         }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or IOException or UnauthorizedAccessException or COMException or Win32Exception)
+        catch (Exception exception) when (IsRecoverableStartupException(exception) == true)
         {
             diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "Restart",
                                 "The terminal session could not be restarted.", exception);
-            ShowError(ToUserMessage(exception));
+            webViewRuntimeUnavailable = exception is WebView2RuntimeNotFoundException;
+            rendererRequiresRecreation = renderer.CoreWebView2 is null;
+            ShowError(ToUserMessage(exception), webViewRuntimeUnavailable);
         }
         finally
         {
             RetryButton.IsEnabled = true;
+            ExitButton.IsEnabled = true;
+        }
+    }
+
+    private void ExitButton_Click(object sender, RoutedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (isDisposed == false)
+        {
+            exitRequested();
         }
     }
 
@@ -1503,6 +1597,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void Session_WorkspaceChanged(TerminalWorkspaceSnapshot snapshot)
     {
+        _ = snapshot;
         if (isDisposed == true)
         {
             return;
@@ -1510,16 +1605,16 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         if (Dispatcher.CheckAccess() == true)
         {
-            SyncWorkspace(snapshot);
+            SyncWorkspace(sessionCoordinator.Snapshot);
             return;
         }
 
-        _ = Dispatcher.BeginInvoke(() => SyncWorkspace(snapshot));
+        _ = Dispatcher.BeginInvoke(() => SyncWorkspace(sessionCoordinator.Snapshot));
     }
 
     private void SyncWorkspace(TerminalWorkspaceSnapshot snapshot)
     {
-        if (isDisposed == true || rendererFailed == true || Renderer.CoreWebView2 is null)
+        if (isDisposed == true || rendererFailed == true || renderer.CoreWebView2 is null)
         {
             return;
         }
@@ -1605,7 +1700,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void SyncNewOutputState(TerminalNewOutputStateSnapshot snapshot)
     {
-        if (isDisposed == true || rendererFailed == true || Renderer.CoreWebView2 is null)
+        if (isDisposed == true || rendererFailed == true || renderer.CoreWebView2 is null)
         {
             return;
         }
@@ -1658,36 +1753,30 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void Session_OutputReceived(TerminalSessionOutput output)
     {
-        if (isDisposed == true)
+        if (isDisposed == true || sessionCoordinator.IsCurrentSession(output.Session) == false)
         {
             return;
         }
 
-        var state = sessionCoordinator.NewOutputState.States.FirstOrDefault(
-            candidate => candidate.Session.SessionId == output.SessionId.Value);
-        if (state.Session.SessionId == Guid.Empty)
-        {
-            return;
-        }
-
+        var sessionId = output.SessionId;
         var data = output.Data;
         var reportOverflow = false;
         var scheduleFlush = false;
 
         lock (outputLock)
         {
-            if (pendingOutput.TryGetValue(output.SessionId, out var sessionOutput) == false ||
-                sessionOutput.Generation != state.Session.Generation)
+            if (pendingOutput.TryGetValue(sessionId, out var sessionOutput) == false ||
+                sessionOutput.Generation != output.Session.Generation)
             {
-                sessionOutput = new PendingSessionOutput(state.Session.Generation);
-                pendingOutput[output.SessionId] = sessionOutput;
+                sessionOutput = new PendingSessionOutput(output.Session.Generation);
+                pendingOutput[sessionId] = sessionOutput;
             }
 
             if (data.Length >= MaximumPendingOutputLength)
             {
                 sessionOutput.Data.Clear();
                 sessionOutput.Data.Append(data.AsSpan(data.Length - MaximumPendingOutputLength));
-                reportOverflow = outputOverflowReported.Add(output.SessionId);
+                reportOverflow = outputOverflowReported.Add(sessionId);
             }
             else
             {
@@ -1695,24 +1784,24 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 if (overflowLength > 0)
                 {
                     sessionOutput.Data.Remove(0, overflowLength);
-                    reportOverflow = outputOverflowReported.Add(output.SessionId);
+                    reportOverflow = outputOverflowReported.Add(sessionId);
                 }
 
                 sessionOutput.Data.Append(data);
             }
 
-            scheduleFlush = outputFlushScheduled.Add(output.SessionId);
+            scheduleFlush = outputFlushScheduled.Add(sessionId);
         }
 
         if (reportOverflow == true)
         {
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "OutputBacklog",
-                                $"Terminal session {output.SessionId} exceeded its bounded renderer backlog; the oldest data was discarded.");
+                                $"Terminal session {sessionId} exceeded its bounded renderer backlog; the oldest data was discarded.");
         }
 
         if (scheduleFlush == true)
         {
-            _ = Dispatcher.BeginInvoke(() => FlushOutput(output.SessionId));
+            _ = Dispatcher.BeginInvoke(() => FlushOutput(sessionId));
         }
     }
 
@@ -1724,7 +1813,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             return;
         }
 
-        if (rendererFailed == true || Renderer.CoreWebView2 is null)
+        if (rendererFailed == true || renderer.CoreWebView2 is null)
         {
             lock (outputLock)
             {
@@ -1763,10 +1852,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             }
         }
 
-        var currentState = sessionCoordinator.NewOutputState.States.FirstOrDefault(
-            state => state.Session.SessionId == sessionId.Value);
-        var isCurrentGeneration = currentState.Session.SessionId != Guid.Empty &&
-                                  currentState.Session.Generation == generation;
+        var session = new TerminalSessionReference(sessionId.Value, generation);
+        var isCurrentGeneration = sessionCoordinator.IsCurrentSession(session);
         if (isCurrentGeneration == false)
         {
             RemovePendingOutput(sessionId);
@@ -1775,7 +1862,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         if (string.IsNullOrEmpty(output) == false)
         {
-            SendSessionMessage("output", sessionId, new { data = output });
+            SendSessionMessage("output", sessionId, new { sessionGeneration = generation, data = output });
         }
 
         if (hasMoreOutput == true && isDisposed == false)
@@ -1802,7 +1889,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void Session_Exited(TerminalSessionExit sessionExit)
     {
-        if (isDisposed == true)
+        if (isDisposed == true || sessionCoordinator.IsCurrentSession(sessionExit.Session) == false)
         {
             return;
         }
@@ -1855,7 +1942,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void PostRendererMessage(string json)
     {
-        var core = Renderer.CoreWebView2;
+        var core = renderer.CoreWebView2;
         if (core is null)
         {
             return;
@@ -1867,16 +1954,10 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
         catch (Exception exception) when (exception is InvalidOperationException or COMException)
         {
-            InvalidateRendererOperations();
-            CancelPendingSafetyConfirmation(sendRendererCancellation: false);
-            rendererFailed = true;
-            rendererInstanceId = Guid.Empty;
-            Renderer.AllowExternalDrop = false;
-            rendererSessionGenerations.Clear();
-            appearanceState?.MarkRendererUnavailable();
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererOutput",
                                 "The renderer could not accept a host message.", exception);
-            ShowError("Terminal renderer 연결이 끊겼습니다. 다시 시작해 주세요.");
+            MarkRendererFailed("Terminal renderer 연결이 끊겼습니다. shell session은 유지되며 " +
+                               "renderer를 다시 연결할 수 있습니다.");
         }
     }
 
@@ -1950,24 +2031,26 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         StatusMessage.Text = message;
         StatusMessage.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         RetryButton.Visibility = Visibility.Collapsed;
+        ExitButton.Visibility = Visibility.Collapsed;
         StatusSurface.Visibility = Visibility.Visible;
-        Renderer.Visibility = Visibility.Collapsed;
+        renderer.Visibility = Visibility.Collapsed;
     }
 
-    private void ShowError(string message)
+    private void ShowError(string message, bool showExit)
     {
         StatusHeading.Text = "STARBOARD / TERMINAL OFFLINE";
         StatusMessage.Text = message;
         StatusMessage.SetResourceReference(TextBlock.ForegroundProperty, "ErrorBrush");
         RetryButton.Visibility = Visibility.Visible;
+        ExitButton.Visibility = showExit ? Visibility.Visible : Visibility.Collapsed;
         StatusSurface.Visibility = Visibility.Visible;
-        Renderer.Visibility = Visibility.Collapsed;
+        renderer.Visibility = Visibility.Collapsed;
     }
 
     private void ShowTerminal()
     {
         StatusSurface.Visibility = Visibility.Collapsed;
-        Renderer.Visibility = Visibility.Visible;
+        renderer.Visibility = Visibility.Visible;
     }
 
     private void ApplyTheme(TerminalTheme theme)
@@ -2042,7 +2125,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void SetRendererBackground(Color canvas)
     {
-        Renderer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(canvas.A, canvas.R, canvas.G, canvas.B);
+        renderer.DefaultBackgroundColor = System.Drawing.Color.FromArgb(canvas.A, canvas.R, canvas.G, canvas.B);
     }
 
     private SolidColorBrush FindBestButtonInk(Color background)
@@ -2112,10 +2195,23 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                NotSupportedException;
     }
 
-    private static string ToUserMessage(Exception exception)
+    internal static bool IsRecoverableStartupException(Exception exception)
+    {
+        return exception is WebView2RuntimeNotFoundException or
+               InvalidOperationException or
+               IOException or
+               UnauthorizedAccessException or
+               COMException or
+               Win32Exception;
+    }
+
+    internal static string ToUserMessage(Exception exception)
     {
         return exception switch
         {
+            WebView2RuntimeNotFoundException =>
+                "Microsoft Edge WebView2 Runtime이 없습니다. 다른 PC에서 Microsoft의 Evergreen " +
+                "Standalone Installer를 받아 이 PC에 복사해 설치한 뒤 다시 시도하세요. 자세한 절차는 README를 확인하세요.",
             FileNotFoundException => exception.Message,
             DirectoryNotFoundException => "시작 폴더가 없거나 접근할 수 없습니다. 폴더를 변경하거나 홈 폴더에서 다시 시도해 주세요.",
             COMException => "Microsoft Edge WebView2 Runtime을 시작하지 못했습니다.",

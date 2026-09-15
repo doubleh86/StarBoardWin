@@ -212,6 +212,82 @@ public sealed class TerminalSessionCoordinatorTests
     }
 
     [TestMethod]
+    public async Task OutputAndExitCallbacksCarryGenerationAndRejectPreviousLifetimeAfterRestart()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var outputs = new List<TerminalSessionOutput>();
+        var exits = new List<TerminalSessionExit>();
+        coordinator.OutputReceived += outputs.Add;
+        coordinator.SessionExited += exits.Add;
+
+        factory.Sessions[0].RaiseOutput("current-generation-output");
+        await coordinator.RestartAsync(tab.SessionId, CancellationToken.None);
+        factory.Sessions[0].RaiseOutput("late-previous-generation-output");
+        factory.Sessions[0].RaiseExit(91);
+        factory.Sessions[1].RaiseOutput("replacement-generation-output");
+
+        Assert.HasCount(2, outputs);
+        Assert.AreEqual(1, outputs[0].Session.Generation);
+        Assert.AreEqual(2, outputs[1].Session.Generation);
+        Assert.AreEqual(tab.SessionId, outputs[0].SessionId);
+        Assert.AreEqual(tab.SessionId, outputs[1].SessionId);
+        Assert.IsEmpty(exits);
+        Assert.AreEqual(TerminalSessionState.Running, FindTab(coordinator.Snapshot, tab.SessionId).State);
+    }
+
+    [TestMethod]
+    public async Task InitialConPtyCreationFailureLeavesTabRestartableWithoutReplacingWorkspace()
+    {
+        var factory = new FakeTerminalSessionFactory
+        {
+            FailureStartNumber = 1,
+        };
+        await using var coordinator = CreateCoordinator(factory);
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None));
+        var failedTab = coordinator.Snapshot.Tabs.Single();
+        Assert.AreEqual(TerminalSessionState.Failed, failedTab.State);
+
+        factory.FailureStartNumber = null;
+        await coordinator.RestartAsync(failedTab.SessionId, CancellationToken.None);
+
+        Assert.AreEqual(1, coordinator.Snapshot.Tabs.Count);
+        Assert.AreEqual(TerminalSessionState.Running, FindTab(coordinator.Snapshot, failedTab.SessionId).State);
+        Assert.AreEqual(2, factory.StartRequests.Count);
+        Assert.AreEqual(1, factory.Sessions.Count);
+    }
+
+    [TestMethod]
+    public async Task RemovedAndDisposedSessionsRejectLateOutputAndExitCallbacks()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        var coordinator = CreateCoordinator(factory);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var outputs = new List<TerminalSessionOutput>();
+        var exits = new List<TerminalSessionExit>();
+        coordinator.OutputReceived += outputs.Add;
+        coordinator.SessionExited += exits.Add;
+
+        factory.Sessions[0].RaiseExit(0);
+        Assert.IsTrue(await coordinator.CloseAsync(tab.SessionId, CancellationToken.None));
+        factory.Sessions[0].RaiseOutput("late-removed-output");
+        factory.Sessions[0].RaiseExit(92);
+
+        Assert.IsEmpty(outputs);
+        Assert.HasCount(1, exits);
+
+        await coordinator.DisposeAsync();
+        factory.Sessions[1].RaiseOutput("late-shutdown-output");
+        factory.Sessions[1].RaiseExit(93);
+
+        Assert.IsEmpty(outputs);
+        Assert.HasCount(1, exits);
+    }
+
+    [TestMethod]
     public async Task UpdateDefaultShellPreservesExistingSessionsAndTheirRestartShell()
     {
         var factory = new FakeTerminalSessionFactory();
@@ -1032,7 +1108,7 @@ public sealed class TerminalSessionCoordinatorTests
             this.createSession = createSession ?? (_ => new FakeTerminalSession());
         }
 
-        internal int? FailureStartNumber { get; init; }
+        internal int? FailureStartNumber { get; set; }
 
         internal List<FakeTerminalSession> Sessions { get; } = [];
 

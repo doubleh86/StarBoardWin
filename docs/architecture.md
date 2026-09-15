@@ -177,15 +177,21 @@ Node.js나 network를 요구하지 않는다. npm은 renderer asset을 갱신할
 
 ### WebView2 policy
 
-- WPF standard WebView2 한 개만 생성한다.
+- WPF standard WebView2는 한 번에 한 control만 유지한다. renderer/process failure 뒤에는 실패한
+  control을 폐기하고 새 control과 environment를 만들되 ConPTY session은 재시작하지 않는다.
 - `%LOCALAPPDATA%/Starboard/WebView2`를 user data folder로 사용한다.
 - application asset directory만 virtual host로 매핑한다.
 - runtime HTTP/HTTPS navigation, popup과 download를 거부한다.
 - Release에서는 DevTools, browser context menu, status bar와 accelerator를 끈다.
 - host object를 광범위하게 노출하지 않고 JSON web message만 사용한다.
 - renderer process failure를 관찰하고 session을 즉시 폐기하지 않은 채 surface를
-  다시 연결한다.
-- WebView2 Runtime이 없으면 WPF error surface와 offline installer 안내를 표시한다.
+  다시 연결한다. 실패 중 session별 최신 출력은 4 MiB까지만 메모리에 보관하고 재연결 뒤 전달하며,
+  renderer가 이미 소유하던 scrollback은 복구 불가임을 사용자 문서에 명시한다.
+- native session output/exit event는 session generation을 포함한다. coordinator, WPF host와 renderer는
+  restart/remove/shutdown 뒤 이전 generation의 callback·output·unread state를 폐기한다. dispatcher에
+  대기한 workspace event도 전달 당시 snapshot 대신 적용 시점의 최신 coordinator snapshot을 읽는다.
+- WebView2 Runtime이 없으면 WPF error surface에 offline standalone installer 안내와 재시도/앱 종료를
+  표시한다. installer를 번들하거나 runtime network request로 내려받지 않는다.
 
 Windows 11에는 Evergreen Runtime이 일반적으로 포함되지만 application은 설치를
 가정하지 않고 availability를 확인한다. Evergreen update는 앱을 재시작할 때 새
@@ -740,8 +746,9 @@ process가 유지되고 `RenderProcessExited`가 기록됐으며, PowerShell pro
 surface 표시, renderer reconnect button과 다른 tab 화면 상태의 수동 통과 근거는 아니다.
 
 Runtime 누락 child override는 renderer/shell 미생성까지만 관찰됐고 local 오류 surface와
-installer 안내를 일관되게 확인하지 못했다. 현재 구현의 사용자 message는 Runtime 시작
-실패와 재시도를 알리고, 설치 절차는 README에만 있다. system Runtime 제거와 실제
+installer 안내를 일관되게 확인하지 못했다. 현재 구현은 Runtime 전용 예외를 앱 내부에서 처리해
+오프라인 standalone installer 안내, 재시도와 host-owned 종료 동작을 제공하며 README에도 같은 절차를
+기록한다. system Runtime 제거와 실제
 network-disabled 실행은 기존 사용자 WebView2/session 보호를 위해 수행하지 않았다.
 따라서 local asset/CSP/package smoke가 통과했더라도 실제 offline WebView2와 Runtime 누락
 fallback은 manual matrix에서 계속 부분 또는 blocked 상태로 관리한다.
@@ -788,7 +795,8 @@ portable update는 파일을 제자리 교체하거나 시작 프로그램 경�
 
 | 위험 | 기본 대응 | fallback |
 |---|---|---|
-| WebView2 Runtime 없음 | startup initialization error surface와 재시도 | README 설치 절차; in-app offline installer 안내는 미구현·수동 검증 필요 |
+| WebView2 Runtime 없음 | startup error surface의 offline standalone installer 안내와 재시도/앱 종료 | 실제 Runtime 제거 UI는 수동 검증 필요 |
+| WebView2 renderer process 실패 | 실패한 control 교체, live ConPTY와 generation별 bounded output 유지 | 재연결 실패 surface; 중단 전 renderer scrollback은 복원하지 않음 |
 | standard WebView2 alpha 제약 | opaque/tinted background | composition control은 별도 검증 후만 고려 |
 | ConPTY shutdown deadlock | 별도 worker와 bounded drain | child kill, pipe close 후 app shutdown 계속 |
 | taskbar auto-hide event 누락 | event + reconciliation | last safe frame |

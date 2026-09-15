@@ -1337,7 +1337,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             }
         }
 
-        OutputReceived?.Invoke(new TerminalSessionOutput(expectedEntry.SessionId, data));
+        OutputReceived?.Invoke(new TerminalSessionOutput(expectedEntry.SessionReference, data));
         if (outputSnapshot is not null)
         {
             NewOutputStateChanged?.Invoke(outputSnapshot);
@@ -1364,7 +1364,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
 
         WorkspaceChanged?.Invoke(snapshot);
-        SessionExited?.Invoke(new TerminalSessionExit(expectedEntry.SessionId, exitCode));
+        SessionExited?.Invoke(new TerminalSessionExit(expectedEntry.SessionReference, exitCode));
     }
 
     private void OnCommandLifecycleChanged(SessionEntry expectedEntry, TerminalSessionCommandSignal signal)

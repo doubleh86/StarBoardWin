@@ -50,6 +50,8 @@ public sealed class RendererDistributionTests
     [TestMethod]
     public void BundledRendererContainsSafetyConfirmationAndUnreadOutputRuntime()
     {
+        var source = ReadRendererSource("index.ts");
+        var hostSource = ReadTerminalSource("Presentation", "TerminalView.xaml.cs");
         var script = ReadRendererAsset("app.js");
         var styles = ReadRendererAsset("app.css");
 
@@ -67,6 +69,10 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(styles, ".confirmation-dialog[data-kind=paste]");
         StringAssert.Contains(styles, ".confirmation-preview");
         StringAssert.Contains(styles, ".tab-new-output");
+        StringAssert.Contains(source, "payload.sessionGeneration === entry.sessionGeneration");
+        StringAssert.Contains(source, "payload.sessionGeneration < entry.sessionGeneration");
+        StringAssert.Contains(hostSource, "new { sessionGeneration = generation, data = output }");
+        StringAssert.Contains(script, "sessionGeneration===r.sessionGeneration");
     }
 
     [TestMethod]
