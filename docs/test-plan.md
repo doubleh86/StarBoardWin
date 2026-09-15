@@ -49,6 +49,15 @@ mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증�
 | NOTIFY-006 | 실제 Windows 알림이 명령 종료당 한 번 표시되고 panel activation/focus 변화가 없음 | 사용자 interactive desktop에서 PowerShell 긴 명령과 foreground app을 함께 관찰 | Not run — terminal/tray UI 입력·알림 시각 관찰을 수행하지 않음 |
 | NOTIFY-007 | 100/125/150/200%에서 알림과 panel geometry/focus 회귀 없음 | 각 DPI에서 실제 notification과 panel을 관찰 | Not run — 이번 실행은 DPI 설정이나 실제 화면을 조작하지 않음 |
 
+## DIAGNOSTIC-LOG-01 진단 로그 개인정보와 보관 검증
+
+| ID | 범위 | 방법 | 상태 |
+|---|---|---|---|
+| LOG-001 | message, command/output/prompt/path 및 안전하지 않은 metadata가 disk에 남지 않음 | `FileDiagnosticLogTests.WriteDoesNotPersistMessagesOrUnsafeMetadata` | Passed (automated) |
+| LOG-002 | 512 KiB 회전과 active+4 archive의 2.5 MiB 상한 | `FileDiagnosticLogTests.WriteRotatesAtBoundedSizeAndKeepsOnlyConfiguredFiles` | Passed (automated) |
+| LOG-003 | 병렬 write, 파일 잠금, 손상 파일과 종료 직전 경로 손실이 예외를 전파하지 않음 | `FileDiagnosticLogTests.ConcurrentAndLockedWritesAreIsolated`, `CorruptExistingLogAndUnavailableDirectoryDoNotThrow` | Passed (automated) |
+| LOG-004 | publish/ZIP/추출본에서 logs(회전본 포함), user settings/workspace/saved tabs와 WebView2 data 제외 | `package-portable.ps1` content deny-list와 추출 smoke | Passed (automated) |
+
 ## 현재 개발 환경
 
 | 항목 | 값 |

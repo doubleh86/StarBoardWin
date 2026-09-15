@@ -218,9 +218,12 @@ function Test-PortableContents {
                 "saved-tabs.json.bak",
                 "saved-tabs.json.tmp") -or
             $file.Name -in $sensitiveCaptureNames -or
-            $file.Extension -in @(".bak", ".tmp", ".log", ".pdb", ".dmp", ".hdmp") -or
+            $file.Name -match "(?i)^starboard\.log(?:\.[0-9]+)?$" -or
+            $file.Extension -in @(".bak", ".tmp", ".log", ".pdb", ".dmp", ".hdmp", ".sqlite", ".db") -or
             $segments -contains "WebView2" -or
             $segments -contains "WebView2Data" -or
+            $segments -contains "EBWebView" -or
+            $segments -contains "User Data" -or
             $segments -contains "Logs") {
             throw "Runtime or developer-only data was included in the package: $relativePath"
         }

@@ -683,8 +683,9 @@ WebView2 transparent composition 위험 때문에 glassmorphism과 blur를 쓰�
 
 ## Diagnostics와 privacy
 
-- rolling local log만 사용하며 기본 retention을 제한한다.
-- subsystem, operation, native error code, recoverability만 기록한다.
+- local diagnostic log는 `%LOCALAPPDATA%/Starboard/Logs/starboard.log`와 `.1`~`.4` 보관본만 사용한다. 각 파일은 512 KiB를 넘기기 전에 회전하므로 총 보관 상한은 2.5 MiB다.
+- subsystem, operation, level, native error code의 제한된 metadata만 기록한다. message와 exception 본문은 file sink에서 의도적으로 폐기하며 허용 문자/길이를 벗어난 metadata는 `redacted`로 대체한다.
+- 파일 잠금, I/O, 손상된 기존 파일과 회전 실패는 best-effort로 격리한다. 진단 기록 실패는 startup, recovery 또는 shutdown을 중단하지 않는다.
 - command, terminal output, clipboard, environment value와 full custom arguments는
   기록하지 않는다.
 - 닫기 확인 correlation token, 여러 줄 paste/path-drop preview와 새 출력 badge도 disk 또는 log에
@@ -708,7 +709,7 @@ build는 commit을 `unknown`으로 표시할 수 있고, package 흐름은 확�
 중단한다. publish는 self-contained `win-x64`, multi-file이고 WebView2 Runtime 자체는
 포함하지 않는다. committed `Renderer` asset, 제품 MIT `LICENSE`, README, third-party
 notice/license와 release metadata를 포함한 뒤 settings/workspace/saved-tabs JSON과 그
-backup·temporary 파일, logs/WebView2 user data, dump, PDB와 개발 PC 절대 경로가 없는지
+backup·temporary 파일, logs(회전 보관본 포함)/WebView2 user data, dump, database, PDB와 개발 PC 절대 경로가 없는지
 검사한다.
 
 앱 executable과 WPF 창은 `src/Starboard.Windows/Assets/Starboard.ico`를 application/resource로

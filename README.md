@@ -244,7 +244,7 @@ Starboard는 link preview나 background network request를 만들지 않는다. 
   workspace.json.tmp             # 원자 저장 중에만 존재 가능
   saved-tabs.json                # 작업공간 복원 옵션과 독립적인 저장 탭 정의
   saved-tabs.json.tmp            # 원자 저장 중에만 존재 가능
-  Logs/starboard.log
+  Logs/starboard.log              # 512 KiB, .1~.4 회전 보관본 포함 최대 2.5 MiB
   WebView2/
 ```
 
@@ -255,7 +255,7 @@ Starboard에는 analytics, telemetry, crash upload, remote configuration이 없�
 내용, environment 값, runtime PID/session ID는 로그나 두 구성
 파일에 남기지 않는다. 닫기 확인 token, 여러 줄 붙여넣기·경로 드롭 미리보기와 새 출력 표시는
 메모리의 현재 session 세대에만 묶이며 disk·log·package에 저장하지 않는다. 로그는
-subsystem, operation, 복구 가능성에 필요한 오류 종류만 기록한다. portable ZIP에는
+level, subsystem, operation과 native error code의 제한된 metadata만 기록하며 message와 exception 본문은 저장하지 않는다. 파일 잠금·회전·쓰기 실패는 앱 동작을 막지 않는다. portable ZIP에는
 이 사용자 데이터, backup, temporary 파일이 포함되지 않는다.
 완료 알림도 메모리의 opaque session generation·execution ID와 exit result만 사용하며
 알림 설정의 boolean 외에는 설정·로그·배포물에 저장하지 않는다.
