@@ -99,9 +99,9 @@ git diff --check
 ## 진행 기록
 
 - [x] 2026-09-15: 현재 `main` CSS에서 회귀 원인을 다시 확인하고 독립 Task와 경로를 확정했다.
-- [ ] `tab-add-button-position` 구현 및 자동 검증.
+- [x] 2026-09-15: `.tab-list`를 `flex: 0 1 auto`로 조정하고 고정 control·DOM 순서·기본 프로필 새 탭 회귀 계약을 추가했다. renderer source/dist와 자동 검증을 갱신했다.
 - [ ] 실제 WebView2와 DPI별 위치 수동 검증.
 
 ## 완료 요약
 
-기획만 완료했다. 제품 코드와 renderer asset은 아직 수정하지 않았다.
+자동 구현과 계약 검증은 완료했다. 실제 WebView2의 1/3/8개 탭 및 DPI별 시각 검증은 이 환경에서 수행하지 않아 Not run으로 남겼다.
