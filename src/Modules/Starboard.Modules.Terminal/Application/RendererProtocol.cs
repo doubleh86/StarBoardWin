@@ -177,6 +177,7 @@ internal static class RendererProtocol
             message = type switch
             {
                 "ready" => ParseRendererReady(root, payload),
+                "retry-launch-profiles" => ParseGlobal(RendererMessageType.RetryLaunchProfiles, root, payload),
                 "new-tab" => ParseNewTab(root, payload),
                 "duplicate-tab" => ParseDuplicateTab(root, payload),
                 "change-collapsed-height" => ParseCollapsedHeightChange(root, payload),

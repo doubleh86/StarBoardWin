@@ -167,9 +167,13 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(source, "postSession(\"duplicate-tab\"");
         StringAssert.Contains(source, "pendingProfileLaunches");
         StringAssert.Contains(source, "pendingTabDuplicates");
+        StringAssert.Contains(source, "launch-profile-tab-limit");
+        StringAssert.Contains(source, "aria-describedby");
+        StringAssert.Contains(source, "if (savedTabsMenu !== undefined) {");
+        StringAssert.Contains(source, "showSavedTabsMenu();");
         StringAssert.Contains(script, "launch-profiles-result");
         StringAssert.Contains(script, "duplicate-tab");
-        StringAssert.Contains(script, "\uC774 \uD0ED \uAD6C\uC131 \uBCF5\uC81C");
+        StringAssert.Contains(script, "\\uC774 \\uD0ED \\uAD6C\\uC131 \\uBCF5\\uC81C");
         StringAssert.Contains(styles, ".saved-tabs-section-heading");
         StringAssert.Contains(styles, ".tab-strip{display:flex;min-width:0;height:32px");
     }

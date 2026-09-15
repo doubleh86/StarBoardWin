@@ -33,7 +33,7 @@ internal sealed class TerminalLaunchProfileCatalog
 
     internal async Task<TerminalLaunchProfileQueryResult> QueryAsync(CancellationToken cancellationToken)
     {
-        var profiles = GetInstalledBuiltInProfiles().ToList();
+        var profiles = GetInstalledBuiltInProfiles();
         var wslExecutable = executableResolver("wsl.exe");
         if (wslExecutable is null)
         {
@@ -69,6 +69,12 @@ internal sealed class TerminalLaunchProfileCatalog
             return new TerminalLaunchProfileQueryResult(TerminalLaunchProfileQueryStatus.WslDiscoveryFailed,
                                                         profiles, "WSL 배포판 목록을 불러오지 못했습니다.");
         }
+    }
+
+    internal TerminalLaunchProfileQueryResult QueryBuiltInProfiles()
+    {
+        return new TerminalLaunchProfileQueryResult(TerminalLaunchProfileQueryStatus.WslUnavailable,
+                                                    GetInstalledBuiltInProfiles());
     }
 
     internal ShellLaunchSpec Resolve(TerminalLaunchProfile profile)
@@ -127,22 +133,25 @@ internal sealed class TerminalLaunchProfileCatalog
         return string.IsNullOrWhiteSpace(userProfile) == false ? userProfile : Environment.CurrentDirectory;
     }
 
-    private IEnumerable<TerminalLaunchProfile> GetInstalledBuiltInProfiles()
+    private List<TerminalLaunchProfile> GetInstalledBuiltInProfiles()
     {
+        var profiles = new List<TerminalLaunchProfile>();
         if (executableResolver("pwsh.exe") is not null)
         {
-            yield return TerminalLaunchProfile.CreateBuiltIn(TerminalShellKind.Pwsh, "PowerShell 7");
+            profiles.Add(TerminalLaunchProfile.CreateBuiltIn(TerminalShellKind.Pwsh, "PowerShell 7"));
         }
 
         if (executableResolver("powershell.exe") is not null)
         {
-            yield return TerminalLaunchProfile.CreateBuiltIn(TerminalShellKind.PowerShell, "Windows PowerShell");
+            profiles.Add(TerminalLaunchProfile.CreateBuiltIn(TerminalShellKind.PowerShell, "Windows PowerShell"));
         }
 
         if (executableResolver("cmd.exe") is not null)
         {
-            yield return TerminalLaunchProfile.CreateBuiltIn(TerminalShellKind.Cmd, "Command Prompt");
+            profiles.Add(TerminalLaunchProfile.CreateBuiltIn(TerminalShellKind.Cmd, "Command Prompt"));
         }
+
+        return profiles;
     }
 
     private static List<string> ParseDistributionNames(byte[] output)

@@ -315,6 +315,7 @@ let requestedTerminalFocusSessionId: string | undefined;
 let requestedTabFocusSessionId: string | undefined;
 let focusTerminalOnNextActivation = false;
 let contextMenu: HTMLElement | undefined;
+let contextMenuFocusReturnSessionId: string | undefined;
 let savedTabsMenu: HTMLElement | undefined;
 let savedTabsDialog: HTMLDialogElement | undefined;
 let savedTabsDialogFocusReturnSessionId: string | undefined;
@@ -1061,6 +1062,7 @@ function showTabMenuAt(anchor: Pick<DOMRect, "left" | "bottom">, sessionId: stri
   }
   document.body.append(menu);
   contextMenu = menu;
+  contextMenuFocusReturnSessionId = sessionId;
   menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
 }
 
@@ -1071,6 +1073,7 @@ function dismissTabMenu(): void {
 
   contextMenu.remove();
   contextMenu = undefined;
+  contextMenuFocusReturnSessionId = undefined;
 }
 
 function shellLabel(shellKind: SavedTab["shellKind"]): string {
@@ -1167,13 +1170,29 @@ function appendLaunchProfilesMenu(menu: HTMLElement): void {
   heading.textContent = "새 탭";
   menu.append(heading);
 
+  const tabLimitReached = canAddSession === false || sessions.size >= MaximumTabs;
+  let limitId: string | undefined;
+  if (tabLimitReached === true) {
+    const limit = document.createElement("p");
+    limitId = "launch-profile-tab-limit";
+    limit.id = limitId;
+    limit.className = "saved-tabs-limit";
+    limit.setAttribute("role", "status");
+    limit.textContent = `실행 탭 한도(${MaximumTabs}개)에 도달했습니다.`;
+    menu.append(limit);
+  }
+
   for (const profile of launchProfiles?.profiles ?? []) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "launch-profile";
     button.setAttribute("role", "menuitem");
     button.textContent = profile.displayName;
-    button.disabled = canAddSession === false;
+    button.disabled = tabLimitReached;
+    if (limitId !== undefined) {
+      button.setAttribute("aria-label", `${profile.displayName} (실행 탭 한도에 도달하여 사용할 수 없음)`);
+      button.setAttribute("aria-describedby", limitId);
+    }
     button.addEventListener("click", () => launchProfile(profile));
     menu.append(button);
   }
@@ -1838,7 +1857,11 @@ function renderTabs(): void {
     tabList.append(entry.tabItem);
   }
 
-  newTabButton.disabled = canAddSession === false || sessions.size >= MaximumTabs;
+  const tabLimitReached = canAddSession === false || sessions.size >= MaximumTabs;
+  newTabButton.disabled = tabLimitReached;
+  newTabButton.setAttribute("aria-label", tabLimitReached === true
+    ? `새 terminal 탭 (실행 탭 한도 ${MaximumTabs}개에 도달하여 사용할 수 없음)`
+    : "새 terminal 탭");
 }
 
 function updateSessionStatus(entry: SessionEntry): void {
@@ -2347,6 +2370,9 @@ function handleHostMessage(value: unknown): void {
 
   if (message.type === "launch-profiles-result") {
     launchProfiles = message.payload;
+    if (savedTabsMenu !== undefined) {
+      showSavedTabsMenu();
+    }
     return;
   }
 
@@ -2600,7 +2626,9 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape" && contextMenu !== undefined) {
     event.preventDefault();
+    const returnSessionId = contextMenuFocusReturnSessionId;
     dismissTabMenu();
+    sessions.get(returnSessionId ?? "")?.tabButton.focus();
   }
   if (event.key === "Escape" && savedTabsMenu !== undefined) {
     event.preventDefault();

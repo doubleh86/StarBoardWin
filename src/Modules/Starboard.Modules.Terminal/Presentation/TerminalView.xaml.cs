@@ -10,6 +10,7 @@ using Microsoft.Win32;
 using Starboard.Modules.Terminal.Application;
 using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
+using Starboard.Modules.Terminal.Infrastructure;
 using Starboard.SharedKernel.Diagnostics;
 
 namespace Starboard.Modules.Terminal.Presentation;
@@ -25,6 +26,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly TerminalWorkspacePersistence workspacePersistence;
     private readonly TerminalSavedTabService savedTabService;
     private readonly TerminalUrlOpenService urlOpenService;
+    private readonly TerminalLaunchProfileCatalog launchProfileCatalog;
     private readonly Lock outputLock = new();
     private readonly Dictionary<TerminalSessionId, PendingSessionOutput> pendingOutput = [];
     private readonly HashSet<TerminalSessionId> outputFlushScheduled = [];
@@ -32,6 +34,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly HashSet<TerminalSessionId> rendererSessionIds = [];
     private readonly Dictionary<TerminalSessionId, long> rendererSessionGenerations = [];
     private readonly HashSet<TerminalSavedTabRequestId> savedTabLaunchRequestIds = [];
+    private readonly Dictionary<TerminalLaunchProfileId, TerminalLaunchProfile> launchProfiles = [];
     private readonly CancellationTokenSource lifetimeCancellation = new();
 
     private TaskCompletionSource rendererReady = CreateCompletionSource();
@@ -42,6 +45,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private PendingSafetyConfirmation? pendingSafetyConfirmation;
     private bool savedTabsInitialized;
     private bool rendererFailed;
+    private bool launchProfileDiscoveryStarted;
     private bool isDisposed;
     private Guid rendererInstanceId;
     private long rendererGeneration;
@@ -57,6 +61,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         this.workspacePersistence = workspacePersistence;
         this.savedTabService = savedTabService;
         urlOpenService = new TerminalUrlOpenService(new TerminalExternalUrlLauncher());
+        launchProfileCatalog = new TerminalLaunchProfileCatalog(new WslProcessRunner(), diagnosticLog);
         sessionCoordinator.WorkspaceChanged += Session_WorkspaceChanged;
         sessionCoordinator.OutputReceived += Session_OutputReceived;
         sessionCoordinator.SessionExited += Session_Exited;
@@ -265,6 +270,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         await rendererReady.Task.WaitAsync(cancellationToken);
         rendererFailed = false;
         SendInitializeMessage();
+        PublishLaunchProfiles(launchProfileCatalog.QueryBuiltInProfiles());
+        StartLaunchProfileDiscovery();
         rendererSessionIds.Clear();
         SyncWorkspace(sessionCoordinator.Snapshot);
         SchedulePendingOutputFlushes();
@@ -330,6 +337,113 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         SyncSavedTabs();
     }
 
+    private void StartLaunchProfileDiscovery()
+    {
+        if (launchProfileDiscoveryStarted == true || isDisposed == true)
+        {
+            return;
+        }
+
+        launchProfileDiscoveryStarted = true;
+        _ = RefreshLaunchProfilesAsync(rendererGeneration);
+    }
+
+    private async Task RefreshLaunchProfilesAsync(long requestRendererGeneration)
+    {
+        try
+        {
+            var result = await launchProfileCatalog.QueryAsync(lifetimeCancellation.Token);
+            PublishLaunchProfiles(result, requestRendererGeneration);
+        }
+        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested == true)
+        {
+            return;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or Win32Exception)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RefreshLaunchProfiles",
+                                "Terminal launch profile discovery failed without affecting active sessions.", exception);
+        }
+        finally
+        {
+            launchProfileDiscoveryStarted = false;
+            if (isDisposed == false && rendererFailed == false && Renderer.CoreWebView2 is not null &&
+                rendererGeneration != requestRendererGeneration)
+            {
+                StartLaunchProfileDiscovery();
+            }
+        }
+    }
+
+    private void PublishLaunchProfiles(TerminalLaunchProfileQueryResult result,
+                                       long? requestRendererGeneration = null)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        launchProfiles.Clear();
+        foreach (var profile in result.Profiles)
+        {
+            launchProfiles[profile.ProfileId] = profile;
+        }
+
+        if (isDisposed == true || rendererFailed == true || Renderer.CoreWebView2 is null ||
+            (requestRendererGeneration.HasValue == true && rendererGeneration != requestRendererGeneration.Value))
+        {
+            return;
+        }
+
+        PostRendererMessage(RendererProtocol.SerializeLaunchProfileQueryResult(result));
+    }
+
+    private async Task LaunchProfileAsync(TerminalNewTabRequest request)
+    {
+        if (isDisposed == true || launchProfiles.TryGetValue(request.ProfileId, out var profile) == false)
+        {
+            return;
+        }
+
+        try
+        {
+            CancelPendingSafetyConfirmation(sendRendererCancellation: true);
+            _ = await sessionCoordinator.LaunchProfileAsync(request, profile, launchProfileCatalog.Resolve,
+                                                            lifetimeCancellation.Token);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException or OperationCanceledException or
+            Win32Exception or UnauthorizedAccessException)
+        {
+            if (isDisposed == false)
+            {
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "LaunchProfile",
+                                    "A terminal launch profile could not start a tab.", exception);
+            }
+        }
+    }
+
+    private async Task DuplicateTabAsync(TerminalTabDuplicateRequest request)
+    {
+        if (isDisposed == true)
+        {
+            return;
+        }
+
+        try
+        {
+            CancelPendingSafetyConfirmation(sendRendererCancellation: true);
+            _ = await sessionCoordinator.DuplicateAsync(request, launchProfileCatalog.Resolve,
+                                                        lifetimeCancellation.Token);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException or OperationCanceledException or
+            Win32Exception or UnauthorizedAccessException)
+        {
+            if (isDisposed == false)
+            {
+                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "DuplicateTab",
+                                    "A terminal tab configuration could not be duplicated.", exception);
+            }
+        }
+    }
+
     private void WorkspacePersistence_StatusChanged(TerminalWorkspaceSaveStatus status)
     {
         if (isDisposed == true)
@@ -372,8 +486,20 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 Renderer.AllowExternalDrop = true;
                 rendererReady.TrySetResult();
                 break;
+            case RendererMessageType.RetryLaunchProfiles:
+                StartLaunchProfileDiscovery();
+                break;
             case RendererMessageType.NewTab:
-                _ = AddSessionAsync();
+                if (message.NewTabRequest is { } newTabRequest)
+                {
+                    _ = LaunchProfileAsync(newTabRequest);
+                }
+                break;
+            case RendererMessageType.DuplicateTab:
+                if (message.TabDuplicateRequest is { } tabDuplicateRequest)
+                {
+                    _ = DuplicateTabAsync(tabDuplicateRequest);
+                }
                 break;
             case RendererMessageType.SelectSession:
                 SelectSession(message.SessionId);
@@ -805,29 +931,6 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         finally
         {
             RetryButton.IsEnabled = true;
-        }
-    }
-
-    private async Task AddSessionAsync()
-    {
-        if (isDisposed == true)
-        {
-            return;
-        }
-
-        try
-        {
-            CancelPendingSafetyConfirmation(sendRendererCancellation: true);
-            await sessionCoordinator.AddAsync(lifetimeCancellation.Token);
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or IOException or OperationCanceledException or Win32Exception or UnauthorizedAccessException)
-        {
-            if (isDisposed == false)
-            {
-                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "AddSession",
-                                    "A terminal tab could not be added.", exception);
-            }
         }
     }
 

@@ -6,6 +6,7 @@ namespace Starboard.Modules.Terminal.Application;
 internal enum RendererMessageType
 {
     Ready,
+    RetryLaunchProfiles,
     NewTab,
     DuplicateTab,
     ChangeCollapsedHeight,

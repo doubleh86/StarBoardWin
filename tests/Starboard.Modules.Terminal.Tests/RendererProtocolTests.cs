@@ -64,6 +64,21 @@ public sealed class RendererProtocolTests
     }
 
     [TestMethod]
+    public void TryParseRetryLaunchProfilesAcceptsOnlyGlobalEmptyPayload()
+    {
+        const string Json = """
+            {"version":2,"type":"retry-launch-profiles","payload":{}}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(RendererMessageType.RetryLaunchProfiles, message.Type);
+        Assert.IsNull(message.SessionId);
+    }
+
+    [TestMethod]
     [DataRow("new-tab", "00000000000000000000000000000000", 7, "shell:pwsh")]
     [DataRow("new-tab", "40000000000000000000000000000001", 0, "shell:pwsh")]
     [DataRow("new-tab", "40000000000000000000000000000001", 7, "shell:unknown")]
