@@ -94,6 +94,18 @@ Starboard는 작업표시줄에 붙어 빠르게 명령을 입력하고 결과�
 - [x] 지정된 Terminal test, solution restore/build/test, C# 정렬 및 diff 검사를 실행하고 실제 Windows
   notification, focus, 100/125/150/200% DPI는 수행 여부를 `docs/test-plan.md`에 자동 검증과 구분해 기록한다.
 
+### 2026-09-15 PowerShell 초기화 입력 회귀
+
+- 실제 배포본에서 새 PowerShell 7 탭이 내부 bootstrap 입력 뒤 `>>` 연속 입력 prompt에 머무는
+  현상을 확인했다. 이는 단순한 내부 명령 노출이 아니라 첫 사용자 명령을 정상적으로 받을 수 없는
+  P0 사용성 버그다.
+- 현재 stdin bootstrap이 PowerShell 대화형 입력에 `\r\n`을 보내는 점과 shell이 prompt 입력 준비를
+  마치기 전에 긴 encoded command를 주입하는 경계를 우선 조사한다. 원인은 추측으로 확정하지 않고
+  실제 ConPTY/PSReadLine 재현 test로 고정한다.
+- 수정 범위와 단일 오케스트레이터 Task는
+  [PowerShell bootstrap 준비 상태 회귀 계획](2026-09-15-powershell-bootstrap-readiness.md)을 정본으로
+  삼는다. 기존 완료 알림 계약을 완료 상태로만 보고 이 회귀를 누락하면 안 된다.
+
 ## PATH-DROP-01 — 파일·폴더 경로를 안전하게 입력
 
 ### 목표와 범위
