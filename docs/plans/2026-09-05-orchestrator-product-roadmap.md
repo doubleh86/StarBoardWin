@@ -249,7 +249,9 @@ Windows API 동작은 이 기획만으로 검증 완료된 것으로 취급하�
 
 ## 구현 단계
 
-- [ ] P0 기준선·환경·실제 UI 확인
+- **Blocked (manual) — P0 기준선·환경·실제 UI 확인:** process, OS와 일부 read-only 환경은
+  확인했지만 panel/tray/terminal UI automation 권한이 없어 실제 화면 판정은 완료하지 못했다.
+  항목별 상태와 재개 절차는 `docs/test-plan.md`의 2026-09-16 기록을 따른다.
 - [x] P1~P4 Windows 안정화 코드와 자동 A gate (hardware matrix는 pending)
 - [x] P5~P9 설정 기능과 자동 B gate (실제 tray/focus·실패 UI 수동 matrix는 pending)
 - [x] P10~P11 portable 배포와 자동 C gate (기존 자동 결과 기록; 이번 수동

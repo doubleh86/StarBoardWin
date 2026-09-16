@@ -54,9 +54,9 @@ renderer UI를 `TerminalModule`/`TerminalView` 수명 주기에 연결하고, pa
 - context menu를 keyboard로 연 경우에도 항목에 도달할 수 있어야 하며 Enter로 dialog를 열고,
   dialog 취소 후에는 원래 탭으로 focus를 돌린다. 저장 과정에서 셸 입력, PID, scrollback과
   현재 탭 선택을 변경하지 않는다.
-- 2026-09-11 main 구현 확인 결과 context menu에는 이름 변경·좌우 이동·시작 폴더 설정만 있고
-  이 항목이 누락돼 있다. 저장 backend와 관리 dialog는 이미 있으므로 다음 버전에서는 renderer
-  context-menu 연결과 source/dist 회귀 검증을 최소 변경 범위로 삼는다.
+- 2026-09-11 main 구현 확인 당시에는 context menu에 이름 변경·좌우 이동·시작 폴더 설정만 있고
+  이 항목이 누락돼 있었다. 2026-09-14 후속 구현에서 renderer context-menu 연결, prefill,
+  20개 한도와 focus 복귀를 완료했다.
 
 ### 저장한 항목에서 시작
 
@@ -176,7 +176,7 @@ Terminal 경로는 `src/Modules/Starboard.Modules.Terminal/` 기준이다. publi
   `13c491097c49d1b1724b845c18ccd5b1c9f3f83c9906a3c7fc0b14f5f01c1c8a`로 일치했고 per-user
   data·saved-tabs primary/backup/temporary·개발 경로 검사는 0건이었다. 실제 WebView2 저장 UI,
   DPI와 IME는 재실행하지 않았으며 MAN-044~045와 기존 manual matrix 상태를 유지한다.
-- [ ] 다음 버전: 실제 구현에서 빠진 탭 context menu의 `저장한 탭에 추가…` 진입점을 연결하고,
+- [x] 탭 context menu의 `저장한 탭에 추가…` 진입점을 연결하고,
   현재 탭 값 prefill·20개 한도·저장/취소 focus 복귀를 검증한다.
 
 ### 2026-09-14 context-menu 저장 진입점

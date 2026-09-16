@@ -100,8 +100,8 @@ git diff --check
 
 - [x] 2026-09-15: 현재 `main` CSS에서 회귀 원인을 다시 확인하고 독립 Task와 경로를 확정했다.
 - [x] 2026-09-15: `.tab-list`를 `flex: 0 1 auto`로 조정하고 고정 control·DOM 순서·기본 프로필 새 탭 회귀 계약을 추가했다. renderer source/dist와 자동 검증을 갱신했다.
-- [ ] 실제 WebView2와 DPI별 위치 수동 검증.
-- [ ] 2026-09-16: 이 worktree의 Debug WPF build는 성공했으나 Windows UI automation provider가 새
+- **Blocked (manual):** 실제 WebView2와 DPI별 위치 수동 검증.
+- 2026-09-16: 이 worktree의 Debug WPF build는 성공했으나 Windows UI automation provider가 새
   `Starboard.exe`를 target app으로 승인하지 않아 panel을 열거나 조작하지 못했다. 좁은 panel,
   1/3/8개 tab, mouse/keyboard 새 탭 및 100/125/150/200% DPI의 `마지막 tab → + → ▾` 위치는
   **Blocked**로 남겼다. renderer layout 계약은 실제 픽셀 관찰을 대체하지 않는다.

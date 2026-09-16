@@ -130,8 +130,9 @@
 
 ### 4. 패널은 밀착하고 입력 줄은 내부 여백으로 보호
 
-다음 패널 geometry 변경은 작업공간 구현 W1~W6과 독립된 미구현 후속 후보다. 따라서
-현재 구현의 외부 6 DIP 하단 간격 보존 기록을 이 항목으로 소급해 바꾸지 않는다.
+이 패널 geometry 변경은 작업공간 구현 W1~W6과 독립된 후속으로 계획했으며 이후 구현됐다.
+현재 정본은 축소 하단 panel의 외부 간격 0과 renderer 내부 6 DIP padding이다. 외부 6 DIP를
+사용했던 이전 배포 기록은 [간격 계획](2026-09-09-panel-taskbar-gap.md)에 역사적 근거로 남긴다.
 
 - **PANEL-UX-02:** 축소 패널과 하단 작업표시줄 사이의 기존 외부 6 DIP 간격을
   0으로 바꾸고, terminal 본문 안쪽 아래에 6 DIP 상당의 추가 여백을 둔다.
@@ -140,9 +141,9 @@
   ConPTY rows를 계산하며, 글자·커서를 가리는 방식으로 여백을 만들지 않는다.
 - 하단 작업표시줄의 축소 상태만 변경한다. 확장·상단·좌우 배치와 auto-hide의
   안전 경계, 작업 영역 비예약·focus·세션 유지 정책은 보존한다. 드래그 자석 기능은 제외한다.
-- 후속 구현에서는 먼저 상태 전달·DPI 변환을 확정하고, renderer의 내부 여백과
-  DesktopIntegration의 외부 geometry를 분리해 구현한 뒤 함께 연결한다. UI 세부 기준은
-  [탭·패널 UI 계획](2026-09-03-renderer-and-tab-ui.md)을 따른다. 이번에는 기획만 반영했다.
+- renderer의 내부 여백과 DesktopIntegration의 외부 geometry를 분리해 구현했다. geometry와
+  renderer distribution 자동 검증은 완료됐고 실제 taskbar/DPI 화면 관찰만 manual matrix에 남았다.
+  UI 세부 기준은 [탭·패널 UI 계획](2026-09-03-renderer-and-tab-ui.md)을 따른다.
 
 ## 저장과 실패 정책
 
@@ -311,10 +312,10 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
   W3 직렬 통합·W4 최종 검증으로 재구성. 파일 소유권과 계약 변경·인수인계 규칙 추가.
 - [x] 2026-09-09: TAB-UX-01 새 탭 버튼 위치 개선을 W2-C 요구사항으로 추가.
   사용자 요청에 따라 기획만 유지하고 시도한 제품 코드 변경은 원복했다.
-- [x] 2026-09-09: PANEL-UX-02 외부 밀착·내부 여백을 추가하고 기존 외부 6 DIP
-  보존 조건을 후속안으로 제안. 이후 W1~W6 구현 범위와 분리된 미구현 후보로 유지했다.
-- [ ] W0 기준선: 기존 수동 입력·focus 및 실제 hardware 항목은 자동 검증으로 대체하지
-  않았으며, MAN-041~043과 기존 수동 matrix에서 `Not run`으로 남긴다.
+- [x] 2026-09-09: PANEL-UX-02 외부 밀착·내부 여백을 W1~W6과 분리해 제안한 뒤 후속 구현했다.
+  축소 하단 panel은 외부 간격 0, renderer는 내부 6 DIP padding을 사용한다.
+- **Not run (manual) — W0 기준선:** 기존 수동 입력·focus 및 실제 hardware 항목은 자동
+  검증으로 대체하지 않았으며, MAN-041~043과 기존 수동 matrix에서 별도 관리한다.
 - [x] W1 계약: Terminal 공개 구성은 configuration ID, 이름, 순서, 시작 폴더와 제한된 shell kind만
   표현하고 runtime session ID는 renderer/실행 수명 내부에만 남긴다. Preferences schema 6은
   `restoreWorkspaceOnLaunch`를 기본 `false`로 추가하며 schema 5와 부분 JSON은 이 값이 꺼진
@@ -354,7 +355,7 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
   logs와 WebView2 user data를 거부하며, renderer source/dist offline 동기화와 Debug solution
   restore/build/test(전체 262개), `git diff --check`를 다시 검증했다. 실제 workspace 재시작 UI, 한글 IME,
   권한 제한 폴더, multi-monitor/DPI는 MAN-041~043 및 기존 MAN 항목에서 `Not run`으로 남긴다.
-- [ ] W7 설정·작업공간 실환경 검증 (2026-09-10 시도): 바탕화면 portable
+- **Blocked (manual) — W7 설정·작업공간 실환경 검증 (2026-09-10 시도):** 바탕화면 portable
   `Starboard.exe`가 PID 102920로 실행 중이고 `%LOCALAPPDATA%\Starboard`에
   `workspace.json`/`.bak`이 없는 초기 상태는 확인했다. 그러나 Computer Use의
   targetable window/app 목록에 Starboard panel 또는 tray window가 없어 opt-in, 재시작,

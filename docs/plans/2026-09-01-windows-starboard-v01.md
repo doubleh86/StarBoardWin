@@ -718,7 +718,8 @@ contract 회귀 확인 대상이지만 기본 변경 대상은 아니다.
 - [x] renderer bridge protocol과 validation을 구현한다.
 - [x] fit addon이 계산한 rows/columns를 host에 전달한다.
 - [x] renderer failure UI와 restart surface를 만든다.
-- [ ] 한글 IME와 opacity feasibility를 early spike로 확인한다.
+- [x] opacity 적용과 renderer 입력 경계를 구현·자동 검증했다. 실제 한글 IME composition은
+  `docs/test-plan.md`의 MAN-028 `Blocked (manual)`로 분리한다.
 
 #### 1C. ConPTY
 
@@ -855,8 +856,10 @@ contract 회귀 확인 대상이지만 기본 변경 대상은 아니다.
 
 2026-09-05 이후 Phase 2~4의 실사용 개선 작업은
 [오케스트레이터 실행 명세](2026-09-05-orchestrator-product-roadmap.md)의 작업 분해와
-인수 기준을 함께 따른다. 이번 실행의 필수 범위는 Windows 안정화, 설정 창과
-portable 배포이며 가상 데스크톱 pinning과 WSL/custom shell은 후속 범위다.
+인수 기준을 함께 따른다. 당시 실행의 필수 범위는 Windows 안정화, 설정 창과 portable
+배포였고 가상 데스크톱과 WSL은 후속으로 두었다. 이후 공식 virtual desktop adapter/fallback과
+WSL launch profile을 구현했으며, 문서화되지 않은 pinning과 임의 custom executable은 지원 범위에서
+제외한다.
 
 예상: 5~8시간
 
@@ -864,12 +867,15 @@ portable 배포이며 가상 데스크톱 pinning과 WSL/custom shell은 후속 
 - [x] `ABM_GETTASKBARPOS`, `ABM_GETSTATE`, `GetMonitorInfo`를 연결한다.
 - [x] `TaskbarCreated`, display, setting, DPI message를 처리한다.
 - [x] `TaskbarCreated` 뒤 taskbar geometry를 다시 조회하는 복구 경로를 구현한다.
-- [ ] monitor hot-plug과 taskbar monitor 이동을 처리한다.
-- [ ] 100/125/150/200%와 mixed-DPI 변환을 테스트한다.
-- [ ] auto-hide state machine과 active/expanded freeze를 구현한다.
+- [x] display change에서 monitor/taskbar snapshot을 다시 조회하고 제거된 monitor를 안전하게
+  재선택하는 경로를 구현·자동 검증했다. 실제 cable hot-plug은 MAN-009~011에 남긴다.
+- [x] 100/125/150/200%와 mixed-DPI 변환을 pure geometry test로 검증했다. 실제 화면 이동과
+  선명도 관찰은 MAN-012~016 `Blocked (manual)`다.
+- [x] auto-hide 상태와 active/expanded freeze 정책을 구현·자동 검증했다.
 - [x] `Ctrl+Alt+E` expand/collapse를 구현한다.
-- [ ] foreground fullscreen watcher와 z-order demotion을 구현한다.
-- [ ] normal/maximized/fullscreen focus regression을 확인한다.
+- [x] foreground fullscreen watcher와 z-order demotion 정책을 구현·자동 검증했다.
+- [x] normal/maximized/fullscreen focus 정책의 reducer·integration 회귀를 검증했다. 실제 foreground
+  응용프로그램을 사용한 화면 관찰은 MAN-018~020 `Blocked (manual)`다.
 - [x] bottom/top/left/right taskbar geometry test를 추가한다.
 
 완료 gate:
@@ -888,13 +894,14 @@ portable 배포이며 가상 데스크톱 pinning과 WSL/custom shell은 후속 
 - [x] terminal height, font, size와 top-level opacity를 적용한다.
 - [x] Dark, Light, One Dark, Tokyo Night token을 구현한다.
 - [x] theme token이 WPF와 xterm ANSI palette에 함께 적용되게 한다.
-- [ ] main HTML surface에 최소 menu를 구현한다.
-- [ ] 별도 WPF settings window를 구현한다.
+- [x] renderer 탭·저장 탭·context menu를 구현했다.
+- [x] 별도 WPF settings window와 단일 창 수명·저장/취소 경계를 구현했다.
 - [x] JSON 기반 shell selection과 executable validation을 구현한다.
-- [ ] WSL/custom shell을 기본 session 구조 안에서 지원한다.
-- [ ] HKCU Run startup registration을 구현한다.
-- [ ] global shortcut 변경과 registration failure를 처리한다.
-- [ ] settings corruption과 missing shell recovery를 테스트한다.
+- [x] builtin shell과 발견된 WSL 배포판의 profile 기반 session 실행을 지원한다. 임의 custom
+  executable은 settings/workspace 영속 계약에서 명시적으로 제외하며 v0.2 완료 조건이 아니다.
+- [x] 일반 사용자 범위의 HKCU Run startup registration을 구현·자동 검증했다.
+- [x] global shortcut 변경, 재등록과 registration failure 복구를 구현·자동 검증했다.
+- [x] settings corruption, backup 복구와 missing shell fallback을 자동 검증했다.
 
 완료 gate:
 
@@ -909,15 +916,18 @@ portable 배포이며 가상 데스크톱 pinning과 WSL/custom shell은 후속 
 
 - [x] 공식 `IVirtualDesktopManager` adapter와 no-op fallback을 구현한다.
 - [x] 공식 API로 불가능한 pinning을 capability로 명확히 보고한다.
-- [ ] renderer process failure, shell crash와 ConPTY creation failure를 검증한다.
-- [ ] WebView2 runtime missing error와 offline installer 안내를 작성한다.
-- [ ] DiagnosticLog rotation과 privacy filter를 검증한다.
+- [x] renderer process failure, shell crash와 ConPTY creation failure의 격리·재시작 경로를
+  구현하고 자동 검증했다.
+- [x] WebView2 Runtime 누락 error surface, offline standalone installer 안내와 재시도/종료
+  경로를 구현·문서화했다.
+- [x] DiagnosticLog rotation, bounded file과 command/output 개인정보 제외를 검증했다.
 - [x] self-contained win-x64 Release publish를 만든다.
 - [x] `THIRD-PARTY-NOTICES.md`와 license를 작성한다.
 - [x] README에 현재 build/run과 제한을 작성한다.
 - [x] `docs/test-plan.md` 결과를 실제 수행 상태로 갱신한다.
-- [ ] 가능한 hardware/display manual test를 수행한다.
-- [ ] 남은 manual test는 재현 절차와 함께 pending으로 보고한다.
+- **Blocked (manual):** hardware/display, IME, tray와 실제 WebView2 상호작용은 현재 automation
+  권한으로 수행하지 못했다. 항목별 상태는 `docs/test-plan.md`의 MAN matrix를 따른다.
+- [x] 미수행 manual test의 재현 절차와 `Blocked`/`Not run` 근거를 `docs/test-plan.md`에 기록했다.
 
 완료 gate:
 
@@ -1154,14 +1164,13 @@ manual test로 분리한다.
 
 ## 완료 요약
 
-v0.1 전체 구현 완료 시 다음 내용을 기록한다. 현재는 Phase 1 결과만 진행 기록과
-`docs/test-plan.md`에 반영했다.
+v0.1의 제품 구현과 portable 배포 경로는 완료됐고 이후 v0.2 작업에서 settings, workspace,
+saved tabs, WSL launch profile, failure recovery, virtual desktop fallback과 진단 로그를 보강했다.
+과거 Phase 2~4의 미체크 항목 중 코드·자동 검증이 존재하는 항목은 2026-09-16 현재 상태로
+정정했다.
 
-- 변경 전과 최종 동작
-- 실제 생성·수정한 주요 파일
-- renderer와 window policy 선택 이유
-- 자동/integration/manual test 결과
-- 수행하지 못한 검증
-- 알려진 제약
-- Windows API 위험
-- 후속 개선 위치
+실제 WebView2 입력, 한글 IME, tray/settings 화면, multi-monitor·mixed-DPI, taskbar edge/auto-hide,
+fullscreen/focus, Explorer 재시작과 virtual desktop UI는 구현 미완료가 아니라 환경 제약으로
+검증하지 못한 manual matrix다. 통과로 간주하지 않으며 최신 상태와 재개 절차는
+[테스트 계획](../test-plan.md)을 정본으로 사용한다. 현재 사용자 확인 후 남은 제품 수정은
+[탭 추가 메뉴와 오른쪽 메뉴 위치 회귀 수정](2026-09-16-tab-strip-menu-correction.md)에서 관리한다.

@@ -293,12 +293,13 @@ workspace/saved-tabs, logs와 WebView2 data는 거부한다.
 - [x] 2026-09-11: I0 canonical ICO와 두 제품 resource의 hash·PNG entry를
   `Test-StarboardIcon.ps1`로 검사하고, I1 executable/WPF resource와 I2 embedded tray resource를
   적용했다. portable package에는 `Assets/Starboard.ico`를 포함하고 사용자별 data를 거부한다.
-- [ ] 2026-09-11: 밝고 어두운 작업표시줄 및 숨겨진 아이콘 영역에서 100/125/150/200% 배율,
-  Explorer 재시작 뒤의 실제 tray 표시를 수동으로 확인한다.
+- **Not run (manual) — 2026-09-11:** 밝고 어두운 작업표시줄 및 숨겨진 아이콘 영역에서
+  100/125/150/200% 배율, Explorer 재시작 뒤의 실제 tray 표시를 확인해야 한다.
 - [x] 2026-09-11: 설정 창 checkbox·ComboBox·입력 필드에 네 테마에서 재사용할 수 있는
   일반·비활성·오류 전경색 토큰과 popup 항목 스타일을 적용하고 UI 계약 테스트를 추가했다.
-- [ ] 2026-09-11: Dark, Light, One Dark, Tokyo Night를 실제 WPF 창에서 100/125/150/200%
-  배율로 screenshot 확인한다. 자동 계약 검증과 실제 화면 확인은 별도 결과로 기록한다.
+- **Not run (manual) — 2026-09-11:** Dark, Light, One Dark, Tokyo Night를 실제 WPF 창에서
+  100/125/150/200% 배율로 screenshot 확인해야 한다. 자동 계약 검증과 실제 화면 확인은
+  별도 결과로 기록한다.
 - [x] 2026-09-11: COMMAND-NOTIFY-01의 metadata-only 완료 event, 세대별 명시적 signal state machine,
   기본 비활성화 schema 7 설정과 DesktopIntegration 조정 request를 확정했다. 지정된 Terminal 247개,
   Preferences 36개, Architecture 9개와 전체 415개 자동 테스트가 통과했다. 실제 PowerShell hook,
@@ -313,7 +314,8 @@ workspace/saved-tabs, logs와 WebView2 data는 거부한다.
 - [x] 2026-09-11: URL-OPEN-01의 HTTP/HTTPS 전용 검증, Ctrl+click/selection guard, 실제 target
   확인과 renderer/session generation·외부 실행 실패 격리를 구현했다. renderer build와 전체
   403개 test는 통과했고 실제 WebView2 pointer selection과 기본 브라우저 실행은 MAN-048로 남겼다.
-- [ ] 2026-09-16: Windows interactive session에서 실행 중 Starboard, Explorer, HKCU Run 및 local
+- **Blocked (manual) — 2026-09-16:** Windows interactive session에서 실행 중 Starboard,
+  Explorer, HKCU Run 및 local
   settings/workspace primary·backup 파일은 재확인했지만 panel/tray UI automation과 video-controller
   access가 없었다. 밝고 어두운 taskbar의 tray icon, Dark/Light/One Dark/Tokyo Night 설정 화면,
   save/cancel/rollback, hotkey conflict, auto-hide, Explorer restart, 100/125/150/200%·mixed-DPI,
