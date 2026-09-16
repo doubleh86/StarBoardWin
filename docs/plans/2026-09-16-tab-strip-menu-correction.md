@@ -133,10 +133,10 @@ git diff --check
 ## 진행 기록
 
 - [x] 2026-09-16: 배포 화면에서 `▾` 위치와 terminal 본문 폭 회귀를 확인했다.
-- [x] 2026-09-16: `+`는 profile 선택, `▾`는 오른쪽 끝의 저장 탭 메뉴로 역할을 분리했다.
-- [ ] `tab-strip-menu-correction` 구현과 자동 검증.
+- [x] 2026-09-16: `+`는 profile 선택, `▾`는 오른쪽 끝의 저장 탭 메뉴로 역할을 분리하는 계약을 확정했다.
+- [x] 2026-09-16: `tab-strip-menu-correction` 구현과 자동 검증을 완료했다. `tablist → + → flexible spacer → ▾`를 고정했고 profile/WSL UI를 `+` menu로 분리했다. 숨겨진 pane의 활성화 뒤 fit 흐름은 유지하면서 terminal mount의 xterm에 명시적인 100% width/min-width 계약을 추가했으며, source로 rebuilt `dist`와 renderer 계약 test를 갱신했다.
 - [ ] 실제 WebView2, WSL 설치 환경과 DPI별 수동 검증.
 
 ## 완료 요약
 
-계획만 확정했다. 제품 코드, renderer `dist`, test와 배포본은 아직 변경하지 않았다.
+2026-09-16 자동 검증: renderer `npm run build`, Debug restore/build, 전체 `dotnet test` (524 passed), C# alignment와 `git diff --check`를 통과했다. 실제 WebView2·WSL 설치 환경·DPI별 rect/scrollbar 수동 검증은 `docs/test-plan.md`의 MAN-050b에 Not run으로 남겼다.
