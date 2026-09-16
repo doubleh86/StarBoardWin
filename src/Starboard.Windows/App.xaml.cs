@@ -30,17 +30,18 @@ public partial class App : Application, IDisposable
         catch (Exception exception)
         {
             MessageBox.Show(exception.Message, "Starboard를 시작할 수 없습니다", MessageBoxButton.OK, MessageBoxImage.Error);
-            Shutdown(1);
+            if (coordinator is null)
+            {
+                Shutdown(1);
+                return;
+            }
+
+            await coordinator.RequestApplicationShutdownAsync(1);
         }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        if (coordinator is not null)
-        {
-            coordinator.ShutdownAsync().GetAwaiter().GetResult();
-        }
-
         Dispose();
         base.OnExit(e);
     }
@@ -55,6 +56,8 @@ public partial class App : Application, IDisposable
         isDisposed = true;
         coordinator?.Dispose();
         singleInstanceGuard?.Dispose();
+        coordinator = null;
+        singleInstanceGuard = null;
         GC.SuppressFinalize(this);
     }
 }

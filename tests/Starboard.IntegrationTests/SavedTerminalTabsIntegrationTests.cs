@@ -17,9 +17,9 @@ public sealed class SavedTerminalTabsIntegrationTests
         StringAssert.Contains(source,
                               "new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence, savedTabService,");
 
-        var viewShutdown = source.IndexOf("await terminalView.DisposeAsync();", StringComparison.Ordinal);
-        var savedTabsShutdown = source.IndexOf("await savedTabService.DisposeAsync();", StringComparison.Ordinal);
-        var sessionsShutdown = source.IndexOf("await sessionCoordinator.DisposeAsync();", StringComparison.Ordinal);
+        var viewShutdown = source.IndexOf("await terminalView.DisposeAsync()", StringComparison.Ordinal);
+        var savedTabsShutdown = source.IndexOf("await savedTabService.DisposeAsync()", StringComparison.Ordinal);
+        var sessionsShutdown = source.IndexOf("await sessionCoordinator.DisposeAsync()", StringComparison.Ordinal);
         Assert.IsTrue(viewShutdown >= 0 && viewShutdown < savedTabsShutdown && savedTabsShutdown < sessionsShutdown,
                       "Renderer input must stop before saved-tab requests, and saved-tab launches must stop before sessions.");
     }

@@ -19,6 +19,7 @@ internal sealed class AppCoordinator : IDisposable
     private readonly DesktopIntegrationModule desktopIntegrationModule;
     private readonly TerminalModule terminalModule;
     private readonly CommandCompletionNotificationCoordinator commandCompletionNotificationCoordinator;
+    private readonly ApplicationShutdownSequence applicationShutdownSequence;
     private readonly CancellationTokenSource lifetimeCancellation = new();
 
     private MainWindow? mainWindow;
@@ -47,6 +48,8 @@ internal sealed class AppCoordinator : IDisposable
         desktopIntegrationModule.PanelCollapsedHeightChangeRequested += HandlePanelCollapsedHeightChangeRequested;
         desktopIntegrationModule.SettingsRequested += HandleSettingsRequested;
         desktopIntegrationModule.ExitRequested += HandleExitRequested;
+        applicationShutdownSequence = new ApplicationShutdownSequence(ShutdownAsync, ShutdownApplication,
+                                                                      ObserveShutdownFailure);
     }
 
     internal async Task StartAsync(CancellationToken cancellationToken)
@@ -55,9 +58,7 @@ internal sealed class AppCoordinator : IDisposable
                                                            AppContext.BaseDirectory);
         if (smokeResult is not null)
         {
-            var application = Application.Current
-                ?? throw new InvalidOperationException("The WPF application is unavailable.");
-            application.Shutdown(smokeResult.ExitCode);
+            await RequestApplicationShutdownAsync(smokeResult.ExitCode);
 
             return;
         }
@@ -102,16 +103,29 @@ internal sealed class AppCoordinator : IDisposable
         }
     }
 
-    public void Dispose()
-    {
-        ShutdownAsync().GetAwaiter().GetResult();
-    }
-
     internal Task ShutdownAsync()
     {
         shutdownTask ??= ShutdownCoreAsync();
 
         return shutdownTask;
+    }
+
+    internal Task RequestApplicationShutdownAsync(int exitCode = 0)
+    {
+        return applicationShutdownSequence.RequestAsync(exitCode);
+    }
+
+    public void Dispose()
+    {
+        var completedShutdown = shutdownTask;
+        if (completedShutdown is null || completedShutdown.IsCompleted == false)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Host", "Dispose",
+                                "Synchronous disposal skipped an incomplete application shutdown.");
+            return;
+        }
+
+        GC.SuppressFinalize(this);
     }
 
     private async Task ShutdownCoreAsync()
@@ -313,11 +327,52 @@ internal sealed class AppCoordinator : IDisposable
 
         if (application.Dispatcher.CheckAccess() == false)
         {
-            application.Dispatcher.Invoke(application.Shutdown);
+            _ = application.Dispatcher.BeginInvoke(BeginApplicationShutdown);
             return;
         }
 
-        application.Shutdown();
+        BeginApplicationShutdown();
+    }
+
+    private async void BeginApplicationShutdown()
+    {
+        try
+        {
+            await RequestApplicationShutdownAsync();
+        }
+        catch (Exception exception)
+        {
+            ObserveShutdownFailure(exception);
+            ShutdownApplication(1);
+        }
+    }
+
+    private void ShutdownApplication(int exitCode)
+    {
+        var application = Application.Current;
+        if (application is null)
+        {
+            return;
+        }
+
+        if (application.Dispatcher.HasShutdownStarted == true || application.Dispatcher.HasShutdownFinished == true)
+        {
+            return;
+        }
+
+        if (application.Dispatcher.CheckAccess() == false)
+        {
+            application.Dispatcher.Invoke(() => application.Shutdown(exitCode));
+            return;
+        }
+
+        application.Shutdown(exitCode);
+    }
+
+    private void ObserveShutdownFailure(Exception exception)
+    {
+        diagnosticLog.Write(DiagnosticLevel.Error, "Host", "Shutdown",
+                            "Application cleanup failed before WPF shutdown.", exception);
     }
 
     private void HandleSettingsRequested(object? sender, EventArgs eventArguments)

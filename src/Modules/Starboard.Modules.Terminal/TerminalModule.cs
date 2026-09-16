@@ -131,12 +131,12 @@ public sealed class TerminalModule : IDisposable
 
         isDisposed = true;
         sessionCoordinator.CommandCompleted -= HandleCommandCompleted;
-        await terminalView.DisposeAsync();
-        await savedTabService.DisposeAsync();
+        await terminalView.DisposeAsync().ConfigureAwait(false);
+        await savedTabService.DisposeAsync().ConfigureAwait(false);
         isCapturingShutdownStatus = true;
         try
         {
-            await workspacePersistence.DisposeAsync();
+            await workspacePersistence.DisposeAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -144,7 +144,7 @@ public sealed class TerminalModule : IDisposable
             workspacePersistence.StatusChanged -= HandleWorkspacePersistenceStatusChanged;
         }
 
-        await sessionCoordinator.DisposeAsync();
+        await sessionCoordinator.DisposeAsync().ConfigureAwait(false);
 
         return CreateShutdownResult(shutdownWorkspaceSaveStatus);
     }

@@ -635,6 +635,7 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-037 | path-drop lifetime·renderer contract | drop/confirmation을 renderer instance, active session ID·generation에 결합하고 전환·restart·remove 후 입력 0건, additional object 경로만 사용·file read API 미사용·source/dist 일치 | Passed (module automated + renderer distribution contract) |
 | INT-038 | terminal URL open safety contract | HTTP/HTTPS·길이·user-info 검증, Ctrl+click marker, 실제 target 확인, renderer/session 세대 결합, shell execute 실패 격리, no-fetch와 source/dist 일치 | Passed (module automated + renderer/host integration contract) |
 | INT-039 | PowerShell 새 session bootstrap readiness | profile을 건너뛰지 않는 startup bootstrap, 내부 문자열/`>>` 부재, 느린 profile output/custom·nested prompt, 첫 성공·다음 실패 start/finish 각 1회와 bounded fallback | Passed (PowerShell 7/Windows PowerShell actual ConPTY + unit/runtime, 2026-09-16) |
+| INT-040 | 앱 비동기 정상 종료 순서 | 중복 종료 요청을 하나로 합치고 terminal 정리 완료 뒤 WPF shutdown, 정리 실패는 진단 후 exit code 1 | Passed (automated sequence/wiring contract, 2026-09-16) |
 
 ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan child process를 남기지
 않는다. GUI host는 재시작 close의 session ID·generation, tab 제거와 process 종료 상태를
@@ -649,7 +650,7 @@ ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan c
 | SMK-003 | renderer/shell process tree | `msedgewebview2.exe`, `conhost.exe`, `pwsh.exe` 확인 | Passed |
 | SMK-004 | self-contained Release 실행 | 외부 .NET Runtime 없이 host·renderer·shell 시작 | Passed |
 | SMK-005 | tray 표시/숨김 | 1.5초 timer 이후에도 hidden, shell PID 유지, 재표시 성공 | Passed |
-| SMK-006 | tray 종료 | 접근 가능한 `Starboard 종료` menu 실행 뒤 8초 이내 process 종료 | Passed |
+| SMK-006 | tray 종료 | 접근 가능한 `Starboard 종료` menu 실행 뒤 8초 이내 process 종료 | Pending recheck — 배포 v0.2.1에서 창이 사라진 뒤 `Starboard.exe`가 남는 사용자 제보를 2026-09-16 확인; 비동기 선행 정리 수정과 자동 회귀 test는 통과했으며 새 배포본 실제 tray 입력 재검증 필요 |
 | SMK-007 | normal z-order | `WS_EX_TOPMOST` 없음, background expand/collapse focus 유지 | Passed |
 | SMK-008 | global panel 호출 | 비활성→표시·foreground, 활성→숨김 | Passed |
 | SMK-009 | 실제 tray icon 왼쪽 클릭 | 숨긴 panel 표시·foreground, normal z-order 유지 | Passed |
