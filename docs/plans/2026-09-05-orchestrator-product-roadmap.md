@@ -430,6 +430,17 @@ portable 패키징과 오프라인 Release 실행도 같은 범위에서 제외�
   renderer·셸·ConPTY 실패 후 host/session 유지 및 재시작만 이번 작업의 유효한
   recovery 검증 결과다.
 
+### 2026-09-16 Windows 플랫폼·설정 UI 재검증 인수인계
+
+- Windows 10 Pro 25H2 build 26200.9457의 interactive session에서 Explorer와 Starboard process,
+  HKCU Run `Starboard`와 local settings/workspace primary·backup 파일의 존재를 읽기 전용으로
+  재확인했다. 이는 설정·자동 시작의 실제 적용, panel 표시 또는 session 복구의 통과 증거가 아니다.
+- 이 실행에는 Starboard panel/tray를 대상으로 하는 UI automation runtime이 노출되지 않았고
+  video controller probe도 access denied였다. display/DPI, taskbar auto-hide·edge, Explorer restart,
+  fullscreen, tray 시각 표시, 네 theme, save/cancel/rollback, hotkey conflict와 startup toggle은
+  조작·관찰하지 않았다. 해당 수동 항목은 `Passed`로 승격하지 않고 `Blocked`로 유지한다.
+- 재개 순서와 항목별 상태는 [테스트 계획](../test-plan.md)의 2026-09-16 재검증 기록을 정본으로 한다.
+
 ## 오케스트레이터 전달 프롬프트
 
 ```text

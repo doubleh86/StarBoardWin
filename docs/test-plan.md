@@ -789,6 +789,31 @@ renderer protocol 및 ConPTY integration으로만 검증됐다.
 | MAN-050a | 새 탭 버튼 위치와 overflow | 실제 WebView2에서 1/3/8개 탭, 짧고 긴 이름, 좁은 패널과 네 theme를 확인해 마지막 탭 옆 `+`, 탭 목록만 가로 스크롤, `+`/`▾` 고정 표시와 기본 프로필 새 탭 생성을 검증 | Not run — renderer distribution 계약과 source/dist build만 수행했으며 실제 WebView2 화면·입력·DPI별 관찰은 수행하지 않음 |
 | MAN-053 | PowerShell bootstrap 화면·입력 | WebView2에서 PowerShell 7/Windows PowerShell 새 탭 5회, profile 출력/custom prompt, 즉시 첫 명령, 한글 IME, `Ctrl+C`, nested prompt와 알림 on/off를 관찰 | Not run — 실제 ConPTY 자동 검증은 통과했지만 WebView2 terminal UI를 조작하거나 시각적으로 관찰하지 않았음 |
 
+### 2026-09-16 Windows 플랫폼·설정 UI 재검증 시도
+
+실행 환경은 Windows 10 Pro 25H2 (build `26200.9457`), AMD64, interactive session 1이다.
+읽기 전용 probe에서 Explorer (PID 9980)와 Starboard (PID 31732)가 같은 session에서 실행 중인 것,
+HKCU Run `Starboard` 값이 `C:\Users\round1studio_14\Desktop\Starboard-win-x64\Starboard.exe`를
+가리키는 것, `%LOCALAPPDATA%\Starboard`의 `settings.json`/`.bak` 및
+`workspace.json`/`.bak`가 존재하는 것을 확인했다. `Win32_VideoController` 조회는 access denied로
+실패했다. 따라서 이 기록은 실행·저장 상태의 실측일 뿐 화면, tray, panel 또는 terminal UI의
+시각·입력 검증이 아니다.
+
+| 범주 | 실제 관찰 또는 시도 | 결과 |
+|---|---|---|
+| panel/taskbar/focus | Starboard와 Explorer가 interactive session에서 실행 중임을 확인했으나, 이 실행 컨텍스트에는 Starboard window를 대상으로 한 UI automation/runtime이 노출되지 않았다. | Blocked — MAN-001, MAN-003~004, MAN-018은 기존 상태 유지; taskbar 비겹침·foreground 보존을 통과로 표시하지 않음 |
+| auto-hide, taskbar edge, Explorer restart | 현재 taskbar 위치·auto-hide 상태를 시각적으로 읽을 수 없고, auto-hide 변경 및 Explorer restart는 사용자 shell을 변경한다. | Blocked — MAN-005~009, MAN-017; 해당 설정 변경·restart 미수행 |
+| DPI/multi-monitor/fullscreen | 해상도·video controller probe가 access denied였고 display settings, monitor 이동·분리, fullscreen app을 제어할 수 없었다. | Blocked — MAN-010~016, MAN-019~020; 100/125/150/200%와 mixed-DPI 모두 미통과 |
+| tray icon | 실행 중 process와 자동 시작 경로는 확인했지만 notification area, hidden-icons flyout, 밝고 어두운 taskbar는 보거나 열 수 없었다. | Blocked — ICON-004~006; 네 DPI의 icon 선명도와 Explorer 복구는 미확인 |
+| 네 theme 설정 UI | `settings.json`과 backup은 존재하지만 editor를 열어 Dark, Light, One Dark, Tokyo Night를 save/cancel하거나 각 control 상태를 관찰할 수 없었다. | Blocked — MAN-038 및 SETTINGS-UI-01 실제 screenshot gate; 네 theme 모두 `Not run` |
+| 저장·취소·rollback, shortcut, 로그인 자동 시작 | 자동 시작 registry 값은 실측했으나 이를 toggle·재로그인하지 않았고, 저장/취소/rollback UI와 global-hotkey 충돌 UI를 열 수 없었다. | Blocked — MAN-023, MAN-031, MAN-038; registry 존재는 설정 적용·복구 통과가 아님 |
+
+재개 시에는 targetable Starboard panel과 tray를 제공하는 interactive desktop에서 다음 순서로 수행한다:
+baseline foreground HWND 기록 → 네 theme를 각각 save/cancel하고 restart 전후 설정/backup 비교 →
+이미 점유한 global shortcut으로 conflict UI 및 기존 등록 유지 확인 → startup toggle 뒤 HKCU Run과
+재로그인 single-instance 확인 → 100/125/150/200%와 mixed-DPI에서 tray/panel screenshot → auto-hide,
+각 taskbar edge, Explorer restart, maximized/borderless/exclusive fullscreen을 차례로 확인한다.
+
 ## Focus 검증 절차
 
 1. Notepad 또는 editor에 text caret를 둔다.

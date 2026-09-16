@@ -313,3 +313,9 @@ workspace/saved-tabs, logs와 WebView2 data는 거부한다.
 - [x] 2026-09-11: URL-OPEN-01의 HTTP/HTTPS 전용 검증, Ctrl+click/selection guard, 실제 target
   확인과 renderer/session generation·외부 실행 실패 격리를 구현했다. renderer build와 전체
   403개 test는 통과했고 실제 WebView2 pointer selection과 기본 브라우저 실행은 MAN-048로 남겼다.
+- [ ] 2026-09-16: Windows interactive session에서 실행 중 Starboard, Explorer, HKCU Run 및 local
+  settings/workspace primary·backup 파일은 재확인했지만 panel/tray UI automation과 video-controller
+  access가 없었다. 밝고 어두운 taskbar의 tray icon, Dark/Light/One Dark/Tokyo Night 설정 화면,
+  save/cancel/rollback, hotkey conflict, auto-hide, Explorer restart, 100/125/150/200%·mixed-DPI,
+  focus와 fullscreen은 모두 `Blocked` 또는 `Not run`으로 유지한다. 실제 통과는 재개 절차와 함께
+  [테스트 계획](../test-plan.md)의 2026-09-16 기록에만 판정한다.

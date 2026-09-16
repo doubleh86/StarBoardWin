@@ -403,3 +403,15 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
 - package hash와 자세한 결과는 [테스트 계획](../test-plan.md)을 따른다.
   TAB-UX-01 버튼 재배치·PANEL-UX-02 외부 밀착과 별도 실수 방지 기획은 이번 배포에
   구현된 것으로 취급하지 않는다. 제품 코드 수정·commit/push는 이번 배포에서 하지 않았다.
+
+### 2026-09-16 설정·작업공간 실환경 재검증
+
+- 실제 interactive session에서 Starboard process, HKCU Run `Starboard`, `settings.json`/`.bak`와
+  `workspace.json`/`.bak`의 존재를 읽기 전용으로 다시 확인했다. 이전 기록과 달리 자동 시작 값과
+  설정·작업공간 파일이 존재하지만, 이는 save/cancel, rollback, startup toggle 또는 재실행 복원이
+  성공했다는 증거가 아니다.
+- Starboard panel/tray를 조작·관찰할 UI automation runtime이 이 실행에 없고 video controller probe도
+  access denied여서 editor를 열 수 없었다. 따라서 MAN-041~043과 MAN-023, MAN-031, MAN-037~038은
+  `Blocked`를 유지한다. 실제 UI가 가능한 환경에서 정상·실패 탭을 저장하고 설정 취소와 apply failure
+  rollback, opt-out 삭제 및 재시작 복원을 각각 관찰해야 한다.
+- 상세 상태와 재현 순서는 [테스트 계획](../test-plan.md)의 2026-09-16 기록을 따른다.
