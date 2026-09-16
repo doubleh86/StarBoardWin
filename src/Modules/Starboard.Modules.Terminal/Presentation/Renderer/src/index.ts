@@ -316,6 +316,7 @@ let requestedTabFocusSessionId: string | undefined;
 let focusTerminalOnNextActivation = false;
 let contextMenu: HTMLElement | undefined;
 let contextMenuFocusReturnSessionId: string | undefined;
+let launchProfilesMenu: HTMLElement | undefined;
 let savedTabsMenu: HTMLElement | undefined;
 let savedTabsDialog: HTMLDialogElement | undefined;
 let savedTabsDialogFocusReturnSessionId: string | undefined;
@@ -1106,6 +1107,14 @@ function dismissSavedTabsMenu(): void {
   savedTabsButton.setAttribute("aria-expanded", "false");
 }
 
+function dismissLaunchProfilesMenu(): void {
+  if (launchProfilesMenu !== undefined) {
+    launchProfilesMenu.remove();
+    launchProfilesMenu = undefined;
+  }
+  newTabButton.setAttribute("aria-expanded", "false");
+}
+
 function profileLaunchKey(sessionId: string, profileId: string): string {
   return `${sessionId}:${profileId}`;
 }
@@ -1128,6 +1137,7 @@ function launchProfile(profile: LaunchProfile): void {
     sessionGeneration: source.sessionGeneration,
     profileId: profile.profileId,
   });
+  dismissLaunchProfilesMenu();
   dismissSavedTabsMenu();
 }
 
@@ -1167,7 +1177,7 @@ function duplicateTab(sessionId: string): void {
 function appendLaunchProfilesMenu(menu: HTMLElement): void {
   const heading = document.createElement("p");
   heading.className = "saved-tabs-section-heading";
-  heading.textContent = "새 탭";
+  heading.textContent = "실행 프로필";
   menu.append(heading);
 
   const tabLimitReached = canAddSession === false || sessions.size >= MaximumTabs;
@@ -1197,6 +1207,14 @@ function appendLaunchProfilesMenu(menu: HTMLElement): void {
     menu.append(button);
   }
 
+  if ((launchProfiles?.profiles.length ?? 0) === 0 && launchProfiles?.status !== "wsl-discovery-failed") {
+    const loading = document.createElement("p");
+    loading.className = "saved-tabs-feedback";
+    loading.setAttribute("role", "status");
+    loading.textContent = "실행 프로필을 불러오는 중입니다.";
+    menu.append(loading);
+  }
+
   if (launchProfiles?.status === "wsl-discovery-failed") {
     const failure = document.createElement("p");
     failure.className = "saved-tabs-feedback is-error";
@@ -1211,10 +1229,27 @@ function appendLaunchProfilesMenu(menu: HTMLElement): void {
     menu.append(failure, retry);
   }
 
-  const separator = document.createElement("div");
-  separator.className = "saved-tabs-menu-separator";
-  separator.setAttribute("role", "separator");
-  menu.append(separator);
+}
+
+function showLaunchProfilesMenu(): void {
+  dismissSavedTabsMenu();
+  dismissLaunchProfilesMenu();
+  const menu = document.createElement("div");
+  menu.className = "launch-profiles-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "새 terminal 탭 실행 프로필");
+  const anchor = newTabButton.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, anchor.left)}px`;
+  menu.style.top = `${anchor.bottom}px`;
+  appendLaunchProfilesMenu(menu);
+  document.body.append(menu);
+  const menuBounds = menu.getBoundingClientRect();
+  if (menuBounds.right > window.innerWidth - 8) {
+    menu.style.left = `${Math.max(8, window.innerWidth - menuBounds.width - 8)}px`;
+  }
+  launchProfilesMenu = menu;
+  newTabButton.setAttribute("aria-expanded", "true");
+  menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
 }
 
 function launchSavedTab(tab: SavedTab): void {
@@ -1233,6 +1268,7 @@ function launchSavedTab(tab: SavedTab): void {
 }
 
 function showSavedTabsMenu(): void {
+  dismissLaunchProfilesMenu();
   dismissSavedTabsMenu();
   const menu = document.createElement("div");
   menu.className = "saved-tabs-menu";
@@ -1241,8 +1277,6 @@ function showSavedTabsMenu(): void {
   const anchor = savedTabsButton.getBoundingClientRect();
   menu.style.right = `${Math.max(8, window.innerWidth - anchor.right)}px`;
   menu.style.top = `${anchor.bottom}px`;
-
-  appendLaunchProfilesMenu(menu);
 
   const snapshot = savedTabsSnapshot;
   const savedHeading = document.createElement("p");
@@ -2372,8 +2406,8 @@ function handleHostMessage(value: unknown): void {
 
   if (message.type === "launch-profiles-result") {
     launchProfiles = message.payload;
-    if (savedTabsMenu !== undefined) {
-      showSavedTabsMenu();
+    if (launchProfilesMenu !== undefined) {
+      showLaunchProfilesMenu();
     }
     return;
   }
@@ -2591,7 +2625,11 @@ function handleApplicationShortcut(event: KeyboardEvent): void {
 
 newTabButton.addEventListener("click", () => {
   if (newTabButton.disabled === false) {
-    launchDefaultProfile();
+    if (launchProfilesMenu === undefined) {
+      showLaunchProfilesMenu();
+    } else {
+      dismissLaunchProfilesMenu();
+    }
   }
 });
 
@@ -2626,6 +2664,9 @@ document.addEventListener("pointerdown", (event) => {
   if (savedTabsMenu !== undefined && savedTabsMenu.contains(event.target as Node) === false && event.target !== savedTabsButton) {
     dismissSavedTabsMenu();
   }
+  if (launchProfilesMenu !== undefined && launchProfilesMenu.contains(event.target as Node) === false && event.target !== newTabButton) {
+    dismissLaunchProfilesMenu();
+  }
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && searchOverlay !== undefined) {
@@ -2644,6 +2685,11 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     dismissSavedTabsMenu();
     savedTabsButton.focus();
+  }
+  if (event.key === "Escape" && launchProfilesMenu !== undefined) {
+    event.preventDefault();
+    dismissLaunchProfilesMenu();
+    newTabButton.focus();
   }
 });
 window.chrome?.webview?.addEventListener("message", (event) => {

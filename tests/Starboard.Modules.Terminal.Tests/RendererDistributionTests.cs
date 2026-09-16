@@ -86,11 +86,11 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(styles, ".tab-list{display:flex;flex:0 1 auto;min-width:0;overflow-x:auto");
         StringAssert.Contains(styles, ".tab-item[data-selected=true]");
         StringAssert.Contains(styles, ".terminal-mount{background-color:var(--color-canvas)");
-        StringAssert.Contains(styles, ".xterm{height:100%;padding:var(--space-xs) var(--space-sm) calc(var(--space-xs) + 6px)}");
+        StringAssert.Contains(styles, ".xterm{display:block;width:100%;min-width:0;height:100%;padding:var(--space-xs) var(--space-sm) calc(var(--space-xs) + 6px)}");
     }
 
     [TestMethod]
-    public void BundledRendererKeepsTabControlsOutsideScrollableListAndAddsDefaultProfileTab()
+    public void BundledRendererKeepsTabControlsOutsideScrollableListAndSeparatesProfileMenu()
     {
         var html = ReadRendererAsset("index.html");
         var source = ReadRendererSource("index.ts");
@@ -103,10 +103,16 @@ public sealed class RendererDistributionTests
         Assert.IsTrue(tabListIndex >= 0);
         Assert.IsTrue(newTabIndex > tabListIndex);
         Assert.IsTrue(savedTabsIndex > newTabIndex);
+        StringAssert.Contains(html, "class=\"tab-strip-spacer\"");
+        StringAssert.Contains(html, "id=\"new-tab\"");
+        StringAssert.Contains(html, "aria-haspopup=\"menu\"");
         StringAssert.Contains(styles, ".tab-list{display:flex;flex:0 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden");
+        StringAssert.Contains(styles, ".tab-strip-spacer{flex:1 1 auto;min-width:0}");
         StringAssert.Contains(styles, ".new-tab{width:32px;height:31px;flex:0 0 32px");
         StringAssert.Contains(styles, ".saved-tabs{width:32px;height:31px;flex:0 0 32px");
         StringAssert.Contains(source, "newTabButton.addEventListener(\"click\", () => {");
+        StringAssert.Contains(source, "showLaunchProfilesMenu();");
+        StringAssert.Contains(source, "dismissLaunchProfilesMenu();");
         StringAssert.Contains(source, "launchDefaultProfile();");
         StringAssert.Contains(source, "newTabButton.disabled === false");
         StringAssert.Contains(source, "savedTabsButton.addEventListener(\"click\", () => {");
@@ -199,13 +205,31 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(source, "pendingTabDuplicates");
         StringAssert.Contains(source, "launch-profile-tab-limit");
         StringAssert.Contains(source, "aria-describedby");
-        StringAssert.Contains(source, "if (savedTabsMenu !== undefined) {");
-        StringAssert.Contains(source, "showSavedTabsMenu();");
+        StringAssert.Contains(source, "if (launchProfilesMenu !== undefined) {");
+        StringAssert.Contains(source, "showLaunchProfilesMenu();");
+        StringAssert.Contains(source, "newTabButton.focus();");
         StringAssert.Contains(script, "launch-profiles-result");
         StringAssert.Contains(script, "duplicate-tab");
         StringAssert.Contains(script, "\\uC774 \\uD0ED \\uAD6C\\uC131 \\uBCF5\\uC81C");
         StringAssert.Contains(styles, ".saved-tabs-section-heading");
         StringAssert.Contains(styles, ".tab-strip{display:flex;min-width:0;height:32px");
+    }
+
+    [TestMethod]
+    public void BundledRendererKeepsSavedTabsMenuFreeOfLaunchProfilesAndFillsTerminalWidth()
+    {
+        var source = ReadRendererSource("index.ts");
+        var styles = ReadRendererAsset("app.css");
+        var savedMenuStart = source.IndexOf("function showSavedTabsMenu()", StringComparison.Ordinal);
+        var savedMenuEnd = source.IndexOf("function appendSavedTabEditor", StringComparison.Ordinal);
+
+        Assert.IsTrue(savedMenuStart >= 0);
+        Assert.IsTrue(savedMenuEnd > savedMenuStart);
+        var savedMenuSource = source[savedMenuStart..savedMenuEnd];
+        Assert.IsFalse(savedMenuSource.Contains("appendLaunchProfilesMenu", StringComparison.Ordinal));
+        Assert.IsFalse(savedMenuSource.Contains("retry-launch-profiles", StringComparison.Ordinal));
+        StringAssert.Contains(styles, ".launch-profiles-menu,.saved-tabs-menu");
+        StringAssert.Contains(styles, ".xterm{display:block;width:100%;min-width:0;height:100%");
     }
 
     [TestMethod]
