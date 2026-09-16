@@ -81,6 +81,12 @@ PowerShell의 명시적 명령 시작·종료 신호가 같은 shell session gen
 문자열이 나타난 것만으로 완료를 추측하지 않으며, 알림은 panel을 표시·활성화하거나 다른
 앱의 focus를 가져오지 않는다. 명령 내용, 출력, 작업 폴더와 탭 이름은 알림에 포함하지 않는다.
 
+PowerShell 완료 연동은 profile을 건너뛰지 않고 startup encoded command로 설치되며, 내부 초기화 문자열을
+interactive stdin에 쓰지 않는다. 첫 prompt 준비를 제한 시간 동안 기다린 뒤 연결 실패 시에는 해당
+session의 완료 알림만 끄고 shell 입력을 계속 허용한다. PowerShell 7/Windows PowerShell 실제 ConPTY와
+격리된 느린 profile output/custom·nested prompt 자동 검증은 완료했지만 WebView2 화면의 새 탭·한글
+IME·`Ctrl+C`·알림 표시는 아직 수동 검증하지 않았다.
+
 ## 요구 사항
 
 - Windows 11 x64 권장

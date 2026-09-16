@@ -48,6 +48,7 @@ mock/simulation 결과를 실제 monitor, taskbar, IME 또는 fullscreen 검증�
 | NOTIFY-005 | package에서 settings/workspace/saved-tabs/log/WebView2 data와 command/history/output capture 제외 | portable publish·ZIP·추출 content 검사 | Passed (automated) |
 | NOTIFY-006 | 실제 Windows 알림이 명령 종료당 한 번 표시되고 panel activation/focus 변화가 없음 | 사용자 interactive desktop에서 PowerShell 긴 명령과 foreground app을 함께 관찰 | Not run — terminal/tray UI 입력·알림 시각 관찰을 수행하지 않음 |
 | NOTIFY-007 | 100/125/150/200%에서 알림과 panel geometry/focus 회귀 없음 | 각 DPI에서 실제 notification과 panel을 관찰 | Not run — 이번 실행은 DPI 설정이나 실제 화면을 조작하지 않음 |
+| NOTIFY-008 | PowerShell startup bootstrap 준비·fallback과 control payload privacy | lifecycle unit/runtime 및 PowerShell 7/Windows PowerShell 실제 ConPTY GUI-host test | Passed (automated, 2026-09-16) — 내부 bootstrap/`>>` 부재, 격리된 느린 profile output/custom prompt/nested prompt, 첫 성공·다음 실패 1회 신호, nonce·depth·exit-only channel과 pipe 실패/timeout 후 lifecycle 비활성화·shell 입력을 검증 |
 
 ## DIAGNOSTIC-LOG-01 진단 로그 개인정보와 보관 검증
 
@@ -593,7 +594,7 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 
 | ID | Case | 기대 결과 | 상태 |
 |---|---|---|---|
-| INT-001 | ConPTY 생성과 `pwsh` prompt | prompt output 수신 | Planned |
+| INT-001 | ConPTY 생성과 `pwsh` prompt | prompt output 수신 | Passed (automated, PowerShell 7/Windows PowerShell, 2026-09-16) |
 | INT-002 | `Set-Location` 후 다음 command | working directory 유지 | Passed |
 | INT-003 | environment variable set/get | 같은 shell process에서 값 유지 | Planned |
 | INT-004 | ConPTY resize | shell이 새 column/row를 보고 | Planned |
@@ -633,6 +634,7 @@ integration test는 Windows에서 실행하며 다른 앱의 focus나 실제 dis
 | INT-036 | shell별 path-drop 인용 | PowerShell 작은따옴표/한글/특수 문자와 cmd 큰따옴표를 검증하고 cmd `%`/`!`, custom shell, 상대·device·개행 경로를 거부 | Passed (module automated) |
 | INT-037 | path-drop lifetime·renderer contract | drop/confirmation을 renderer instance, active session ID·generation에 결합하고 전환·restart·remove 후 입력 0건, additional object 경로만 사용·file read API 미사용·source/dist 일치 | Passed (module automated + renderer distribution contract) |
 | INT-038 | terminal URL open safety contract | HTTP/HTTPS·길이·user-info 검증, Ctrl+click marker, 실제 target 확인, renderer/session 세대 결합, shell execute 실패 격리, no-fetch와 source/dist 일치 | Passed (module automated + renderer/host integration contract) |
+| INT-039 | PowerShell 새 session bootstrap readiness | profile을 건너뛰지 않는 startup bootstrap, 내부 문자열/`>>` 부재, 느린 profile output/custom·nested prompt, 첫 성공·다음 실패 start/finish 각 1회와 bounded fallback | Passed (PowerShell 7/Windows PowerShell actual ConPTY + unit/runtime, 2026-09-16) |
 
 ConPTY test는 각 case와 host cleanup에 timeout을 두고 실패 시 orphan child process를 남기지
 않는다. GUI host는 재시작 close의 session ID·generation, tab 제거와 process 종료 상태를
@@ -785,6 +787,7 @@ renderer protocol 및 ConPTY integration으로만 검증됐다.
 | MAN-048 | terminal 출력 URL Ctrl+click | 일반 click/drag selection 유지, Ctrl+click 실제 URL 확인·취소·기본 브라우저 열기, HTTP/HTTPS 및 OSC 8, 긴/잘못된/custom scheme 거부, 외부 실행 실패와 tab/restart/reconnect 경쟁을 실제 WebView2에서 확인 | Not run — protocol/validation/distribution 자동 검증은 통과했으나 실제 WebView2 pointer selection과 기본 브라우저 실행은 수행하지 않음 |
 | MAN-049 | 현재 탭을 저장한 탭에 추가 | tab 우클릭과 Shift+F10에서 메뉴 항목에 도달하고, 이름·설정 시작 폴더·셸 prefill, 20개 한도 안내, 저장/취소 뒤 원래 tab focus와 shell PID·입력·scrollback·선택 보존을 WebView2에서 확인 | Not run — renderer distribution과 protocol/host source 자동 검증만 수행했으며 실제 WebView2, DPI 및 Korean IME 조작은 수행하지 않음 |
 | MAN-050a | 새 탭 버튼 위치와 overflow | 실제 WebView2에서 1/3/8개 탭, 짧고 긴 이름, 좁은 패널과 네 theme를 확인해 마지막 탭 옆 `+`, 탭 목록만 가로 스크롤, `+`/`▾` 고정 표시와 기본 프로필 새 탭 생성을 검증 | Not run — renderer distribution 계약과 source/dist build만 수행했으며 실제 WebView2 화면·입력·DPI별 관찰은 수행하지 않음 |
+| MAN-053 | PowerShell bootstrap 화면·입력 | WebView2에서 PowerShell 7/Windows PowerShell 새 탭 5회, profile 출력/custom prompt, 즉시 첫 명령, 한글 IME, `Ctrl+C`, nested prompt와 알림 on/off를 관찰 | Not run — 실제 ConPTY 자동 검증은 통과했지만 WebView2 terminal UI를 조작하거나 시각적으로 관찰하지 않았음 |
 
 ## Focus 검증 절차
 

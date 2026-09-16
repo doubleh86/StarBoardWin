@@ -97,6 +97,29 @@ PowerShell 7과 Windows PowerShell 새 탭이 내부 command-lifecycle bootstrap
 - 초기 prompt handshake를 기다리더라도 UI thread나 session 생성 전체를 무기한 막지 않는다. bounded
   timeout 뒤 shell-usable fallback으로 전환하고 늦은 callback은 generation으로 거부한다.
 
+## 구현 결정 (2026-09-16)
+
+- PowerShell bootstrap은 대화형 stdin 주입을 중단하고 기존 shell argument 뒤에 `-NoExit`과
+  `-EncodedCommand`를 붙여 startup command로 실행한다. command line은 기존
+  `WindowsCommandLineBuilder`가 argument list로 구성하므로 script quoting이나 사용자 화면 echo에
+  의존하지 않는다.
+- `-NoProfile`은 추가하지 않는다. PowerShell 자체 startup 순서에 따라 사용자의 profile과 profile
+  output을 먼저 처리한 뒤 bootstrap command를 실행하고, bootstrap이 반환된 다음 원래 `prompt`
+  함수를 정확히 한 번 호출한다.
+- host는 PowerShell process를 만들기 전에 무작위 `LOCAL\` named-pipe의 읽기 client 연결을 시작하고,
+  PowerShell startup command가 출력 전용 server를 만든다. Windows의 `CurrentUserOnly`가 계정뿐 아니라
+  elevation level도 검사해 ConPTY child 연결을 거부한 실제 재현 결과를 반영한 방향이다. 별도 무작위
+  nonce로 prompt signal을 인증하며 command/output은 channel에 넣지 않는다.
+- 양쪽 pipe 연결과 첫 level-0 prompt 준비는 5초로 제한한다. 실패하면 prompt wrapper는 writer 없이
+  남고 input readiness gate를 해제해 shell 입력은 계속 허용하며 완료 알림만 비활성화한다.
+- CMD의 기존 stdin bootstrap은 유지한다. 따라서 `ConPtySession`의 bounded stdin initialization은
+  CMD에만 적용되고 PowerShell 첫 입력은 startup command와 섞일 수 없다.
+- 실제 ConPTY test host에 PowerShell bootstrap mode를 추가해 화면 output에 encoded bootstrap,
+  continuation prompt가 없고 첫 성공 명령과 다음 실패 명령이 각각 한 번 완료되는지 검사한다. test host
+  process에만 임시 `USERPROFILE`/`HOME`을 지정하고 종료 시 삭제하는 격리 profile로 느린 startup,
+  profile output, custom prompt와 nested prompt 복귀를 두 PowerShell에서 직접 검증한다. 실제 사용자
+  profile 파일은 읽거나 수정하지 않는다.
+
 ## 구현과 검증 순서
 
 1. **R0 재현:** PowerShell 7/Windows PowerShell을 실제 ConPTY로 열고 bootstrap 직후 prompt 상태와 첫
@@ -130,9 +153,19 @@ git diff --check
 
 - [x] 2026-09-15: 사용자 화면의 `>>` 상태, 현재 bootstrap 종결 문자와 readiness/test 공백을 조사해
   독립 P0 Task로 기록했다.
-- [ ] `powershell-bootstrap-readiness` 재현 test와 제품 수정.
-- [ ] 실제 PowerShell 7/Windows PowerShell/WebView2 수동 검증.
+- [x] 2026-09-16: stdin bootstrap 경쟁을 확인하고 startup encoded command, process-start 전 pipe
+  client, bounded fallback으로 구현 방향을 확정했다.
+- [x] 2026-09-16: `powershell-bootstrap-readiness` 제품 수정과 unit/runtime 회귀 test를 구현했다.
+- [x] 2026-09-16: 실제 PowerShell 7과 Windows PowerShell을 각각 ConPTY test host에서 실행해 내부
+  bootstrap/`>>` 부재, 격리된 느린 profile output/custom prompt/nested prompt와 첫 성공·다음 실패
+  completion을 검증했다.
+- [ ] 실제 WebView2 terminal 화면에서 새 탭 5회, 즉시 입력, 한글 IME, `Ctrl+C`와 알림 UI를 수동 검증.
 
 ## 완료 요약
 
-기획만 완료했다. 제품 코드, 배포본과 사용자 PowerShell profile은 수정하지 않았다.
+PowerShell bootstrap을 startup `-EncodedCommand`로 옮기고 첫 prompt 또는 제한 시간 fallback까지 입력을
+gate했다. PowerShell 7/Windows PowerShell 실제 ConPTY 자동 검증은 통과했으며 profile을 건너뛰거나
+사용자 profile 파일을 수정하지 않는다. pipe 생성 충돌과 readiness timeout에서도 shell 입력이 계속
+동작하고 완료 알림만 비활성화되는 runtime 회귀 검증을 추가했다. 전체 Debug 자동 test 523건과 C#
+정렬·diff 검사가 최종 변경 기준으로 통과했다.
+실제 WebView2 화면 검증과 배포본 교체는 수행하지 않았다.

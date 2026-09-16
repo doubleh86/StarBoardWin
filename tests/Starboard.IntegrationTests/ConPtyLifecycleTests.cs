@@ -17,6 +17,15 @@ public sealed class ConPtyLifecycleTests
     }
 
     [TestMethod]
+    [DataRow("powershell-bootstrap-pwsh")]
+    [DataRow("powershell-bootstrap-windows")]
+    [Timeout(25_000)]
+    public async Task GuiHostBootstrapsInteractivePowerShellWithoutExposingInternalInput(string mode)
+    {
+        await RunHostAsync(mode, TimeSpan.FromSeconds(20));
+    }
+
+    [TestMethod]
     [Timeout(45_000)]
     public async Task GuiHostKeepsConPtyTabsIndependentThroughExitRestartAndClose()
     {

@@ -19,6 +19,8 @@ internal interface IShellCommandLifecycleIntegration : IAsyncDisposable
 
     void Start();
 
+    ValueTask WaitForInputReadyAsync(CancellationToken cancellationToken);
+
     void BeginInputWrite(string data);
 
     void CompleteInputWrite(bool succeeded);
@@ -79,6 +81,12 @@ internal abstract class ShellCommandLifecycleIntegration : IShellCommandLifecycl
 
     public virtual void Start()
     {
+    }
+
+    public virtual ValueTask WaitForInputReadyAsync(CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        return ValueTask.CompletedTask;
     }
 
     public void BeginInputWrite(string data)
@@ -154,7 +162,7 @@ internal abstract class ShellCommandLifecycleIntegration : IShellCommandLifecycl
         return data;
     }
 
-    public void NotifySessionExited()
+    public virtual void NotifySessionExited()
     {
         var shouldRaise = false;
         lock (stateLock)
@@ -319,33 +327,76 @@ internal abstract class ShellCommandLifecycleIntegration : IShellCommandLifecycl
 internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecycleIntegration
 {
     private static readonly TimeSpan DisposeTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan DefaultReadinessTimeout = TimeSpan.FromSeconds(5);
 
     private readonly IDiagnosticLog diagnosticLog;
+    private readonly TimeSpan readinessTimeout;
+    private readonly string controlNonce;
     private readonly CancellationTokenSource lifetimeCancellation = new();
-    private readonly NamedPipeServerStream pipeServer;
+    private readonly NamedPipeClientStream pipeClient;
+    private readonly TaskCompletionSource inputReady =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? listenerTask;
     private int disposeStarted;
+    private int pipeConnected;
+    private int readinessFailureReported;
 
     internal PowerShellCommandLifecycleIntegration(ShellLaunchSpec shell, IDiagnosticLog diagnosticLog)
-        : this(shell, diagnosticLog, $"starboard-command-{Guid.NewGuid():N}")
+        : this(shell, diagnosticLog, $"LOCAL\\starboard-command-{Guid.NewGuid():N}",
+               Guid.NewGuid().ToString("N"), DefaultReadinessTimeout)
     {
     }
 
     internal PowerShellCommandLifecycleIntegration(ShellLaunchSpec shell, IDiagnosticLog diagnosticLog,
                                                    string pipeName)
-        : base(shell)
+        : this(shell, diagnosticLog, pipeName, Guid.NewGuid().ToString("N"), DefaultReadinessTimeout)
     {
-        this.diagnosticLog = diagnosticLog;
-        BootstrapInput = CreateBootstrapInput(pipeName);
-        pipeServer = new NamedPipeServerStream(pipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte,
-                                               PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
     }
 
-    public override string BootstrapInput { get; }
+    internal PowerShellCommandLifecycleIntegration(ShellLaunchSpec shell, IDiagnosticLog diagnosticLog,
+                                                   string pipeName, TimeSpan readinessTimeout)
+        : this(shell, diagnosticLog, pipeName, Guid.NewGuid().ToString("N"), readinessTimeout)
+    {
+    }
+
+    internal PowerShellCommandLifecycleIntegration(ShellLaunchSpec shell, IDiagnosticLog diagnosticLog,
+                                                   string pipeName, string controlNonce,
+                                                   TimeSpan readinessTimeout)
+        : base(CreateLaunchSpec(shell, pipeName, controlNonce))
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(readinessTimeout, TimeSpan.Zero);
+        this.diagnosticLog = diagnosticLog;
+        this.readinessTimeout = readinessTimeout;
+        this.controlNonce = controlNonce;
+        pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.In, PipeOptions.Asynchronous);
+    }
 
     public override void Start()
     {
         listenerTask ??= ListenAsync(lifetimeCancellation.Token);
+    }
+
+    public override async ValueTask WaitForInputReadyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await inputReady.Task.WaitAsync(readinessTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException exception)
+        {
+            var operation = Volatile.Read(ref pipeConnected) == 0
+                ? "PowerShellBootstrapConnection"
+                : "PowerShellPromptReadiness";
+            DisableIntegration(operation,
+                               "The PowerShell command lifecycle bootstrap did not reach an input-ready prompt.",
+                               exception);
+        }
+    }
+
+    public override void NotifySessionExited()
+    {
+        inputReady.TrySetResult();
+        base.NotifySessionExited();
     }
 
     public override async ValueTask DisposeAsync()
@@ -356,7 +407,8 @@ internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecy
         }
 
         lifetimeCancellation.Cancel();
-        pipeServer.Dispose();
+        inputReady.TrySetResult();
+        pipeClient.Dispose();
 
         if (listenerTask is not null)
         {
@@ -365,7 +417,8 @@ internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecy
                 await listenerTask.WaitAsync(DisposeTimeout).ConfigureAwait(false);
             }
             catch (Exception exception) when (
-                exception is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException)
+                exception is OperationCanceledException or ObjectDisposedException or TimeoutException or IOException or
+                    UnauthorizedAccessException)
             {
                 // The pipe handle is already closed and session shutdown remains bounded.
             }
@@ -378,11 +431,13 @@ internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecy
     internal void ProcessControlMessage(string message)
     {
         var fields = message.Split('|');
-        if (fields.Length != 3 || fields[0] != "P" ||
-            int.TryParse(fields[1], NumberStyles.None, CultureInfo.InvariantCulture, out var nestedPromptLevel) == false ||
-            int.TryParse(fields[2], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var exitCode) == false)
+        if (fields.Length != 4 || fields[0] != "P" ||
+            string.Equals(fields[1], controlNonce, StringComparison.Ordinal) == false ||
+            int.TryParse(fields[2], NumberStyles.None, CultureInfo.InvariantCulture, out var nestedPromptLevel) == false ||
+            int.TryParse(fields[3], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var exitCode) == false)
         {
-            ObserveIntegrationLost();
+            DisableIntegration("CommandLifecyclePipe",
+                               "The PowerShell command lifecycle channel received an invalid control message.");
             return;
         }
 
@@ -390,6 +445,7 @@ internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecy
         if (nestedPromptLevel == 0)
         {
             ObservePrompt(exitCode);
+            inputReady.TrySetResult();
         }
     }
 
@@ -397,14 +453,17 @@ internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecy
     {
         try
         {
-            await pipeServer.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
-            using var reader = new StreamReader(pipeServer, new UTF8Encoding(false, false), false, 1024, true);
+            var timeoutMilliseconds = checked((int)readinessTimeout.TotalMilliseconds);
+            await pipeClient.ConnectAsync(timeoutMilliseconds, cancellationToken).ConfigureAwait(false);
+            Volatile.Write(ref pipeConnected, 1);
+            using var reader = new StreamReader(pipeClient, new UTF8Encoding(false, false), false, 1024, true);
             while (cancellationToken.IsCancellationRequested == false)
             {
                 var message = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
                 if (message is null)
                 {
-                    ObserveIntegrationLost();
+                    DisableIntegration("CommandLifecyclePipe",
+                                       "The PowerShell command lifecycle channel ended before session exit.");
                     return;
                 }
 
@@ -412,60 +471,88 @@ internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecy
             }
         }
         catch (Exception exception) when (
-            exception is OperationCanceledException or ObjectDisposedException or IOException)
+            exception is OperationCanceledException or ObjectDisposedException or IOException or TimeoutException or
+                UnauthorizedAccessException)
         {
             if (cancellationToken.IsCancellationRequested == false)
             {
-                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "CommandLifecyclePipe",
-                                    "The PowerShell command lifecycle channel ended unexpectedly.", exception);
-                ObserveIntegrationLost();
+                var operation = Volatile.Read(ref pipeConnected) == 0
+                    ? "PowerShellBootstrapConnection"
+                    : "CommandLifecyclePipe";
+                var message = Volatile.Read(ref pipeConnected) == 0
+                    ? "The PowerShell command lifecycle bootstrap could not connect."
+                    : "The PowerShell command lifecycle channel ended unexpectedly.";
+                DisableIntegration(operation, message, exception);
             }
         }
     }
 
-    private static string CreateBootstrapInput(string pipeName)
+    private void DisableIntegration(string operation, string message, Exception? exception = null)
+    {
+        inputReady.TrySetResult();
+        ObserveIntegrationLost();
+        if (Interlocked.Exchange(ref readinessFailureReported, 1) == 0)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", operation, message, exception);
+        }
+    }
+
+    private static ShellLaunchSpec CreateLaunchSpec(ShellLaunchSpec shell, string pipeName, string controlNonce)
     {
         if (string.IsNullOrWhiteSpace(pipeName) == true)
         {
             throw new ArgumentException("A command lifecycle pipe name is required.", nameof(pipeName));
         }
 
-        var script = CreateBootstrapScript(pipeName);
+        if (string.IsNullOrWhiteSpace(controlNonce) == true ||
+            controlNonce.Any(character => char.IsAsciiLetterOrDigit(character) == false))
+        {
+            throw new ArgumentException("A command lifecycle nonce must be alphanumeric.", nameof(controlNonce));
+        }
+
+        var script = CreateBootstrapScript(pipeName, controlNonce);
         var encodedScript = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
-        return "$starboardBootstrap=[System.Text.Encoding]::Unicode.GetString(" +
-               $"[System.Convert]::FromBase64String('{encodedScript}')); " +
-               "Invoke-Expression $starboardBootstrap; Remove-Variable starboardBootstrap -ErrorAction Ignore; " +
-               "[Console]::Write(([char]27).ToString()+'[3J'+([char]27)+'[2J'+([char]27)+'[H')\r\n";
+        var arguments = shell.Arguments.Concat(["-NoExit", "-EncodedCommand", encodedScript]);
+        return new ShellLaunchSpec(shell.ExecutablePath, arguments, shell.WorkingDirectory);
     }
 
-    private static string CreateBootstrapScript(string pipeName)
+    private static string CreateBootstrapScript(string pipeName, string controlNonce)
     {
         return $$"""
-            $global:__StarboardOriginalPrompt = ${function:prompt}
+            $starboardOriginalPromptCommand = Get-Command -Name prompt -CommandType Function -ErrorAction Ignore
+            $global:__StarboardOriginalPrompt = if ($null -eq $starboardOriginalPromptCommand) { $null } else { $starboardOriginalPromptCommand.ScriptBlock }
+            Remove-Variable starboardOriginalPromptCommand -ErrorAction Ignore
             try {
-                $global:__StarboardCommandPipe = [System.IO.Pipes.NamedPipeClientStream]::new('.', '{{pipeName}}', [System.IO.Pipes.PipeDirection]::Out, [System.IO.Pipes.PipeOptions]::Asynchronous)
-                $global:__StarboardCommandPipe.Connect(5000)
+                $global:__StarboardCommandPipe = [System.IO.Pipes.NamedPipeServerStream]::new('{{pipeName}}', [System.IO.Pipes.PipeDirection]::Out, 1, [System.IO.Pipes.PipeTransmissionMode]::Byte, [System.IO.Pipes.PipeOptions]::Asynchronous)
+                $starboardConnectTask = $global:__StarboardCommandPipe.WaitForConnectionAsync()
+                if (-not $starboardConnectTask.Wait(5000)) { throw [System.TimeoutException]::new() }
                 $global:__StarboardCommandWriter = [System.IO.StreamWriter]::new($global:__StarboardCommandPipe, [System.Text.UTF8Encoding]::new($false), 1024, $true)
                 $global:__StarboardCommandWriter.AutoFlush = $true
             } catch {
                 $global:__StarboardCommandWriter = $null
                 if ($null -ne $global:__StarboardCommandPipe) { $global:__StarboardCommandPipe.Dispose() }
                 $global:__StarboardCommandPipe = $null
+            } finally {
+                Remove-Variable starboardConnectTask -ErrorAction Ignore
             }
             function global:prompt {
                 $starboardSucceeded = $?
+                if ($null -ne $global:__StarboardOriginalPrompt) {
+                    $starboardPrompt = & $global:__StarboardOriginalPrompt
+                } else {
+                    $starboardPrompt = "PS $($executionContext.SessionState.Path.CurrentLocation)> "
+                }
                 $starboardDepthVariable = Get-Variable -Name NestedPromptLevel -ErrorAction Ignore
                 $starboardDepth = if ($null -eq $starboardDepthVariable) { 0 } else { [int]$starboardDepthVariable.Value }
                 $starboardExitCode = if ($starboardSucceeded) { 0 } else { 1 }
                 if ($null -ne $global:__StarboardCommandWriter) {
-                    try { $global:__StarboardCommandWriter.WriteLine(('P|{0}|{1}' -f $starboardDepth, $starboardExitCode)) }
+                    try { $global:__StarboardCommandWriter.WriteLine(('P|{{controlNonce}}|{0}|{1}' -f $starboardDepth, $starboardExitCode)) }
                     catch {
                         $global:__StarboardCommandWriter.Dispose()
                         $global:__StarboardCommandWriter = $null
                     }
                 }
-                if ($null -ne $global:__StarboardOriginalPrompt) { & $global:__StarboardOriginalPrompt }
-                else { "PS $($executionContext.SessionState.Path.CurrentLocation)> " }
+                $starboardPrompt
             }
             """;
     }

@@ -13,6 +13,8 @@ namespace Starboard.ConPtyTestHost;
 internal static class Program
 {
     private const string LifecycleMode = "lifecycle";
+    private const string PowerShellBootstrapPwshMode = "powershell-bootstrap-pwsh";
+    private const string PowerShellBootstrapWindowsMode = "powershell-bootstrap-windows";
     private const string TabsMode = "tabs";
     private const string Marker = "STARBOARD_CONPTY_TEST";
 
@@ -35,6 +37,20 @@ internal static class Program
                     using (var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(12)))
                     {
                         await RunLifecycleScenarioAsync(cancellation.Token);
+                    }
+                    break;
+                case PowerShellBootstrapPwshMode:
+                    using (var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                    {
+                        await RunPowerShellBootstrapScenarioAsync(TerminalShellKind.Pwsh, progress,
+                                                                  cancellation.Token);
+                    }
+                    break;
+                case PowerShellBootstrapWindowsMode:
+                    using (var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                    {
+                        await RunPowerShellBootstrapScenarioAsync(TerminalShellKind.PowerShell, progress,
+                                                                  cancellation.Token);
                     }
                     break;
                 case TabsMode:
@@ -90,6 +106,132 @@ internal static class Program
         await session.WriteAsync($"if /I \"%CD%\"==\"%TEMP%\" echo {Marker}\r\n", cancellationToken);
 
         await WaitForSignalAsync(markerReceived.Task, "The lifecycle round-trip marker", cancellationToken);
+    }
+
+    private static async Task RunPowerShellBootstrapScenarioAsync(TerminalShellKind shellKind,
+                                                                  TestHostProgress progress,
+                                                                  CancellationToken cancellationToken)
+    {
+        const string profileOutput = "STARBOARD_PROFILE_OUTPUT";
+        const string profilePrompt = "STARBOARD_PROFILE_PROMPT> ";
+        var originalUserProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+        var originalHome = Environment.GetEnvironmentVariable("HOME");
+        var temporaryProfileRoot = Path.Combine(Path.GetTempPath(), $"starboard-conpty-profile-{Guid.NewGuid():N}");
+        var profileDirectoryName = shellKind == TerminalShellKind.Pwsh ? "PowerShell" : "WindowsPowerShell";
+        var profileDirectory = Path.Combine(temporaryProfileRoot, "Documents", profileDirectoryName);
+        var profilePath = Path.Combine(profileDirectory, "Microsoft.PowerShell_profile.ps1");
+
+        Directory.CreateDirectory(profileDirectory);
+        await File.WriteAllTextAsync(profilePath,
+                                     $"Start-Sleep -Milliseconds 250{Environment.NewLine}" +
+                                     $"Write-Output '{profileOutput}'{Environment.NewLine}" +
+                                     $"function global:prompt {{ '{profilePrompt}' }}{Environment.NewLine}",
+                                     new UTF8Encoding(false), cancellationToken);
+        try
+        {
+            Environment.SetEnvironmentVariable("USERPROFILE", temporaryProfileRoot);
+            Environment.SetEnvironmentVariable("HOME", temporaryProfileRoot);
+            var shell = ShellResolver.Resolve(shellKind) with { WorkingDirectory = Path.GetTempPath() };
+            var output = new StringBuilder();
+            var nestedPromptReady = CreateCompletionSource();
+            var signalProbe = new CommandSignalProbe();
+
+            await using var session = ConPtySession.Start(shell, 100, 30, new NullDiagnosticLog());
+            session.OutputReceived += data =>
+            {
+                lock (output)
+                {
+                    output.Append(data);
+                    if (CountOccurrences(output, profilePrompt) >= 2)
+                    {
+                        nestedPromptReady.TrySetResult();
+                    }
+                }
+            };
+            session.CommandLifecycleChanged += signalProbe.Receive;
+            session.BeginReading();
+            progress.MarkStage("powershell-session-started");
+
+            await session.WriteAsync("Write-Output 'STARBOARD_BOOTSTRAP_FIRST'; $host.EnterNestedPrompt()\r",
+                                     cancellationToken);
+            progress.MarkStage("powershell-first-input-written");
+            await WaitForSignalAsync(nestedPromptReady.Task, "The nested PowerShell prompt", cancellationToken);
+            await session.WriteAsync("exit\r", cancellationToken);
+            var firstFinished = await WaitForSignalAsync(signalProbe.FirstFinished,
+                                                         "The first PowerShell completion signal", cancellationToken);
+            progress.MarkStage("powershell-first-command-finished");
+            await session.WriteAsync("Write-Error 'STARBOARD_EXPECTED_FAILURE' -ErrorAction SilentlyContinue\r",
+                                     cancellationToken);
+            progress.MarkStage("powershell-second-input-written");
+            var secondFinished = await WaitForSignalAsync(signalProbe.SecondFinished,
+                                                          "The second PowerShell completion signal", cancellationToken);
+            progress.MarkStage("powershell-second-command-finished");
+
+            var signals = signalProbe.Snapshot();
+            Ensure(signals.Count(signal => signal.Kind == TerminalSessionCommandSignalKind.Ready) == 1,
+                   "The PowerShell bootstrap did not publish exactly one initial ready signal.");
+            Ensure(signals.Count(signal => signal.Kind == TerminalSessionCommandSignalKind.Started) == 2,
+                   "The PowerShell session did not publish exactly two command starts.");
+            Ensure(signals.Count(signal => signal.Kind == TerminalSessionCommandSignalKind.Finished) == 2,
+                   "The PowerShell session did not publish exactly two command finishes.");
+            Ensure(signals.Any(signal => signal.Kind == TerminalSessionCommandSignalKind.IntegrationLost) == false,
+                   "The PowerShell command lifecycle integration became unavailable.");
+            Ensure(firstFinished.ExitCode == 0, "The first PowerShell command did not report success.");
+            Ensure(secondFinished.ExitCode == 1, "The second PowerShell command did not report failure.");
+
+            string visibleOutput;
+            lock (output)
+            {
+                visibleOutput = output.ToString();
+            }
+
+            Ensure(visibleOutput.Contains(profileOutput, StringComparison.Ordinal),
+                   "The PowerShell profile output was not preserved.");
+            Ensure(CountOccurrences(visibleOutput, profilePrompt) >= 3,
+                   "The PowerShell profile prompt was not preserved across nested and completed commands.");
+            Ensure(visibleOutput.Contains("STARBOARD_BOOTSTRAP_FIRST", StringComparison.Ordinal),
+                   "The first PowerShell command did not reach the interactive ConPTY session.");
+            Ensure(visibleOutput.Contains(">>", StringComparison.Ordinal) == false,
+                   "PowerShell remained in a continuation prompt after bootstrap.");
+            Ensure(visibleOutput.Contains("__StarboardCommand", StringComparison.Ordinal) == false &&
+                   visibleOutput.Contains("NamedPipeClientStream", StringComparison.Ordinal) == false &&
+                   visibleOutput.Contains("NamedPipeServerStream", StringComparison.Ordinal) == false &&
+                   visibleOutput.Contains("Invoke-Expression", StringComparison.Ordinal) == false,
+                   "The PowerShell bootstrap implementation was exposed in terminal output.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("USERPROFILE", originalUserProfile);
+            Environment.SetEnvironmentVariable("HOME", originalHome);
+            if (Directory.Exists(temporaryProfileRoot) == true)
+            {
+                Directory.Delete(temporaryProfileRoot, true);
+            }
+        }
+    }
+
+    private static int CountOccurrences(StringBuilder value, string marker)
+    {
+        return CountOccurrences(value.ToString(), marker);
+    }
+
+    private static int CountOccurrences(string value, string marker)
+    {
+        var count = 0;
+        var startIndex = 0;
+        while (startIndex < value.Length)
+        {
+            var markerIndex = value.IndexOf(marker, startIndex, StringComparison.Ordinal);
+            if (markerIndex < 0)
+            {
+                return count;
+            }
+
+            count++;
+            startIndex = markerIndex + marker.Length;
+        }
+
+        return count;
     }
 
     private static async Task RunTabsScenarioAsync(TestHostProgress progress, CancellationToken cancellationToken)
@@ -409,6 +551,15 @@ internal static class Program
             }
         }
 
+        internal void MarkStage(string stage)
+        {
+            lock (_progressLock)
+            {
+                _observation = _observation with { Stage = stage };
+                WriteLocked(false, "InProgress", null);
+            }
+        }
+
         internal void Complete()
         {
             lock (_progressLock)
@@ -556,6 +707,51 @@ internal static class Program
         }
 
         private sealed record MarkerWaiter(TerminalSessionId SessionId, string Marker, TaskCompletionSource Completion);
+    }
+
+    private sealed class CommandSignalProbe
+    {
+        private readonly Lock signalLock = new();
+        private readonly List<TerminalSessionCommandSignal> signals = [];
+        private readonly TaskCompletionSource<TerminalSessionCommandSignal> firstFinished =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<TerminalSessionCommandSignal> secondFinished =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int finishedCount;
+
+        internal Task<TerminalSessionCommandSignal> FirstFinished => firstFinished.Task;
+
+        internal Task<TerminalSessionCommandSignal> SecondFinished => secondFinished.Task;
+
+        internal void Receive(TerminalSessionCommandSignal signal)
+        {
+            lock (signalLock)
+            {
+                signals.Add(signal);
+                if (signal.Kind != TerminalSessionCommandSignalKind.Finished)
+                {
+                    return;
+                }
+
+                finishedCount++;
+                if (finishedCount == 1)
+                {
+                    firstFinished.TrySetResult(signal);
+                }
+                else if (finishedCount == 2)
+                {
+                    secondFinished.TrySetResult(signal);
+                }
+            }
+        }
+
+        internal TerminalSessionCommandSignal[] Snapshot()
+        {
+            lock (signalLock)
+            {
+                return signals.ToArray();
+            }
+        }
     }
 
     private sealed class NullDiagnosticLog : IDiagnosticLog

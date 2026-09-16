@@ -73,6 +73,7 @@ internal sealed class ConPtySession : ITerminalSession
         try
         {
             commandLifecycleIntegration = ShellCommandLifecycleIntegrationFactory.Create(shell, diagnosticLog);
+            commandLifecycleIntegration.Start();
             var launchSpec = commandLifecycleIntegration.LaunchSpec;
             CreatePipe(out pseudoConsoleInput, out hostInput);
             CreatePipe(out hostOutput, out pseudoConsoleOutput);
@@ -145,7 +146,6 @@ internal sealed class ConPtySession : ITerminalSession
     public void BeginReading()
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);
-        commandLifecycleIntegration.Start();
         outputPump ??= PumpOutputAsync(lifetimeCancellation.Token);
         processWait ??= WaitForExitAsync(lifetimeCancellation.Token);
         commandLifecycleInitialization ??= InitializeCommandLifecycleAsync(lifetimeCancellation.Token);
@@ -275,38 +275,38 @@ internal sealed class ConPtySession : ITerminalSession
     private async Task InitializeCommandLifecycleAsync(CancellationToken cancellationToken)
     {
         var bootstrapInput = commandLifecycleIntegration.BootstrapInput;
-        if (bootstrapInput is null)
+        if (bootstrapInput is not null)
         {
-            return;
-        }
-
-        try
-        {
-            await shellOutputStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken)
-                .ConfigureAwait(false);
-            var bytes = Encoding.UTF8.GetBytes(bootstrapInput);
-            await inputLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await inputStream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
-                await inputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await shellOutputStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken)
+                    .ConfigureAwait(false);
+                var bytes = Encoding.UTF8.GetBytes(bootstrapInput);
+                await inputLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await inputStream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+                    await inputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    inputLock.Release();
+                }
             }
-            finally
+            catch (Exception exception) when (
+                exception is OperationCanceledException or IOException or ObjectDisposedException or TimeoutException)
             {
-                inputLock.Release();
-            }
-        }
-        catch (Exception exception) when (
-            exception is OperationCanceledException or IOException or ObjectDisposedException or TimeoutException)
-        {
-            if (cancellationToken.IsCancellationRequested == false)
-            {
-                diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "InitializeCommandLifecycle",
-                                    "The shell command lifecycle integration could not be initialized.", exception);
-            }
+                if (cancellationToken.IsCancellationRequested == false)
+                {
+                    diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "InitializeCommandLifecycle",
+                                        "The shell command lifecycle integration could not be initialized.", exception);
+                }
 
-            commandLifecycleIntegration.NotifySessionExited();
+                commandLifecycleIntegration.NotifySessionExited();
+            }
         }
+
+        await commandLifecycleIntegration.WaitForInputReadyAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void HandleCommandLifecycleSignal(TerminalSessionCommandSignal signal)
