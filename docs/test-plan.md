@@ -786,8 +786,8 @@ renderer protocol 및 ConPTY integration으로만 검증됐다.
 | MAN-047 | Explorer file/folder path drop | PowerShell/Windows PowerShell/cmd 현재 탭에 공백·한글·특수 문자 경로를 놓고 미리보기·취소·승인, Enter 미생성, tab 전환·restart·renderer reconnect 경쟁, IME·붙여넣기·focus·scrollback 회귀를 실제 WebView2에서 확인 | Not run — additional-object/protocol/unit 검증은 통과했으나 실제 Explorer·WebView2 드래그 입력은 수행하지 않음 |
 | MAN-048 | terminal 출력 URL Ctrl+click | 일반 click/drag selection 유지, Ctrl+click 실제 URL 확인·취소·기본 브라우저 열기, HTTP/HTTPS 및 OSC 8, 긴/잘못된/custom scheme 거부, 외부 실행 실패와 tab/restart/reconnect 경쟁을 실제 WebView2에서 확인 | Not run — protocol/validation/distribution 자동 검증은 통과했으나 실제 WebView2 pointer selection과 기본 브라우저 실행은 수행하지 않음 |
 | MAN-049 | 현재 탭을 저장한 탭에 추가 | tab 우클릭과 Shift+F10에서 메뉴 항목에 도달하고, 이름·설정 시작 폴더·셸 prefill, 20개 한도 안내, 저장/취소 뒤 원래 tab focus와 shell PID·입력·scrollback·선택 보존을 WebView2에서 확인 | Not run — renderer distribution과 protocol/host source 자동 검증만 수행했으며 실제 WebView2, DPI 및 Korean IME 조작은 수행하지 않음 |
-| MAN-050a | 새 탭 버튼 위치와 overflow | 실제 WebView2에서 1/3/8개 탭, 짧고 긴 이름, 좁은 패널과 네 theme를 확인해 마지막 탭 옆 `+`, 탭 목록만 가로 스크롤, `+`/`▾` 고정 표시와 기본 프로필 새 탭 생성을 검증 | Not run — renderer distribution 계약과 source/dist build만 수행했으며 실제 WebView2 화면·입력·DPI별 관찰은 수행하지 않음 |
-| MAN-053 | PowerShell bootstrap 화면·입력 | WebView2에서 PowerShell 7/Windows PowerShell 새 탭 5회, profile 출력/custom prompt, 즉시 첫 명령, 한글 IME, `Ctrl+C`, nested prompt와 알림 on/off를 관찰 | Not run — 실제 ConPTY 자동 검증은 통과했지만 WebView2 terminal UI를 조작하거나 시각적으로 관찰하지 않았음 |
+| MAN-050a | 새 탭 버튼 위치와 overflow | 실제 WebView2에서 1/3/8개 탭, 짧고 긴 이름, 좁은 패널과 네 theme를 확인해 마지막 탭 옆 `+`, 탭 목록만 가로 스크롤, `+`/`▾` 고정 표시와 기본 프로필 새 탭 생성을 검증 | Blocked (2026-09-16) — 이 worktree의 Debug WPF build는 성공했지만 interactive UI automation이 새로 빌드한 `Starboard.exe`를 target app으로 승인하지 않아 창을 열거나 mouse/keyboard/DPI별 화면을 관찰할 수 없었음. 자동 layout 계약을 수동 결과로 대체하지 않음 |
+| MAN-053 | PowerShell bootstrap 화면·입력 | WebView2에서 PowerShell 7/Windows PowerShell 새 탭 5회, profile 출력/custom prompt, 즉시 첫 명령, 한글 IME, `Ctrl+C`, nested prompt와 알림 on/off를 관찰 | Blocked (2026-09-16) — interactive UI automation이 새로 빌드한 `Starboard.exe` 실행을 허용하지 않아 두 PowerShell의 5회 새 탭, 즉시 입력, Korean IME, `Ctrl+C`, 동일 session generation 완료 알림을 관찰하지 못했음. 기존 실제 ConPTY 자동 검증은 대체 근거가 아님 |
 
 ### 2026-09-16 Windows 플랫폼·설정 UI 재검증 시도
 
@@ -813,6 +813,26 @@ baseline foreground HWND 기록 → 네 theme를 각각 save/cancel하고 restar
 이미 점유한 global shortcut으로 conflict UI 및 기존 등록 유지 확인 → startup toggle 뒤 HKCU Run과
 재로그인 single-instance 확인 → 100/125/150/200%와 mixed-DPI에서 tray/panel screenshot → auto-hide,
 각 taskbar edge, Explorer restart, maximized/borderless/exclusive fullscreen을 차례로 확인한다.
+
+### 2026-09-16 terminal UI 수동 검증 시도
+
+이 task 전용 worktree에서 `Starboard.Windows` Debug restore와 build는 성공했다. 그러나 Windows
+UI automation provider가 해당 새 `Starboard.exe`를 승인하지 않아 targetable window를 생성할 수
+없었다. 이 제한을 다른 automation 또는 사용자 shell 변경으로 우회하지 않았다.
+
+따라서 다음 실제 UI 시나리오는 모두 **Blocked**이며 자동 test 결과로 판정하지 않는다.
+
+- PowerShell 7과 Windows PowerShell 각각에서 `+` menu로 새 탭을 연속 5회 만들고 bootstrap 흔적/`>>`
+  없이 즉시 첫 명령을 실행하는지 확인
+- Korean IME 조합·확정, 선택 없는 `Ctrl+C` interrupt, 같은 session generation의 한 번뿐인 완료 알림을
+  실제 terminal/Windows notification으로 확인
+- 좁은 panel과 지원 DPI에서 1/3/8개 탭의 마지막 tab 바로 뒤 `+`, 고정 `▾`, overflow scroll 및
+  keyboard/mouse 새 탭 상호작용을 확인
+
+재개 조건은 PowerShell 7, Windows PowerShell, Microsoft Korean IME와 WebView2 Runtime이 설치된
+interactive desktop에서 Starboard panel을 targetable window로 열 수 있는 것이다. 그 환경에서 각 shell의
+5회 반복 결과와 명령/interrupt/notification generation, 그리고 100/125/150/200% DPI별 tab-strip
+screenshot을 별도로 기록해야 한다.
 
 ## Focus 검증 절차
 

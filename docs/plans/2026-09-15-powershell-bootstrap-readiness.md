@@ -160,6 +160,11 @@ git diff --check
   bootstrap/`>>` 부재, 격리된 느린 profile output/custom prompt/nested prompt와 첫 성공·다음 실패
   completion을 검증했다.
 - [ ] 실제 WebView2 terminal 화면에서 새 탭 5회, 즉시 입력, 한글 IME, `Ctrl+C`와 알림 UI를 수동 검증.
+- [ ] 2026-09-16: 이 worktree의 Debug WPF build는 성공했으나 Windows UI automation provider가 새
+  `Starboard.exe`를 target app으로 승인하지 않아 실제 창을 열 수 없었다. PowerShell 7/Windows
+  PowerShell 각각의 5회 새 탭, 즉시 입력, Korean IME, `Ctrl+C`, 동일 session generation 완료 알림은
+  **Blocked**로 남겼으며 ConPTY 자동 검증으로 대체하지 않았다. 재개에는 targetable interactive
+  desktop와 WebView2 Runtime, 두 PowerShell 및 Microsoft Korean IME가 필요하다.
 
 ## 완료 요약
 
@@ -168,4 +173,5 @@ gate했다. PowerShell 7/Windows PowerShell 실제 ConPTY 자동 검증은 통�
 사용자 profile 파일을 수정하지 않는다. pipe 생성 충돌과 readiness timeout에서도 shell 입력이 계속
 동작하고 완료 알림만 비활성화되는 runtime 회귀 검증을 추가했다. 전체 Debug 자동 test 523건과 C#
 정렬·diff 검사가 최종 변경 기준으로 통과했다.
-실제 WebView2 화면 검증과 배포본 교체는 수행하지 않았다.
+실제 WebView2 화면 검증과 배포본 교체는 수행하지 않았다. 2026-09-16 수동 검증 시도는 targetable
+window 권한이 없어 Blocked였으므로 UI 결과를 통과로 판정하지 않는다.
