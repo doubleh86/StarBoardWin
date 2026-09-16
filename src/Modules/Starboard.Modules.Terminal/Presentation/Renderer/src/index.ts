@@ -16,6 +16,7 @@ type GlobalRendererMessageType =
   | "ready"
   | "select-next"
   | "select-previous"
+  | "begin-panel-resize"
   | "renderer-error"
   | "retry-launch-profiles"
   | "create-saved-tab"
@@ -303,6 +304,7 @@ function getRequiredElement<T extends Element>(selector: string): T {
 
 const tabList = getRequiredElement<HTMLElement>("#session-tabs");
 const newTabButton = getRequiredElement<HTMLButtonElement>("#new-tab");
+const panelResizeZone = getRequiredElement<HTMLElement>("#panel-resize-zone");
 const savedTabsButton = getRequiredElement<HTMLButtonElement>("#saved-tabs");
 const workspace = getRequiredElement<HTMLElement>("#terminal-workspace");
 
@@ -472,6 +474,28 @@ function postGlobal(
     type,
     payload,
   });
+}
+
+function updatePanelResizeAffordance(): void {
+  const enabled = panelResizeZone.getBoundingClientRect().width >= 48;
+  panelResizeZone.dataset.resizeEnabled = enabled ? "true" : "false";
+}
+
+function beginPanelResize(event: PointerEvent): void {
+  if (
+    event.button !== 0 ||
+    event.isPrimary === false ||
+    panelResizeZone.dataset.resizeEnabled !== "true"
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  dismissTabMenu();
+  dismissSavedTabsMenu();
+  dismissLaunchProfilesMenu();
+  postGlobal("begin-panel-resize");
 }
 
 function postSession(
@@ -2641,6 +2665,8 @@ savedTabsButton.addEventListener("click", () => {
   }
 });
 
+panelResizeZone.addEventListener("pointerdown", beginPanelResize);
+
 reducedMotion.addEventListener("change", (event) => {
   for (const entry of sessions.values()) {
     entry.terminal.options.cursorBlink = event.matches === false;
@@ -2696,8 +2722,12 @@ window.chrome?.webview?.addEventListener("message", (event) => {
   handleHostMessage(event.data);
 });
 
-const resizeObserver = new ResizeObserver(() => fitActiveSession());
+const resizeObserver = new ResizeObserver(() => {
+  fitActiveSession();
+  updatePanelResizeAffordance();
+});
 resizeObserver.observe(workspace);
+resizeObserver.observe(panelResizeZone);
 
 window.addEventListener("error", () => postGlobal("renderer-error", { kind: "runtime" }));
 window.addEventListener("unhandledrejection", () =>

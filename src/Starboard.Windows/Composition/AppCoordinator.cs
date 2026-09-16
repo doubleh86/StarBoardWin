@@ -38,6 +38,7 @@ internal sealed class AppCoordinator : IDisposable
             desktopIntegrationModule.SetCommandCompletionNotificationSettings,
             desktopIntegrationModule.NotifyCommandCompletion);
         terminalModule.CommandCompleted += HandleCommandCompleted;
+        terminalModule.PanelResizeRequested += HandlePanelResizeRequested;
         terminalModule.ExitRequested += HandleExitRequested;
         desktopIntegrationModule.PanelVisibilityToggleRequested += HandlePanelVisibilityToggleRequested;
         desktopIntegrationModule.PanelActivationToggleRequested += HandlePanelActivationToggleRequested;
@@ -123,6 +124,7 @@ internal sealed class AppCoordinator : IDisposable
         isDisposed = true;
         lifetimeCancellation.Cancel();
         terminalModule.CommandCompleted -= HandleCommandCompleted;
+        terminalModule.PanelResizeRequested -= HandlePanelResizeRequested;
         terminalModule.ExitRequested -= HandleExitRequested;
         commandCompletionNotificationCoordinator.Stop();
         desktopIntegrationModule.PanelVisibilityToggleRequested -= HandlePanelVisibilityToggleRequested;
@@ -289,6 +291,13 @@ internal sealed class AppCoordinator : IDisposable
         }
 
         return applicationService.ApplyCollapsedHeightChangeAsync(request, cancellationToken);
+    }
+
+    private void HandlePanelResizeRequested(object? sender, EventArgs eventArguments)
+    {
+        _ = sender;
+        _ = eventArguments;
+        _ = desktopIntegrationModule.BeginCollapsedPanelResize();
     }
 
     private void HandleExitRequested(object? sender, EventArgs eventArguments)

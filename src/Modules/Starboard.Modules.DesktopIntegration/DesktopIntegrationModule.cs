@@ -605,6 +605,33 @@ public sealed class DesktopIntegrationModule : IDisposable
         Reconcile();
     }
 
+    public bool BeginCollapsedPanelResize()
+    {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        nint attachedWindowHandle;
+        lock (stateLock)
+        {
+            if (isAttached == false || isResizeInProgress == true || CanResizeCollapsedPanel() == false)
+            {
+                return false;
+            }
+
+            attachedWindowHandle = windowHandle;
+        }
+
+        try
+        {
+            return runtime.BeginTopResize(attachedWindowHandle);
+        }
+        catch (Exception exception) when (IsRecoverablePlatformFailure(exception) == true)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "DesktopIntegration", "BeginCollapsedPanelResize",
+                                "The panel resize gesture could not start; the current height remains active.",
+                                exception);
+            return false;
+        }
+    }
+
     public VirtualDesktopWindowState CapturePanelVirtualDesktopState()
     {
         lock (stateLock)
@@ -1448,6 +1475,8 @@ internal interface IDesktopIntegrationRuntime : IDisposable
 
     void PlaceWithoutActivation(nint windowHandle, PixelRect bounds);
 
+    bool BeginTopResize(nint windowHandle);
+
     void SetPanelOpacity(nint windowHandle, double opacity)
     {
         _ = windowHandle;
@@ -1571,6 +1600,24 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
     public void PlaceWithoutActivation(nint windowHandle, PixelRect bounds)
     {
         WindowPlacementService.PlaceWithoutActivation(windowHandle, bounds);
+    }
+
+    public bool BeginTopResize(nint windowHandle)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        if (NativeMethods.GetCursorPos(out var cursorPosition) == false)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(),
+                                     "The cursor position could not be captured before panel resizing.");
+        }
+
+        _ = NativeMethods.ReleaseCapture();
+        var packedCoordinates = unchecked((uint)(ushort)cursorPosition.X |
+                                          ((uint)(ushort)cursorPosition.Y << 16));
+        _ = NativeMethods.SendMessage(windowHandle, NativeMethods.WindowMessageNonClientLeftButtonDown,
+                                      NativeMethods.HitTestTop, new nint(packedCoordinates));
+
+        return true;
     }
 
     public void SetPanelOpacity(nint windowHandle, double opacity)

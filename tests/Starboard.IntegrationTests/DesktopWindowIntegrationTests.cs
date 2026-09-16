@@ -398,6 +398,12 @@ public sealed class DesktopWindowIntegrationTests
             Placements.Add(bounds);
         }
 
+        public bool BeginTopResize(nint windowHandle)
+        {
+            _ = windowHandle;
+            return false;
+        }
+
         public void ActivateOnExplicitRequest(nint windowHandle)
         {
             _ = windowHandle;
@@ -521,6 +527,12 @@ public sealed class DesktopWindowIntegrationTests
         public void PlaceWithoutActivation(nint windowHandle, PixelRect bounds)
         {
             WindowPlacementService.PlaceWithoutActivation(windowHandle, bounds);
+        }
+
+        public bool BeginTopResize(nint windowHandle)
+        {
+            _ = windowHandle;
+            return false;
         }
 
         public void ActivateOnExplicitRequest(nint windowHandle)

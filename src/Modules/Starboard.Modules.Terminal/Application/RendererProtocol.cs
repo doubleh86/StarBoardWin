@@ -180,6 +180,7 @@ internal static class RendererProtocol
                 "retry-launch-profiles" => ParseGlobal(RendererMessageType.RetryLaunchProfiles, root, payload),
                 "new-tab" => ParseNewTab(root, payload),
                 "duplicate-tab" => ParseDuplicateTab(root, payload),
+                "begin-panel-resize" => ParseGlobal(RendererMessageType.BeginPanelResize, root, payload),
                 "change-collapsed-height" => ParseCollapsedHeightChange(root, payload),
                 "select-session" => ParseSession(RendererMessageType.SelectSession, root, payload),
                 "select-next" => ParseGlobal(RendererMessageType.SelectNext, root, payload),

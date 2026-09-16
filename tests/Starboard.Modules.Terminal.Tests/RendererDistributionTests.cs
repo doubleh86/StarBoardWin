@@ -107,7 +107,7 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(html, "id=\"new-tab\"");
         StringAssert.Contains(html, "aria-haspopup=\"menu\"");
         StringAssert.Contains(styles, ".tab-list{display:flex;flex:0 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden");
-        StringAssert.Contains(styles, ".tab-strip-spacer{flex:1 1 auto;min-width:0}");
+        StringAssert.Contains(styles, ".tab-strip-spacer{position:relative;flex:1 1 auto;min-width:0;height:31px}");
         StringAssert.Contains(styles, ".new-tab{width:32px;height:31px;flex:0 0 32px");
         StringAssert.Contains(styles, ".saved-tabs{width:32px;height:31px;flex:0 0 32px");
         StringAssert.Contains(source, "newTabButton.addEventListener(\"click\", () => {");
@@ -117,6 +117,28 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(source, "newTabButton.disabled === false");
         StringAssert.Contains(source, "savedTabsButton.addEventListener(\"click\", () => {");
         StringAssert.Contains(script, "new-tab");
+    }
+
+    [TestMethod]
+    public void BundledRendererProvidesWideNeutralPanelResizeAffordanceWithoutInterceptingTabControls()
+    {
+        var html = ReadRendererAsset("index.html");
+        var source = ReadRendererSource("index.ts");
+        var script = ReadRendererAsset("app.js");
+        var styles = ReadRendererAsset("app.css");
+
+        StringAssert.Contains(html, "id=\"panel-resize-zone\"");
+        Assert.IsTrue(html.IndexOf("id=\"new-tab\"", StringComparison.Ordinal) <
+                      html.IndexOf("id=\"panel-resize-zone\"", StringComparison.Ordinal));
+        Assert.IsTrue(html.IndexOf("id=\"panel-resize-zone\"", StringComparison.Ordinal) <
+                      html.IndexOf("id=\"saved-tabs\"", StringComparison.Ordinal));
+        StringAssert.Contains(source, "panelResizeZone.getBoundingClientRect().width >= 48");
+        StringAssert.Contains(source, "panelResizeZone.addEventListener(\"pointerdown\", beginPanelResize)");
+        StringAssert.Contains(source, "postGlobal(\"begin-panel-resize\")");
+        StringAssert.Contains(script, "begin-panel-resize");
+        StringAssert.Contains(styles, ".tab-strip-spacer[data-resize-enabled=true]{cursor:ns-resize}");
+        StringAssert.Contains(styles, "width:24px;height:2px");
+        Assert.IsFalse(styles.Contains("yellow", StringComparison.OrdinalIgnoreCase));
     }
 
     [TestMethod]

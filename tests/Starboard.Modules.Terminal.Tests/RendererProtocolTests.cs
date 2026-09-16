@@ -79,6 +79,34 @@ public sealed class RendererProtocolTests
     }
 
     [TestMethod]
+    public void TryParseBeginPanelResizeAcceptsOnlyGlobalEmptyPayload()
+    {
+        const string Json = """
+            {"version":2,"type":"begin-panel-resize","payload":{}}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsTrue(parsed);
+        Assert.IsNotNull(message);
+        Assert.AreEqual(RendererMessageType.BeginPanelResize, message.Type);
+        Assert.IsNull(message.SessionId);
+    }
+
+    [TestMethod]
+    public void TryParseBeginPanelResizeWithSessionRejectsMessage()
+    {
+        const string Json = """
+            {"version":2,"type":"begin-panel-resize","sessionId":"10000000000000000000000000000001","payload":{}}
+            """;
+
+        var parsed = RendererProtocol.TryParse(Json, out var message);
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(message);
+    }
+
+    [TestMethod]
     [DataRow("new-tab", "00000000000000000000000000000000", 7, "shell:pwsh")]
     [DataRow("new-tab", "40000000000000000000000000000001", 0, "shell:pwsh")]
     [DataRow("new-tab", "40000000000000000000000000000001", 7, "shell:unknown")]

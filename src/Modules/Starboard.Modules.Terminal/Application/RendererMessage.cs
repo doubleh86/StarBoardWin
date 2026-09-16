@@ -9,6 +9,7 @@ internal enum RendererMessageType
     RetryLaunchProfiles,
     NewTab,
     DuplicateTab,
+    BeginPanelResize,
     ChangeCollapsedHeight,
     SelectSession,
     SelectNext,

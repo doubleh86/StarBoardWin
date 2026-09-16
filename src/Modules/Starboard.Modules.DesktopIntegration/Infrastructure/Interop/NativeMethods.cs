@@ -21,6 +21,7 @@ internal static partial class NativeMethods
     internal const uint DwmWindowAttributeCloaked = 14;
 
     internal const int WindowMessageNonClientHitTest = 0x0084;
+    internal const int WindowMessageNonClientLeftButtonDown = 0x00A1;
     internal const int WindowMessageNonClientLeftButtonDoubleClick = 0x00A3;
     internal const int WindowMessageSizing = 0x0214;
     internal const int WindowMessageEnterSizeMove = 0x0231;
@@ -78,6 +79,18 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetWindowRect(nint windowHandle, out NativeRect rectangle);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetCursorPos(out NativePoint point);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ReleaseCapture();
+
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    internal static partial nint SendMessage(nint windowHandle, int message, nint wordParameter,
+                                             nint longParameter);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -82,6 +82,38 @@ Starboard의 작업표시줄 위 경량 terminal 성격을 유지하면서 다�
 - auto-hide freeze, fullscreen demotion, expand/collapse와 Explorer 재시작 후 재배치 정책은 그대로
   유지한다. panel 높이 변경을 desktop work area 예약으로 구현하지 않는다.
 
+### 2026-09-16 높이 조절 진입 영역 사용성 후속
+
+현재 구현은 축소 panel 최상단 안쪽 6 DIP만 `HTTOP`으로 판정한다. 150% 배율에서도 약 9px이고
+탭 바가 창 최상단부터 시작하는데 별도의 시각적 손잡이가 없어, 사용자가 정확한 위치를 커서로
+탐색해야 한다. 단순히 최상단 판정 높이만 늘리면 32 DIP 탭의 클릭 영역을 잠식하므로 hit target
+확대만으로 해결하지 않는다.
+
+- `+`와 오른쪽 `▾` 사이의 `.tab-strip-spacer`가 48 DIP 이상일 때 전체 높이 중 최소 24 DIP를
+  주 resize 진입 영역으로 사용하고 `ns-resize` cursor를 제공한다.
+- 중앙에는 theme의 muted border 색을 쓰는 24×2 DIP 손잡이를 항상 표시하고 hover 때만 대비를
+  높인다. terminal 외곽선, 노란 테두리와 animation은 추가하지 않는다.
+- 탭, 닫기 `×`, `+`, `▾`와 menu 입력은 resize로 가로채지 않는다. spacer가 48 DIP보다 좁아지면
+  손잡이를 숨기고 기존 최상단 6 DIP `HTTOP` 경로만 유지한다.
+- renderer는 pointer down 의도만 host에 보내고, host가 축소 상태와 현재 window 수명을 확인한 뒤
+  기존 native top-edge sizing loop를 시작한다. bottom anchor, 96~720 DIP clamp, DPI 변환, preview와
+  release 1회 저장 계약을 그대로 재사용한다.
+
+#### Task: `panel-resize-affordance`
+
+- 예상 범위: renderer source/dist와 protocol, Terminal presentation, DesktopIntegration native resize
+  시작 경로, host 조정, 관련 module·renderer tests와 `docs/test-plan.md`
+- 제외 범위: 설정 schema와 높이 기본값 변경, 탭 바 높이 증가, 좌우·아래 resize와 panel 이동
+- 인수 기준:
+  1. 1개와 3개 탭의 보통 폭에서 48×24 DIP 이상의 빈 탭 바 영역으로 resize를 시작한다.
+  2. 좁은 폭과 8개 탭에서 control 입력을 가로채지 않고 최상단 6 DIP fallback을 유지한다.
+  3. 손잡이는 중립색이며 노란 테두리 없이 네 theme에서 식별된다.
+  4. 기존 native sizing의 clamp, bottom anchor, DPI, 저장·rollback과 focus 정책이 유지된다.
+  5. renderer source/dist, protocol과 module 자동 검증을 통과하고 실제 drag는 수동 결과로 구분한다.
+- [x] renderer intent부터 native sizing 시작까지 구현하고 회귀 검증했다. spacer가 48 DIP 이상일 때
+  24×2 DIP 중립색 손잡이와 31 DIP 높이의 drag 영역을 제공하며, 좁아지면 기존 6 DIP top-edge만
+  남긴다. renderer build, C# 정렬, Debug solution build와 전체 529개 test가 통과했다.
+
 ## 기능 C — 현재 탭 구성 복제
 
 ### 사용자 흐름과 계약
@@ -151,6 +183,11 @@ backend concrete type을 참조하지 않는다. 합류는 P0 → P1-A/P1-B/P1-C
 - [x] P3 자동·portable gate 완료: renderer source/dist rebuild, Debug solution suite 및
   self-contained portable publish/ZIP/checksum/extraction smoke를 실행했고 package에 settings,
   workspace, saved tabs, logs, WebView2 data 및 command/output capture가 없음을 검사했다.
+- 2026-09-16: 최상단 6 DIP의 보이지 않는 hit target이 높이 조절을 어렵게 만드는 원인임을 확인하고
+  `panel-resize-affordance` 후속 Task를 열었다.
+- [x] 2026-09-16: `panel-resize-affordance` 구현 완료. renderer는 global intent만 보내고 host가
+  DesktopIntegration의 native top sizing loop를 시작하도록 연결해 기존 DPI, clamp, bottom anchor,
+  preview·commit·rollback을 재사용했다. 실제 mouse drag는 MAN-054에 `Not run`으로 분리했다.
 - **Blocked (manual):** 실제 WSL 설치 환경, 다중 DPI/monitor/taskbar/focus 및 WebView2
   mouse·keyboard·IME 수동 검증. 2026-09-16 assigned run에서 `wsl.exe --status`와
   `wsl.exe --list --verbose`가 모두 `Wsl/EnumerateDistros/Service/E_ACCESS_DENIED`로 실패했고
@@ -159,7 +196,10 @@ backend concrete type을 참조하지 않는다. 합류는 P0 → P1-A/P1-B/P1-C
 
 ## 완료 요약
 
-구현과 자동 release gate를 완료했다. WSL profile은 목록 조회와 새 session 실행에만 사용하며,
+기존 세 기능과 `panel-resize-affordance` 구현 및 자동 검증을 완료했다. 빈 탭 바 영역은 충분히 넓을
+때만 resize 진입점이 되고, control과 겹치는 좁은 상태에서는 기존 top-edge fallback만 남는다.
+실제 WebView2 drag와 DPI별 cursor·focus 관찰은 MAN-054 수동 검증으로 남겼다. WSL profile은 목록
+조회와 새 session 실행에만 사용하며,
 첫 범위에서는 workspace 또는 saved-tabs schema에 저장하지 않는다. WSL을 선택한 tab은 앱을
 다시 시작하거나 workspace를 복원할 때 builtin 기본 tab으로 대체될 수 있다. `wsl.exe` 또는
 배포판 조회가 실패하면 builtin profile은 계속 제공되고 메뉴에 실패 상태와 재시도 경로를 보인다.

@@ -40,6 +40,32 @@ public sealed class PanelResizeModuleTests
     }
 
     [TestMethod]
+    public void BeginCollapsedPanelResize_WhileCollapsed_RequestsNativeTopResizeWithoutActivation()
+    {
+        var runtime = new ResizeRuntime();
+        using var module = CreateAttachedModule(runtime);
+
+        var started = module.BeginCollapsedPanelResize();
+
+        Assert.IsTrue(started);
+        Assert.AreEqual(1, runtime.TopResizeRequestCount);
+        Assert.AreEqual(0, runtime.ActivationRequestCount);
+    }
+
+    [TestMethod]
+    public void BeginCollapsedPanelResize_WhileExpanded_DoesNotRequestNativeResize()
+    {
+        var runtime = new ResizeRuntime();
+        using var module = CreateAttachedModule(runtime);
+        module.ToggleExpanded();
+
+        var started = module.BeginCollapsedPanelResize();
+
+        Assert.IsFalse(started);
+        Assert.AreEqual(0, runtime.TopResizeRequestCount);
+    }
+
+    [TestMethod]
     public void HandleWindowMessage_TopSizing_PreviewsClampedHeightWithoutMovingBottomOrTakingFocus()
     {
         var runtime = new ResizeRuntime();
@@ -216,6 +242,8 @@ public sealed class PanelResizeModuleTests
 
         public int ActivationRequestCount { get; private set; }
 
+        public int TopResizeRequestCount { get; private set; }
+
         public event EventHandler? EnvironmentChanged
         {
             add { }
@@ -285,6 +313,14 @@ public sealed class PanelResizeModuleTests
         {
             _ = windowHandle;
             PlacedBounds.Add(bounds);
+        }
+
+        public bool BeginTopResize(nint windowHandle)
+        {
+            _ = windowHandle;
+            TopResizeRequestCount++;
+
+            return true;
         }
 
         public void ActivateOnExplicitRequest(nint windowHandle)

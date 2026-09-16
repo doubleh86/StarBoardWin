@@ -28,6 +28,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly TerminalWorkspacePersistence workspacePersistence;
     private readonly TerminalSavedTabService savedTabService;
     private readonly TerminalCollapsedHeightChangeCallback collapsedHeightChangeCallback;
+    private readonly Action panelResizeRequested;
     private readonly Action exitRequested;
     private readonly TerminalUrlOpenService urlOpenService;
     private readonly TerminalLaunchProfileCatalog launchProfileCatalog;
@@ -65,7 +66,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                           TerminalWorkspacePersistence workspacePersistence,
                           TerminalSavedTabService savedTabService,
                           TerminalCollapsedHeightChangeCallback collapsedHeightChangeCallback,
-                          Action exitRequested)
+                          Action panelResizeRequested, Action exitRequested)
     {
         this.diagnosticLog = diagnosticLog;
         this.sessionCoordinator = sessionCoordinator;
@@ -73,6 +74,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         this.savedTabService = savedTabService;
         ArgumentNullException.ThrowIfNull(collapsedHeightChangeCallback);
         this.collapsedHeightChangeCallback = collapsedHeightChangeCallback;
+        ArgumentNullException.ThrowIfNull(panelResizeRequested);
+        this.panelResizeRequested = panelResizeRequested;
         ArgumentNullException.ThrowIfNull(exitRequested);
         this.exitRequested = exitRequested;
         urlOpenService = new TerminalUrlOpenService(new TerminalExternalUrlLauncher());
@@ -650,6 +653,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                     _ = DuplicateTabAsync(tabDuplicateRequest, rendererGeneration, rendererInstanceId,
                                           rendererOperationCancellation.Token);
                 }
+                break;
+            case RendererMessageType.BeginPanelResize:
+                panelResizeRequested();
                 break;
             case RendererMessageType.ChangeCollapsedHeight:
                 if (message.CollapsedHeightChangeRequest is { } collapsedHeightChangeRequest)

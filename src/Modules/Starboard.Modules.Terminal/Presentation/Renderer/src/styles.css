@@ -59,8 +59,37 @@ button:focus-visible {
 }
 
 .tab-strip-spacer {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
+  height: 31px;
+}
+
+.tab-strip-spacer::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-rule-strong);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.tab-strip-spacer[data-resize-enabled="true"] {
+  cursor: ns-resize;
+}
+
+.tab-strip-spacer[data-resize-enabled="true"]::after {
+  opacity: 0.72;
+}
+
+.tab-strip-spacer[data-resize-enabled="true"]:hover::after {
+  background: var(--color-neutral);
+  opacity: 1;
 }
 
 .tab-item {

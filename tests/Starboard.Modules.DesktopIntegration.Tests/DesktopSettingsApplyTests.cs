@@ -425,6 +425,12 @@ public sealed class DesktopSettingsApplyTests
             LastPlacedBounds = bounds;
         }
 
+        public bool BeginTopResize(nint windowHandle)
+        {
+            _ = windowHandle;
+            return false;
+        }
+
         public void SetPanelOpacity(nint windowHandle, double opacity)
         {
             _ = windowHandle;

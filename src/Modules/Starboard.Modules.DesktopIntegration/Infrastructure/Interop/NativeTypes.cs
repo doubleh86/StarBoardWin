@@ -12,6 +12,13 @@ internal struct NativeRect
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct NativePoint
+{
+    internal int X;
+    internal int Y;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct AppBarData
 {
     internal int Size;

@@ -31,10 +31,12 @@ public sealed class TerminalModule : IDisposable
         sessionCoordinator.CommandCompleted += HandleCommandCompleted;
         terminalView = new TerminalView(diagnosticLog, sessionCoordinator, workspacePersistence, savedTabService,
                                         collapsedHeightChangeCallback ?? RejectCollapsedHeightChange,
-                                        RequestExit);
+                                        RequestPanelResize, RequestExit);
     }
 
     public event EventHandler<TerminalCommandCompletedEventArgs>? CommandCompleted;
+
+    public event EventHandler? PanelResizeRequested;
 
     public event EventHandler? ExitRequested;
 
@@ -170,6 +172,14 @@ public sealed class TerminalModule : IDisposable
         if (isDisposed == false)
         {
             ExitRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void RequestPanelResize()
+    {
+        if (isDisposed == false)
+        {
+            PanelResizeRequested?.Invoke(this, EventArgs.Empty);
         }
     }
 
