@@ -674,6 +674,29 @@ renderer protocol 및 ConPTY integration으로만 검증됐다.
 | MAN-051 | installed WSL profile | 실제 `wsl.exe`/distribution discovery, Linux home launch, resize, exit와 query/launch failure message·retry | Not run — 이 환경에서 WSL 설치 상태를 변경하거나 terminal UI를 조작하지 않았음 |
 | MAN-052 | DPI, monitor, taskbar and focus | 100/125/150/200% 및 mixed DPI, monitor 이동, taskbar edge/auto-hide, fullscreen과 background focus preservation | Not run — display/taskbar/foreground를 변경하거나 panel을 시각적으로 관찰하지 않았음 |
 
+### 2026-09-16 WSL·터미널 편의 실환경 검증 시도
+
+이 실행은 assigned run `20260916-024929-604976-4bda31f4`의 문서 검증이다. Windows
+interactive terminal UI를 조작하지 않고, WSL discovery는 읽기 전용 명령으로만 확인했다.
+`wsl.exe --status`와 `wsl.exe --list --verbose`는 모두 exit code 1 및
+`Wsl/EnumerateDistros/Service/E_ACCESS_DENIED`를 반환했다. 따라서 WSL이 미설치되었거나
+배포판이 없다고 판정하지 않으며, 설치된 distribution 이름·기본 Linux home·실행 가능 여부도
+미확인이다.
+
+| ID | Scenario | 실제 관찰 또는 시도 | 상태 |
+| --- | --- | --- | --- |
+| MAN-050 | WebView2 terminal convenience UI | `+`/profile menu/tab menu, top-edge drag, mouse·keyboard, 좁은 폭, Korean IME와 duplicate 뒤 기존 scrollback·input/focus 보존을 실제 Starboard terminal UI에서 확인해야 한다. 이 실행 환경의 Windows automation 안전 정책은 terminal application 조작을 금지하므로 panel을 열거나 input/drag를 주입하지 않았다. | Blocked — 자동 renderer/protocol·ConPTY 결과를 실제 WebView2 상호작용 결과로 대체하지 않음 |
+| MAN-051 | installed WSL profile | `wsl.exe --status`, `wsl.exe --list --verbose`를 실행했으나 둘 다 `Wsl/EnumerateDistros/Service/E_ACCESS_DENIED`로 실패했다. distribution discovery, 선택, Linux home 시작, resize/exit, query·launch 오류 화면과 retry를 실행하지 못했다. | Blocked — WSL service/distribution enumeration 권한 또는 상태를 이 session에서 읽을 수 없음 |
+| MAN-052 | DPI, monitor, taskbar and focus | panel 높이 drag, expand/collapse 복원, foreground focus 보존과 100/125/150/200% 및 mixed-DPI/taskbar edge 조합은 terminal UI 및 display/taskbar 조작을 요구한다. 이 환경에서는 해당 조작을 수행하지 않았다. | Blocked — 실제 panel geometry·focus를 관찰하지 않았으며 자동 geometry test는 실화면 통과 근거가 아님 |
+
+재개 절차는 targetable Starboard panel을 제공하는 interactive desktop에서 수행한다.
+
+1. 동일한 일반 사용자 session에서 `wsl.exe --status`와 `wsl.exe --list --verbose`가 성공하는지 먼저 확인하고, 목록의 각 배포판 이름을 기록한다. 실패하면 Windows Features의 WSL/Virtual Machine Platform, `LxssManager` 상태와 사용자 WSL 권한을 복구한 뒤 다시 조회한다.
+2. Starboard `▾`에서 각 WSL profile을 선택해 새 탭을 열고 Linux home의 `pwd`, resize, `exit`, 실패 안내와 retry를 확인한다. Windows 시작 폴더를 Linux 경로로 변환하지 않는 계약도 함께 확인한다.
+3. WSL 탭에서 시작 폴더 marker를 만든 뒤 `이 탭 구성 복제`를 실행한다. 새 PID/session에서 같은 profile·설정 시작 폴더만 이어지고, 원본 PID·input·scrollback·focus가 보존되는지 확인한다.
+4. 100/125/150/200%와 mixed-DPI, bottom/top/left/right 및 auto-hide taskbar에서 top-edge drag와 expand/collapse를 반복한다. bottom anchor와 저장된 collapsed height 복원, background reconciliation 중 foreground HWND 보존을 screenshot과 HWND 기록으로 남긴다.
+5. WebView2에서 mouse selection, keyboard navigation, Microsoft Korean IME 조합/확정/backspace, `Ctrl+C` interrupt와 renderer/shell 오류 뒤 취소·retry 경로를 실제 화면에서 확인한다.
+
 ### 2026-09-10 release·recovery 격리 검증
 
 - 대상: run `20260910-055029-889715-ee5de9ac`, worktree HEAD

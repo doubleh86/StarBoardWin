@@ -151,7 +151,7 @@ backend concrete type을 참조하지 않는다. 합류는 P0 → P1-A/P1-B/P1-C
 - [x] P3 자동·portable gate 완료: renderer source/dist rebuild, Debug solution suite 및
   self-contained portable publish/ZIP/checksum/extraction smoke를 실행했고 package에 settings,
   workspace, saved tabs, logs, WebView2 data 및 command/output capture가 없음을 검사했다.
-- [ ] 실제 WSL 설치 환경, 다중 DPI/monitor/taskbar/focus 및 WebView2 mouse·keyboard·IME 수동 검증.
+- [ ] 실제 WSL 설치 환경, 다중 DPI/monitor/taskbar/focus 및 WebView2 mouse·keyboard·IME 수동 검증. 2026-09-16 assigned run에서 `wsl.exe --status`와 `wsl.exe --list --verbose`가 모두 `Wsl/EnumerateDistros/Service/E_ACCESS_DENIED`로 실패했고 terminal UI automation은 정책상 수행할 수 없어, 결과를 `docs/test-plan.md`의 MAN-050~052에 Blocked로 기록했다.
 
 ## 완료 요약
 
@@ -160,4 +160,6 @@ backend concrete type을 참조하지 않는다. 합류는 P0 → P1-A/P1-B/P1-C
 다시 시작하거나 workspace를 복원할 때 builtin 기본 tab으로 대체될 수 있다. `wsl.exe` 또는
 배포판 조회가 실패하면 builtin profile은 계속 제공되고 메뉴에 실패 상태와 재시도 경로를 보인다.
 실제 WebView2 입력·IME, 설치된 WSL, DPI/monitor/taskbar/focus 시나리오는 자동 결과와 혼동하지
-않도록 test plan에서 `Not run`으로 유지한다.
+않도록 test plan에서 `Blocked` 또는 `Not run`으로 유지한다. 2026-09-16 assigned run은 WSL
+enumeration access denial과 terminal UI automation 제한 때문에 MAN-050~052를 통과로 바꾸지
+않았으며, 재개 절차는 test plan에 기록했다.
