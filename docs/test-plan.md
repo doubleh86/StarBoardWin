@@ -95,6 +95,19 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-16 (앱 정상 종료 교착 수정 및 바탕화면 재배포)
+- commit `44bc8a82a787c9f2007a0787e5a4f4f0fb064f6b`의 Debug/Release solution build는
+  경고·오류 0개였고 전체 532개 test가 실패·skip 없이 통과했다. 중복 종료 병합,
+  cleanup 완료 전 WPF shutdown 금지와 cleanup 실패 exit code를 전용 test 3개로 확인했다.
+- self-contained publish, 501-file content 검사, 결정적 ZIP 재생성과 checksum 및 추출
+  smoke가 통과했다. package SHA-256은
+  `376823296e156c87bfd09627bab3fae145e0484d98805ca0ad1d8d5b303b2262`다.
+- 기존 바탕화면 instance는 정상 종료 요청 후 8초 안에 종료되지 않아 강제 종료했다.
+  사용자 요청대로 backup 없이 `C:/Users/round1studio_14/Desktop/Starboard-win-x64`를
+  publish와 파일별 hash가 같은 501개 파일로 교체하고 새 PID 61820의 응답 상태를 확인했다.
+- 새 배포본에서 실제 tray `종료`를 다시 누르는 검증은 자동화하지 않았으므로 `SMK-006`은
+  사용자 확인 전까지 `Pending recheck`를 유지한다.
+
 - 실행일: 2026-09-15 (run `20260915-073031-990510-914d5fc7`, integration build repair)
 - 지정 SDK restore는 성공했다. 첫 Debug build의 최초 오류는 Terminal WPF markup cache
   삭제 `Access denied`였고 DesktopIntegration test cache/coverage 쓰기에도 같은 증상이

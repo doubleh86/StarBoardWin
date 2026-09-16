@@ -88,6 +88,12 @@ ConPTY의 정상 종료 제한 시간과 작업공간 저장 format은 변경하
   Debug restore와 solution build는 경고·오류 0개, 전체 532개 test는 실패·skip 0개로
   통과했다. 기존 바탕화면 v0.2.1 instance는 교체하지 않았으므로 실제 트레이 종료
   8초 smoke는 새 배포 후 확인 대상으로 남겼다.
+- 2026-09-16: `44bc8a8`을 `origin/main`에 push하고 Release 532개 test, self-contained
+  publish, 결정적 ZIP·SHA-256과 추출 smoke를 통과했다. SHA-256은
+  `376823296e156c87bfd09627bab3fae145e0484d98805ca0ad1d8d5b303b2262`다. 기존 배포본은
+  정상 종료 요청 후 8초 안에 종료되지 않아 강제 종료했고, 백업 없이 501개 파일을
+  hash 일치 확인 후 바탕화면에 교체했다. 새 PID 61820의 응답 상태를 확인했으며 실제
+  트레이 `종료` 재검증은 사용자 입력 확인 대상으로 유지한다.
 
 ## 완료 요약
 
