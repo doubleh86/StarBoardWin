@@ -850,6 +850,15 @@ interactive terminal UI를 조작하지 않고, WSL discovery는 읽기 전용 �
 | MAN-055 | 현재 탭 저장 시 실제 디렉터리 사용 | PowerShell 7/Windows PowerShell과 지원 가능한 다른 셸에서 탭을 연 뒤 `cd`로 이동하고 `저장한 탭에 추가…`를 연다. 현재 위치 prefill·출처 안내를 확인하고 저장→새 탭의 시작 위치가 일치하는지 확인한다. 두 탭, 셸 재시작, 위치 미확인 fallback, 한글·공백 경로, 취소 후 원본 PID·입력·scrollback 보존도 확인한다. | Not run (2026-09-29) — 후속 요구만 기록했고 제품 코드와 실제 WebView2 동작은 아직 변경·검증하지 않음. 기존 MAN-049의 설정 시작 폴더 prefill은 당시 구현 기준이다. |
 | MAN-056 | 잠금 해제 후 패널 가로 폭 | 정상 폭을 기록한 뒤 PC를 잠그고 해제한다. 1/3/8개 탭, engaged/idle, monitor·DPI/work area 변화 전후에 panel HWND·WPF client·WebView2·workspace·xterm viewport의 rect와 scrollbar 오른쪽 위치를 비교한다. taskbar 비겹침, foreground HWND 보존과 셸 PID·작업 상태도 확인한다. | Not run (2026-09-29) — interactive 잠금/해제 및 HWND·WebView2·DOM rect, scrollbar, foreground HWND, shell PID 측정을 수행하지 않았다. GEO-009/010은 모의 geometry와 placement 검증이며 실제 관찰을 대체하지 않는다. |
 
+2026-09-29 재개 검증: GEO-009/010을 포함한 DesktopIntegration 집중 테스트 112개와
+전체 솔루션 테스트 537개가 통과했다. 솔루션 restore 뒤
+`dotnet build Starboard.Windows.sln --configuration Debug --no-restore -m:1`은
+경고·오류 0개로 통과했고 renderer build, C# 정렬, diff 검사도 확인했다.
+이전 병렬 build의 MSB3491 `Access denied`는 이번 단일 작업자 build에서 재발하지
+않았다. 파일 잠금·권한의 근본 원인은 확인되지 않았으며 재발하면 실패 경로와
+점유 프로세스·ACL을 조사한다. MAN-056의 실제 잠금 해제 전후 너비, scrollbar,
+foreground HWND, shell PID 관찰은 계속 `Not run`이다.
+
 ### 2026-09-16 Windows 플랫폼·설정 UI 재검증 시도
 
 실행 환경은 Windows 10 Pro 25H2 (build `26200.9457`), AMD64, interactive session 1이다.

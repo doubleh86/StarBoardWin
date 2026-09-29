@@ -87,6 +87,19 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
 - [x] 2026-09-29: 관련 integration 11개, DesktopIntegration 112개,
   솔루션 자동 테스트 537개 통과. 솔루션 restore, 단일 MSBuild 작업자 Debug
   build(경고·오류 0개), renderer build, C# 정렬, `git diff --check`를 확인했다.
-  기본 병렬 solution build는 실행 환경에서 출력 경로 `Access denied`로 실패했고
-  단일 작업자로 같은 solution을 검증했다. 실제 잠금·해제, panel/WebView2/DOM
+  기본 병렬 solution build는 MSB3491 출력 경로 `Access denied`로 실패했고
+  단일 작업자로 같은 solution을 검증했다. 실패 경로의 파일 잠금 또는 권한 원인은
+  확인되지 않았다. `-m:1`은 작업자 경합을 줄이는 검증 방법이며 근본 원인
+  해결로 단정하지 않는다. 실제 잠금·해제, panel/WebView2/DOM
   rect, scrollbar 위치, foreground HWND와 shell PID 관찰은 MAN-056 `Not run`이다.
+- [x] 2026-09-29 재개 검증: 기존 DesktopIntegration 구현과 GEO-009/010 회귀
+  테스트를 보존했다. 집중 테스트는 기본 병렬 실행이 복원 후 진행되지 않아
+  중단했으며 `-m:1` 재실행에서 112개 통과했다. renderer build는 sandbox의
+  `esbuild` 실행이 `spawn EPERM`으로 막혀 같은 명령을 제한 밖에서 실행해
+  통과했다. 솔루션 restore는 sandbox에서 출력 없이 종료 코드 1이었고 제한
+  밖의 동일 명령은 통과했다. 이어서
+  `dotnet build Starboard.Windows.sln --configuration Debug --no-restore -m:1`은
+  경고·오류 0개, 전체 테스트 537개 통과했다. 이번 실행에서 MSB3491은
+  재발하지 않았으므로 기존 접근 거부의 정확한 실패 경로와 파일 잠금·권한 원인은
+  여전히 미확정이다. 재발 시 경로와 점유 프로세스·ACL을 먼저 확인한다.
+  실제 잠금 해제 및 HWND·WebView2·DOM 경계 측정은 MAN-056 `Not run`이다.
