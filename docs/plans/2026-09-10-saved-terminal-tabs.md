@@ -1,5 +1,9 @@
 # 저장한 탭 — 프로젝트 폴더에서 바로 시작
 
+> 2026-09-29 후속 요구: 아래 2026-09-10~14의 `설정 시작 폴더` 미리 채우기는
+> 당시 구현 기록이다. **현재 탭에서 저장할 때의 최신 UX 계약은 문서 끝의
+> 「현재 디렉터리로 저장」 절**이 우선한다. 후속 구현은 아직 시작하지 않았다.
+
 ## 목표와 완료 조건
 
 제품 방향은 [가벼운 터미널 기획](2026-09-10-lightweight-terminal-roadmap.md)을 따른다.
@@ -192,3 +196,53 @@ Terminal 경로는 `src/Modules/Starboard.Modules.Terminal/` 기준이다. publi
 - 완료: `session-upsert` shell kind 전달, context-menu prefill/20개 제한/focus 복귀와 renderer
   distribution·integration 회귀 검증을 추가했다. 2026-09-14 `npm run build`, Debug restore/build와
   전체 437개 테스트가 통과했다. 실제 WebView2·DPI·IME 수동 검증은 MAN-049 `Not run`이다.
+
+## 2026-09-29 후속 — 현재 디렉터리로 저장
+
+### 목표와 완료 조건
+
+- 현재 탭의 `저장한 탭에 추가…`를 열면 `시작 폴더`에 **그 셸이 실제로 위치한
+  파일시스템 디렉터리**를 우선 채운다. `cd`/`Set-Location`으로 이동한 뒤에도
+  탭을 처음 열 때의 폴더가 계속 표시되는 현 동작을 개선한다.
+- 탭별 현재 디렉터리를 신뢰할 수 없으면 설정된 시작 폴더를 대체값으로 표시하되,
+  `현재 디렉터리`라고 오인시키지 않는다. 예: `현재 위치를 확인할 수 없어 설정된
+  시작 폴더를 표시합니다.` 사용자가 값을 확인·수정한 뒤에만 저장한다.
+- 저장 창을 여는 행위가 셸에 명령을 입력하거나, 실행 중인 탭의 작업 디렉터리·
+  입력·출력·PID·focus를 변경해서는 안 된다. 저장되는 것은 확인한 경로뿐이며
+  명령·출력·히스토리와 세션 상태는 저장하지 않는다.
+
+### 범위와 판단
+
+- 기준: renderer의 `appendSavedTabEditor`는 `entry.startingDirectory`를 채우고
+  `현재 터미널에서 이동한 폴더와 다를 수 있습니다`라고 안내한다. Terminal의
+  세션 metadata에도 현재 working directory는 없으며, 이미 있는 PowerShell
+  prompt/명령 완료용 별도 pipe는 디렉터리를 전송하지 않는다. ConPTY의 시작
+  폴더를 현재 셸 위치로 간주하거나 화면의 prompt 문자열을 파싱하지 않는다.
+- Terminal module의 셸별 위치 관측·세션 metadata, renderer protocol/UI와
+  관련 테스트가 영향 범위다. PowerShell 7/Windows PowerShell의 기존 prompt
+  integration에 위치 metadata를 추가할 수 있는지 먼저 검토한다. `cmd`는
+  신뢰할 수 있는 별도 방법을 검토하고, 검증 불가 시 명시적 대체값을 유지한다.
+  WSL/Linux 경로는 현재 저장 탭의 Windows 절대 경로 계약에 억지로 넣지 않는다.
+- 파일시스템 외 PowerShell provider, 존재하지 않는 경로, 셸 재시작·탭 교체,
+  renderer 재연결, 느린/오래된 metadata 응답을 구분한다. tab ID와 session
+  generation을 맞춘 최신 위치만 수용한다. 개인정보 보호를 위해 위치를
+  diagnostic log나 별도 영속 파일에 기록하지 않는다.
+- 기존 `저장 탭 편집`은 **저장 항목의 경로**를 보여 주며 현재 열려 있는 셸
+  위치로 덮지 않는다. 관리 화면의 `새 저장 탭`도 특정 현재 탭이 없으면
+  지금처럼 사용자가 시작 폴더를 직접 지정한다.
+
+### 구현 단계와 검증
+
+- [ ] 셸별 현재 디렉터리의 신뢰 가능한 관측 경로와 fallback을 확정하고
+  Terminal 계약·프로토콜·테스트 범위를 기록한다.
+- [ ] 관측 가능한 셸의 탭별 위치를 renderer에 전달하고, 현재 탭 저장 창의
+  prefill·출처 안내를 변경한다. 수동 편집값은 뒤늦은 metadata가 덮지 않는다.
+- [ ] `cd`/`Set-Location` 후 저장→새 탭 시작 폴더, 두 탭 간 격리, 재시작·재연결,
+  지원되지 않는 셸/경로, 한글·공백 경로, 취소 및 기존 PID·scrollback 보존을
+  자동/실제 WebView2 검증으로 나눠 확인한다. 실제 UI 항목은
+  [MAN-055](../test-plan.md)에 기록한다.
+
+두 작업 중 `현재 디렉터리로 저장`은 Terminal module/renderer를, 별도
+[잠금 해제 후 폭 복구](2026-09-29-unlock-panel-width-recovery.md)는
+DesktopIntegration을 소유하므로 파일 소유권을 분리하면 병렬 구현할 수 있다.
+이 문서는 요구사항 기록이며 제품 코드 수정, build, 배포는 아직 하지 않았다.
