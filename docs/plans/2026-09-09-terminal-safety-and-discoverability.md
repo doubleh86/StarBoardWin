@@ -248,3 +248,15 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
 - Debug solution restore/build 경고·오류 0개, 전체 304개 test와 `git diff --check`를
   통과했다. 후속 사용자 요청으로 수정분을 commit/push 대상에 포함한다.
   바탕화면 재배포와 오케스트레이터 상태·작업 브랜치 변경은 하지 않는다.
+
+### 2026-09-21 — SAFE-02 붙여넣기 중복 전달 회귀 수정
+
+- 사용자 제보: 한 번 복사한 내용을 terminal에 붙여넣으면 동일 내용이 두 번 입력된다.
+- 원인은 `Ctrl+V` key handler가 host에 `paste-request`를 보내는 동시에, 취소되지 않은
+  browser paste 기본 동작을 xterm도 처리해 두 경로가 각각 shell input을 만든 것이다.
+- keyboard paste는 기본 동작을 명시적으로 취소하고 host clipboard 경계로 한 번만
+  요청한다. context-menu 등 native paste event도 capture 단계에서 같은 경계로 모아
+  xterm의 직접 clipboard 전달과 여러 줄 확인 우회를 차단한다.
+- renderer source 계약은 gesture당 `paste-request` 호출부가 하나뿐인지, keyboard와
+  native paste 진입점 모두 기본 동작을 차단하는지 자동 검증한다. 실제 WebView2의
+  `Ctrl+V`, `Ctrl+Shift+V`, context-menu와 한글 IME 조작은 수동 확인 대상으로 남긴다.

@@ -95,6 +95,24 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-09-21 (clipboard 중복 붙여넣기 회귀 수정)
+- renderer의 keyboard paste와 native paste event를 host clipboard 경계의 단일
+  `paste-request` 호출부로 통합했다. `RendererDistributionTests`는 browser 기본 동작
+  차단과 단일 요청 계약을 검증한다. 실제 WebView2에서의 `Ctrl+V`, `Ctrl+Shift+V`,
+  context-menu와 IME 입력은 MAN-029/029a 상태를 유지하며 수동 재확인이 필요하다.
+- renderer offline rebuild, Debug solution restore/build(경고·오류 0개)와 전체 533개
+  test가 실패·skip 없이 통과했다.
+- portable 첫 Release 실행은 실제 foreground HWND를 비교하는
+  `LocalWpfPanelPlacementPreservesForegroundAndRestoresCollapsedBounds`가 한 번 실패했다.
+  같은 Release 집중 test가 바로 통과한 뒤 전체 package를 처음부터 다시 실행했고,
+  Release build 경고·오류 0개와 전체 533개 test, self-contained publish, 501-file
+  content 검사, 결정적 ZIP·SHA-256 및 추출 smoke가 통과했다. package SHA-256은
+  `ef3519f1df9fc4c4478b1a9926d2032056a0df5aab1afb7a12163ad0cbafc3e4`다.
+- 기존 바탕화면 instance를 종료하고 backup 없이
+  `C:/Users/round1studio_14/Desktop/Starboard-win-x64`를 새 publish로 교체했다. 원본과
+  배포본 501개 파일의 SHA-256이 모두 일치하며 새 PID 90456은 응답 상태다. 실제
+  WebView2에서 한 번만 붙는지는 사용자의 수동 확인이 필요하다.
+
 - 실행일: 2026-09-16 (앱 정상 종료 교착 수정 및 바탕화면 재배포)
 - commit `44bc8a82a787c9f2007a0787e5a4f4f0fb064f6b`의 Debug/Release solution build는
   경고·오류 0개였고 전체 532개 test가 실패·skip 없이 통과했다. 중복 종료 병합,

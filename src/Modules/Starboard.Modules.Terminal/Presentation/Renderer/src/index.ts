@@ -518,6 +518,14 @@ function postSession(
   });
 }
 
+function requestClipboardPaste(event: Event, sessionId: string): void {
+  // xterm also handles the browser paste event. Stop that path so the host clipboard
+  // boundary remains the only source and each user gesture is delivered exactly once.
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  postSession("paste-request", sessionId);
+}
+
 function postPathDrop(entry: SessionEntry, files: File[]): boolean {
   const webview = window.chrome?.webview;
   if (webview === undefined || typeof webview.postMessageWithAdditionalObjects !== "function") {
@@ -732,12 +740,17 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
       event.metaKey === false &&
       event.code === "KeyV"
     ) {
-      postSession("paste-request", sessionId);
+      requestClipboardPaste(event, sessionId);
       return false;
     }
 
     return true;
   });
+  mount.addEventListener(
+    "paste",
+    (event) => requestClipboardPaste(event, sessionId),
+    true,
+  );
   mount.addEventListener("pointerdown", () => terminal.focus());
 
   const entry: SessionEntry = {

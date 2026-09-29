@@ -283,6 +283,23 @@ public sealed class RendererDistributionTests
     }
 
     [TestMethod]
+    public void RendererRoutesEachPasteGestureThroughOneHostClipboardRequest()
+    {
+        var source = ReadRendererSource("index.ts");
+        var normalizedSource = source.ReplaceLineEndings("\n");
+        const string pasteRequest = "postSession(\"paste-request\", sessionId);";
+
+        StringAssert.Contains(
+            normalizedSource,
+            "function requestClipboardPaste(event: Event, sessionId: string): void {");
+        StringAssert.Contains(normalizedSource, "event.preventDefault();");
+        StringAssert.Contains(normalizedSource, "event.stopImmediatePropagation();");
+        StringAssert.Contains(normalizedSource, "requestClipboardPaste(event, sessionId);");
+        StringAssert.Contains(normalizedSource, "mount.addEventListener(\n    \"paste\",");
+        Assert.AreEqual(1, normalizedSource.Split(pasteRequest, StringSplitOptions.None).Length - 1);
+    }
+
+    [TestMethod]
     public void BundledRendererPathDropUsesAdditionalObjectsAndNeverReadsFilesOrSynthesizesEnter()
     {
         var source = ReadRendererSource("index.ts");
