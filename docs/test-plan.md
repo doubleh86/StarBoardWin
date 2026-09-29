@@ -554,8 +554,10 @@ npm run build
 | GEO-006 | 높이가 work area보다 큼 | 최소 여백을 보존하도록 clamp됨 | Passed |
 | GEO-007 | collapsed → expanded → collapsed | 원래 valid frame을 정확히 복원 | Passed |
 | GEO-008 | 기억한 monitor 제거 | 최신 taskbar monitor의 안전 frame으로 복구 | Passed (simulated) |
+| GEO-009 | 좁은 축소 frame이 넓어진 work area 안에 포함됨 | 입력 중 unknown에는 안전 frame 유지, 추적되는 auto-hide conceal에는 위치·두께를 유지하며 전체 가로 폭 복구, visible 뒤 반복 재조정과 expand/collapse에도 유지 | Passed (simulated, `DesktopWindowIntegrationTests`) |
+| GEO-010 | active panel의 monitor·taskbar 방향·DPI 변경 | 이전 frame이 새 work area 안에 포함돼도 현재 edge와 DPI에 맞게 다시 배치하고 foreground 활성화 없음; unknown 중 monitor 제거 시 연결된 monitor의 안전 frame 사용 | Passed (simulated, `DesktopWindowIntegrationTests`) |
 | POL-001 | idle + taskbar concealed | panel conceal | Passed (automated) |
-| POL-002 | active + taskbar concealed | 마지막 안전 frame 유지 | Passed (automated) |
+| POL-002 | active + taskbar concealed | 마지막 안전 frame의 taskbar 쪽 위치·두께를 유지하고 추적되는 work area 폭 변화는 반영 | Passed (automated/simulated) |
 | POL-003 | expanded + taskbar concealed | expanded frame 유지 | Passed (automated) |
 | POL-004 | fullscreen on same monitor | panel demote/conceal | Passed (simulated) |
 | POL-005 | fullscreen on other monitor | panel normal policy 유지 | Passed (automated) |
@@ -846,7 +848,7 @@ interactive terminal UI를 조작하지 않고, WSL discovery는 읽기 전용 �
 | MAN-053 | PowerShell bootstrap 화면·입력 | WebView2에서 PowerShell 7/Windows PowerShell 새 탭 5회, profile 출력/custom prompt, 즉시 첫 명령, 한글 IME, `Ctrl+C`, nested prompt와 알림 on/off를 관찰 | Blocked (2026-09-16) — interactive UI automation이 새로 빌드한 `Starboard.exe` 실행을 허용하지 않아 두 PowerShell의 5회 새 탭, 즉시 입력, Korean IME, `Ctrl+C`, 동일 session generation 완료 알림을 관찰하지 못했음. 기존 실제 ConPTY 자동 검증은 대체 근거가 아님 |
 | MAN-054 | 넓은 패널 높이 조절 영역 | 1/3개 탭에서 `+`와 `▾` 사이 중립색 손잡이, `ns-resize`, 빈 영역 drag와 bottom anchor를 확인하고, 좁은 폭·8개 탭에서는 손잡이가 사라지며 탭·`×`·`+`·`▾` 입력과 기존 6 DIP top-edge fallback이 정상인지 네 theme와 100/125/150/200% DPI에서 확인 | Not run (2026-09-16) — renderer build와 source/dist 계약, global protocol, collapsed/expanded native 시작 정책 및 전체 529개 자동 test는 통과했다. Computer Use 안전 규칙이 terminal 앱 자동 조작을 금지하므로 실제 WebView2 pointer drag, cursor, focus와 화면 상태는 수동 확인으로 남김 |
 | MAN-055 | 현재 탭 저장 시 실제 디렉터리 사용 | PowerShell 7/Windows PowerShell과 지원 가능한 다른 셸에서 탭을 연 뒤 `cd`로 이동하고 `저장한 탭에 추가…`를 연다. 현재 위치 prefill·출처 안내를 확인하고 저장→새 탭의 시작 위치가 일치하는지 확인한다. 두 탭, 셸 재시작, 위치 미확인 fallback, 한글·공백 경로, 취소 후 원본 PID·입력·scrollback 보존도 확인한다. | Not run (2026-09-29) — 후속 요구만 기록했고 제품 코드와 실제 WebView2 동작은 아직 변경·검증하지 않음. 기존 MAN-049의 설정 시작 폴더 prefill은 당시 구현 기준이다. |
-| MAN-056 | 잠금 해제 후 패널 가로 폭 | 정상 폭을 기록한 뒤 PC를 잠그고 해제한다. 1/3/8개 탭, engaged/idle, monitor·DPI/work area 변화 전후에 panel HWND·WPF client·WebView2·workspace·xterm viewport의 rect와 scrollbar 오른쪽 위치를 비교한다. taskbar 비겹침, foreground 보존과 셸 PID·작업 상태도 확인한다. | Not run (2026-09-29) — 사용자 화면과 발생 조건만 받았으며 실제 잠금/해제와 runtime bounds 측정, 수정 검증은 아직 수행하지 않음. |
+| MAN-056 | 잠금 해제 후 패널 가로 폭 | 정상 폭을 기록한 뒤 PC를 잠그고 해제한다. 1/3/8개 탭, engaged/idle, monitor·DPI/work area 변화 전후에 panel HWND·WPF client·WebView2·workspace·xterm viewport의 rect와 scrollbar 오른쪽 위치를 비교한다. taskbar 비겹침, foreground HWND 보존과 셸 PID·작업 상태도 확인한다. | Not run (2026-09-29) — interactive 잠금/해제 및 HWND·WebView2·DOM rect, scrollbar, foreground HWND, shell PID 측정을 수행하지 않았다. GEO-009/010은 모의 geometry와 placement 검증이며 실제 관찰을 대체하지 않는다. |
 
 ### 2026-09-16 Windows 플랫폼·설정 UI 재검증 시도
 

@@ -801,6 +801,7 @@ portable update는 파일을 제자리 교체하거나 시작 프로그램 경�
 | standard WebView2 alpha 제약 | opaque/tinted background | composition control은 별도 검증 후만 고려 |
 | ConPTY shutdown deadlock | 별도 worker와 bounded drain | child kill, pipe close 후 app shutdown 계속 |
 | taskbar auto-hide event 누락 | event + reconciliation | last safe frame |
+| unlock/work area 복구 중 좁은 축소 frame 재사용 | 확인된 taskbar snapshot에서는 현재 monitor·edge·work area·DPI와 설정 높이로 축소 frame을 다시 계산 | taskbar unknown·display fallback에서는 현재 work area 안의 마지막 안전 frame 유지; 입력 중 auto-hide conceal에서는 taskbar 쪽 위치와 두께를 유지하며 평행축만 현재 work area로 확장; 1초 재조정과 기존 display/settings/DPI/Explorer 알림으로 복구 |
 | secondary taskbar 공식 열거 부재 | system taskbar 정본 | optional isolated adapter |
 | fullscreen 오탐 | work area와 monitor bounds 구분 | 기본 normal z-order 유지, 필요 시 conceal 정책 off |
 | virtual desktop COM activation/HRESULT 실패 | 첫 실패를 기록하고 adapter 해제 | process lifetime no-op; 앱 재시작 때 재시도 |

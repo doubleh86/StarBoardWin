@@ -1004,12 +1004,65 @@ public sealed class DesktopIntegrationModule : IDisposable
 
     private PixelRect SelectRestoredOrLatestBounds(PixelRect? requestedBounds, DesktopGeometrySnapshot geometry)
     {
-        if (requestedBounds is PixelRect bounds && IsWithinWorkArea(bounds, geometry.Monitor.WorkArea) == true)
+        if (requestedBounds is not PixelRect bounds)
         {
-            return bounds;
+            return CalculateCollapsed(geometry);
         }
 
-        return CalculateCollapsed(geometry);
+        if (geometry.TaskbarPresence == TaskbarPresence.Unknown ||
+            geometry.TrackingState == DisplayTrackingState.Fallback)
+        {
+            return IsWithinWorkArea(bounds, geometry.Monitor.WorkArea) == true
+                ? bounds
+                : CalculateCollapsed(geometry);
+        }
+
+        var latestBounds = CalculateCollapsed(geometry);
+        if (geometry.TaskbarPresence == TaskbarPresence.Concealed)
+        {
+            return RestoreConcealedBounds(bounds, latestBounds, geometry);
+        }
+
+        // Containment alone accepts an old narrow frame after the work area widens.
+        // The current taskbar edge, work area, monitor and DPI all determine the
+        // collapsed frame; options retain the user's requested height in DIP.
+        if (bounds != latestBounds)
+        {
+            return latestBounds;
+        }
+
+        return bounds;
+    }
+
+    private static PixelRect RestoreConcealedBounds(PixelRect bounds, PixelRect latestBounds,
+                                                    DesktopGeometrySnapshot geometry)
+    {
+        var workArea = geometry.Monitor.WorkArea;
+        if (IsWithinWorkArea(bounds, workArea) == false)
+        {
+            return latestBounds;
+        }
+
+        // Keep the safe taskbar-facing position while typing, but let the frame
+        // span a recovered work area. A changed thickness or taskbar-facing
+        // edge requires the fresh geometry instead.
+        var taskbar = geometry.Taskbar;
+        return taskbar.Edge switch
+        {
+            TaskbarEdge.Bottom when bounds.Height == latestBounds.Height &&
+                                    bounds.Bottom == latestBounds.Bottom =>
+                new PixelRect(workArea.Left, bounds.Top, workArea.Right, bounds.Bottom),
+            TaskbarEdge.Top when bounds.Height == latestBounds.Height &&
+                                 bounds.Top == latestBounds.Top =>
+                new PixelRect(workArea.Left, bounds.Top, workArea.Right, bounds.Bottom),
+            TaskbarEdge.Left when bounds.Width == latestBounds.Width &&
+                                  bounds.Left == latestBounds.Left =>
+                new PixelRect(bounds.Left, workArea.Top, bounds.Right, workArea.Bottom),
+            TaskbarEdge.Right when bounds.Width == latestBounds.Width &&
+                                   bounds.Right == latestBounds.Right =>
+                new PixelRect(bounds.Left, workArea.Top, bounds.Right, workArea.Bottom),
+            _ => latestBounds,
+        };
     }
 
     private PixelRect CalculateCollapsed(DesktopGeometrySnapshot geometry)

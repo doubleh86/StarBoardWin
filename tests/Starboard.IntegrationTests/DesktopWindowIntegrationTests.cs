@@ -74,6 +74,136 @@ public sealed class DesktopWindowIntegrationTests
     }
 
     [TestMethod]
+    public void ReconcileAfterWorkAreaWidensKeepsUncertainFrameThenRestoresFullWidth()
+    {
+        var runtime = new FakeDesktopIntegrationRuntime
+        {
+            Geometry = CreateGeometry(new PixelRect(0, 0, 1040, 1080), new PixelRect(0, 0, 1040, 1040),
+                                      new PixelRect(0, 1040, 1040, 1080), new DisplayDpi(96, 96)),
+        };
+        using var module = CreateModule(runtime);
+        module.Attach(new nint(42), new PanelOptions(236));
+        module.SetPanelEngaged(true);
+        var narrowBounds = new PixelRect(0, 804, 1040, 1040);
+        Assert.AreEqual(narrowBounds, runtime.Placements[^1]);
+
+        var recoveredGeometry = CreateDefaultGeometry();
+        runtime.Geometry = recoveredGeometry with
+        {
+            TaskbarPresence = TaskbarPresence.Unknown,
+            TrackingState = DisplayTrackingState.Fallback,
+        };
+        runtime.RaiseEnvironmentChanged();
+        Assert.AreEqual(narrowBounds, runtime.Placements[^1]);
+
+        runtime.Geometry = recoveredGeometry with { TaskbarPresence = TaskbarPresence.Concealed };
+        runtime.RaiseEnvironmentChanged();
+        var fullWidthBounds = new PixelRect(0, 804, 1920, 1040);
+        Assert.AreEqual(fullWidthBounds, runtime.Placements[^1]);
+
+        runtime.Geometry = recoveredGeometry;
+        runtime.RaiseEnvironmentChanged();
+        Assert.AreEqual(fullWidthBounds, runtime.Placements[^1]);
+
+        module.Refresh();
+        runtime.Geometry = recoveredGeometry with
+        {
+            TaskbarPresence = TaskbarPresence.Unknown,
+            TrackingState = DisplayTrackingState.Fallback,
+        };
+        runtime.RaiseEnvironmentChanged();
+        Assert.AreEqual(fullWidthBounds, runtime.Placements[^1]);
+        runtime.Geometry = recoveredGeometry;
+        runtime.RaiseEnvironmentChanged();
+        module.ToggleExpanded();
+        module.ToggleExpanded();
+        Assert.AreEqual(fullWidthBounds, runtime.Placements[^1]);
+        Assert.AreEqual(0, runtime.ActivationCount);
+    }
+
+    [TestMethod]
+    public void ReconcileActivePanelAfterEdgeAndDpiChangeReplacesContainedOldFrame()
+    {
+        var runtime = new FakeDesktopIntegrationRuntime
+        {
+            Geometry = CreateGeometry(new PixelRect(0, 0, 1040, 1080), new PixelRect(0, 0, 1040, 1040),
+                                      new PixelRect(0, 1040, 1040, 1080), new DisplayDpi(96, 96)),
+        };
+        using var module = CreateModule(runtime);
+        module.Attach(new nint(42), new PanelOptions(200));
+        module.SetPanelEngaged(true);
+
+        var monitorBounds = new PixelRect(0, 0, 1920, 1080);
+        var workArea = new PixelRect(0, 0, 1860, 1080);
+        var dpi = new DisplayDpi(144, 144);
+        runtime.Geometry = new DesktopGeometrySnapshot(
+            new TaskbarSnapshot(TaskbarEdge.Right, new PixelRect(1860, 0, 1920, 1080),
+                                monitorBounds, workArea, false, dpi.X),
+            new MonitorSnapshot(new nint(2), monitorBounds, workArea, dpi),
+            TaskbarPresence.Visible, DisplayTrackingState.Tracked, null, null);
+        runtime.RaiseEnvironmentChanged();
+
+        Assert.AreEqual(new PixelRect(1560, 0, 1860, 1080), runtime.Placements[^1]);
+        module.Refresh();
+        Assert.AreEqual(new PixelRect(1560, 0, 1860, 1080), runtime.Placements[^1]);
+        Assert.AreEqual(0, runtime.ActivationCount);
+    }
+
+    [TestMethod]
+    public void ReconcileUnknownTaskbarAfterMonitorRemovalUsesConnectedFallbackFrame()
+    {
+        var runtime = new FakeDesktopIntegrationRuntime
+        {
+            Geometry = CreateDefaultGeometry(),
+        };
+        using var module = CreateModule(runtime);
+        module.Attach(new nint(42), new PanelOptions(200));
+        module.SetPanelEngaged(true);
+
+        var connectedGeometry = CreateGeometry(new PixelRect(-1280, 0, 0, 1024),
+                                               new PixelRect(-1280, 0, 0, 984),
+                                               new PixelRect(-1280, 984, 0, 1024),
+                                               new DisplayDpi(96, 96), new nint(2));
+        runtime.Geometry = connectedGeometry with
+        {
+            TaskbarPresence = TaskbarPresence.Unknown,
+            TrackingState = DisplayTrackingState.Fallback,
+        };
+        runtime.RaiseEnvironmentChanged();
+        var fallbackBounds = new PixelRect(-1280, 784, 0, 984);
+        Assert.AreEqual(fallbackBounds, runtime.Placements[^1]);
+
+        runtime.Geometry = connectedGeometry;
+        module.Refresh();
+        Assert.AreEqual(fallbackBounds, runtime.Placements[^1]);
+        Assert.AreEqual(0, runtime.ActivationCount);
+    }
+
+    [TestMethod]
+    public void ReconcileConcealedTaskbarAfterEdgeChangeDoesNotKeepOldAnchor()
+    {
+        var runtime = new FakeDesktopIntegrationRuntime
+        {
+            Geometry = CreateDefaultGeometry(),
+        };
+        using var module = CreateModule(runtime);
+        module.Attach(new nint(42), new PanelOptions(200));
+        module.SetPanelEngaged(true);
+
+        var monitorBounds = new PixelRect(0, 0, 1920, 1080);
+        var workArea = new PixelRect(0, 40, 1920, 1080);
+        runtime.Geometry = new DesktopGeometrySnapshot(
+            new TaskbarSnapshot(TaskbarEdge.Top, new PixelRect(0, 0, 1920, 40),
+                                monitorBounds, workArea, true, 96),
+            new MonitorSnapshot(new nint(1), monitorBounds, workArea, new DisplayDpi(96, 96)),
+            TaskbarPresence.Concealed, DisplayTrackingState.Tracked, null, null);
+        runtime.RaiseEnvironmentChanged();
+
+        Assert.AreEqual(new PixelRect(0, 40, 1920, 240), runtime.Placements[^1]);
+        Assert.AreEqual(0, runtime.ActivationCount);
+    }
+
+    [TestMethod]
     public void ReconcileUserHiddenAcrossFullscreenAndExplorerRecoveryRemainsHidden()
     {
         var runtime = new FakeDesktopIntegrationRuntime
