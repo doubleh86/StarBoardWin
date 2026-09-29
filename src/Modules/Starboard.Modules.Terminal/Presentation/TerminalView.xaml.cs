@@ -796,9 +796,52 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                     _ = savedTabService.CancelLaunch(savedTabLaunchCancellation);
                 }
                 break;
+            case RendererMessageType.SavedTabDirectoryRequest:
+                if (message.SessionId is { } savedTabSessionId && message.RendererInstanceId == rendererInstanceId &&
+                    message.SessionGeneration > 0 && message.Data is { } directoryRequestId)
+                {
+                    _ = ResolveSavedTabDirectoryAsync(savedTabSessionId, message.SessionGeneration,
+                                                      directoryRequestId, rendererGeneration, rendererInstanceId,
+                                                      rendererOperationCancellation.Token);
+                }
+                break;
             default:
                 throw new InvalidOperationException("Unexpected renderer message type.");
         }
+    }
+
+    private async Task ResolveSavedTabDirectoryAsync(TerminalSessionId sessionId, long sessionGeneration,
+                                                     string requestId, long requestRendererGeneration,
+                                                     Guid requestRendererInstanceId, CancellationToken cancellationToken)
+    {
+        if (rendererSessionGenerations.TryGetValue(sessionId, out var currentGeneration) == false ||
+            currentGeneration != sessionGeneration)
+        {
+            return;
+        }
+
+        var session = new TerminalSessionReference(sessionId.Value, sessionGeneration);
+        string? directory;
+        try
+        {
+            directory = await Task.Run(() => sessionCoordinator.GetCurrentDirectory(session),
+                                       cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (CanApplyRendererCallback(requestRendererGeneration, requestRendererInstanceId,
+                                     cancellationToken) == false ||
+            rendererSessionGenerations.TryGetValue(sessionId, out currentGeneration) == false ||
+            currentGeneration != sessionGeneration || sessionCoordinator.IsCurrentSession(session) == false)
+        {
+            return;
+        }
+
+        SendSessionMessage("saved-tab-directory-result", sessionId,
+                           new { requestId, sessionGeneration, currentDirectory = directory });
     }
 
     private async Task CreateSavedTabAsync(TerminalSavedTabCreateRequest request, long requestRendererGeneration,

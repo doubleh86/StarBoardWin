@@ -40,22 +40,25 @@ public sealed class ShellCommandLifecycleIntegrationTests
         Assert.IsFalse(integration.LaunchSpec.Arguments.Contains("-NoProfile", StringComparer.OrdinalIgnoreCase));
         Assert.AreEqual("한글 출력", integration.FilterOutput("한글 출력"));
 
-        integration.ProcessControlMessage($"P|{controlNonce}|0|0");
+        var location = Convert.ToBase64String(Encoding.UTF8.GetBytes("C:\\한글 폴더"));
+        integration.ProcessControlMessage($"P|{controlNonce}|0|0|{location}");
+        Assert.AreEqual("C:\\한글 폴더", signals.Last().CurrentDirectory);
         integration.BeginInputWrite("Write-Output '한글'\r");
         integration.CompleteInputWrite(true);
         var commandSignals = GetCommandSignals(signals);
         var executionId = commandSignals.Single().ExecutionId;
 
-        integration.ProcessControlMessage($"P|{controlNonce}|1|0");
+        integration.ProcessControlMessage($"P|{controlNonce}|1|0|{location}");
         Assert.HasCount(1, GetCommandSignals(signals), "A nested prompt only suspends the outer command.");
 
-        integration.ProcessControlMessage($"P|{controlNonce}|0|1");
+        integration.ProcessControlMessage($"P|{controlNonce}|0|1|{location}");
         commandSignals = GetCommandSignals(signals);
         Assert.HasCount(2, commandSignals);
         Assert.AreEqual(TerminalSessionCommandSignalKind.Started, commandSignals[0].Kind);
         Assert.AreEqual(TerminalSessionCommandSignalKind.Finished, commandSignals[1].Kind);
         Assert.AreEqual(executionId, commandSignals[1].ExecutionId);
         Assert.AreEqual(1, commandSignals[1].ExitCode);
+        Assert.AreEqual("C:\\한글 폴더", commandSignals[1].CurrentDirectory);
     }
 
     [TestMethod]
@@ -188,7 +191,7 @@ public sealed class ShellCommandLifecycleIntegrationTests
         await integration.WaitForInputReadyAsync(CancellationToken.None);
         integration.BeginInputWrite("PRIVATE_COMMAND_TEXT\r");
         integration.CompleteInputWrite(true);
-        integration.ProcessControlMessage("P|0|0");
+        integration.ProcessControlMessage("P|0|0|");
 
         Assert.HasCount(1, signals);
         Assert.AreEqual(TerminalSessionCommandSignalKind.IntegrationLost, signals[0].Kind);
@@ -335,6 +338,76 @@ public sealed class ShellCommandLifecycleIntegrationTests
 
         Assert.AreEqual(0, process.ExitCode, standardError);
         Assert.AreEqual(0, finishSignal.ExitCode);
+    }
+
+    [TestMethod]
+    [DataRow(TerminalShellKind.Pwsh)]
+    [DataRow(TerminalShellKind.PowerShell)]
+    [Timeout(15_000)]
+    public async Task PowerShellPromptReportsFilesystemLocationAfterSetLocation(TerminalShellKind shellKind)
+    {
+        ShellLaunchSpec shell;
+        try
+        {
+            shell = ShellResolver.Resolve(shellKind);
+        }
+        catch (FileNotFoundException)
+        {
+            Assert.Inconclusive($"{shellKind} is not installed on this test machine.");
+            return;
+        }
+
+        var directory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(),
+                                                               $"Starboard 한글 경로 {Guid.NewGuid():N}"));
+        try
+        {
+            await using var integration = new PowerShellCommandLifecycleIntegration(
+                shell, new NullDiagnosticLog(), $"starboard-location-runtime-{Guid.NewGuid():N}");
+            var observed = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var nonFilesystem = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var promptCount = 0;
+            integration.SignalReceived += signal =>
+            {
+                if (signal.Kind == TerminalSessionCommandSignalKind.Ready)
+                {
+                    if (Interlocked.Increment(ref promptCount) == 1)
+                    {
+                        observed.TrySetResult(signal.CurrentDirectory);
+                    }
+                    else
+                    {
+                        nonFilesystem.TrySetResult(signal.CurrentDirectory);
+                    }
+                }
+            };
+            integration.Start();
+            var bootstrap = Encoding.Unicode.GetString(Convert.FromBase64String(integration.LaunchSpec.Arguments[^1]));
+            using var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo(shell.ExecutablePath)
+                {
+                    CreateNoWindow = true,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                },
+            };
+            process.StartInfo.ArgumentList.Add("-NoLogo");
+            process.StartInfo.ArgumentList.Add("-NoProfile");
+            process.StartInfo.ArgumentList.Add("-Command");
+            process.StartInfo.ArgumentList.Add(bootstrap + "; Set-Location -LiteralPath '" +
+                                               directory.FullName.Replace("'", "''", StringComparison.Ordinal) +
+                                               "'; prompt | Out-Null; Set-Location Env:; prompt | Out-Null");
+            Assert.IsTrue(process.Start());
+            Assert.AreEqual(directory.FullName, await observed.Task.WaitAsync(TimeSpan.FromSeconds(8)));
+            Assert.IsNull(await nonFilesystem.Task.WaitAsync(TimeSpan.FromSeconds(8)));
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(0, process.ExitCode, await process.StandardError.ReadToEndAsync());
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
     }
 
     [TestMethod]

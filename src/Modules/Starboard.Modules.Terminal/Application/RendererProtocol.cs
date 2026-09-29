@@ -32,6 +32,7 @@ internal static class RendererProtocol
         "path-drop-result",
         "url-open-result",
         "new-output-state",
+        "saved-tab-directory-result",
     ];
 
     internal const int CurrentVersion = 2;
@@ -205,6 +206,7 @@ internal static class RendererProtocol
                 "delete-saved-tab" => ParseDeleteSavedTab(root, payload),
                 "launch-saved-tab" => ParseLaunchSavedTab(root, payload),
                 "cancel-saved-tab-launch" => ParseCancelSavedTabLaunch(root, payload),
+                "saved-tab-directory-request" => ParseSavedTabDirectoryRequest(root, payload),
                 _ => null,
             };
 
@@ -662,6 +664,24 @@ internal static class RendererProtocol
 
         return new RendererMessage(RendererMessageType.DropPaths, sessionId,
                                    RendererInstanceId: rendererInstanceId, SessionGeneration: generation);
+    }
+
+    private static RendererMessage? ParseSavedTabDirectoryRequest(JsonElement root, JsonElement payload)
+    {
+        if (TryParseSessionId(root, out var sessionId) == false || payload.ValueKind != JsonValueKind.Object ||
+            TryParseCompactRequestId(payload, out var requestId) == false ||
+            payload.TryGetProperty("rendererInstanceId", out var instanceElement) == false ||
+            instanceElement.ValueKind != JsonValueKind.String ||
+            TryParseCompactGuid(instanceElement.GetString(), out var rendererInstanceId) == false ||
+            payload.TryGetProperty("sessionGeneration", out var generationElement) == false ||
+            generationElement.TryGetInt64(out var generation) == false || generation < 1)
+        {
+            return null;
+        }
+
+        return new RendererMessage(RendererMessageType.SavedTabDirectoryRequest, sessionId,
+                                   requestId.ToString("N"), RendererInstanceId: rendererInstanceId,
+                                   SessionGeneration: generation);
     }
 
     private static RendererMessage? ParseUrlOpen(JsonElement root, JsonElement payload)

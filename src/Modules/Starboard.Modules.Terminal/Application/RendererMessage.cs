@@ -33,6 +33,7 @@ internal enum RendererMessageType
     DeleteSavedTab,
     LaunchSavedTab,
     CancelSavedTabLaunch,
+    SavedTabDirectoryRequest,
 }
 
 internal sealed record RendererMessage(RendererMessageType Type, TerminalSessionId? SessionId = null,

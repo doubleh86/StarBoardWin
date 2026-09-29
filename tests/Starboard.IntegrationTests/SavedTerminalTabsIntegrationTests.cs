@@ -6,6 +6,17 @@ namespace Starboard.IntegrationTests;
 public sealed class SavedTerminalTabsIntegrationTests
 {
     [TestMethod]
+    public void CurrentDirectoryReadUsesSessionIdentityAndDoesNotWriteShellInput()
+    {
+        var view = ReadRepositoryFile("src", "Modules", "Starboard.Modules.Terminal", "Presentation",
+                                      "TerminalView.xaml.cs");
+        StringAssert.Contains(view, "sessionCoordinator.GetCurrentDirectory(session)");
+        StringAssert.Contains(view, "sessionCoordinator.IsCurrentSession(session) == false");
+        StringAssert.Contains(view, "requestRendererInstanceId");
+        StringAssert.Contains(view, "saved-tab-directory-result");
+    }
+
+    [TestMethod]
     public void TerminalModuleComposesSavedTabPersistenceBeforeViewAndDisposesItBeforeSessions()
     {
         var source = ReadRepositoryFile("src", "Modules", "Starboard.Modules.Terminal", "TerminalModule.cs");

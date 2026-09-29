@@ -429,6 +429,18 @@ document generation이 바뀐 뒤 완료된 callback은 새 document에 과거 �
 최신 저장 목록과 실행 탭 수만 다시 동기화한다. renderer 실패 중에도 저장 변경 자체가
 성공했다면 재연결 snapshot에 반영된다.
 
+현재 탭에서 새 저장 항목을 만들 때는 PowerShell 7/Windows PowerShell의 기존 prompt
+wrapper가 별도 named pipe로 보내는 UTF-8/Base64 `ProviderPath`를 사용한다. FileSystem
+provider만 보내고 화면 prompt 문자열은 분석하지 않는다. coordinator는 현재 session
+generation의 마지막 위치만 메모리에 보관하며 명령 시작, 채널 손실, 종료, 재시작과 탭
+제거 때 폐기한다. renderer의 저장 창 요청에는 tab ID, session generation, renderer
+instance와 dialog request ID를 사용한다. 호스트는 60초 이내 관측값을 기존 Windows
+로컬 절대 경로 및 실존 디렉터리 검증으로 확인한 뒤 응답한다. renderer는 같은 세션과
+dialog가 열려 있고 경로를 사용자가 편집하지 않은 경우에만 이를 적용한다. CMD의 출력
+prompt marker는 위치를 별도 채널로 인증하지 못하므로 CMD/WSL/custom shell,
+비파일시스템 provider와 위치 실패는 설정된 시작 폴더와 미확인 안내로 처리한다.
+저장 창을 열 때 셸 input은 전송하지 않으며 위치를 진단 로그나 별도 파일에 기록하지 않는다.
+
 종료는 renderer 입력과 view callback을 먼저 취소하고 saved-tab service의 pending launch와
 I/O를 제한 시간 안에서 중단한 뒤 workspace persistence와 terminal sessions를 정리한다.
 따라서 늦은 저장/launch callback은 renderer에 새 탭을 추가하지 않으며 저장 I/O가 앱 종료를

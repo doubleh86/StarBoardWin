@@ -16,11 +16,13 @@ internal enum TerminalSessionCommandSignalKind
 internal readonly record struct TerminalSessionCommandSignal
 {
     private TerminalSessionCommandSignal(TerminalSessionCommandSignalKind kind,
-                                         TerminalCommandExecutionId executionId, int? exitCode)
+                                         TerminalCommandExecutionId executionId, int? exitCode,
+                                         string? currentDirectory = null)
     {
         Kind = kind;
         ExecutionId = executionId;
         ExitCode = exitCode;
+        CurrentDirectory = currentDirectory;
     }
 
     internal TerminalSessionCommandSignalKind Kind { get; }
@@ -29,9 +31,12 @@ internal readonly record struct TerminalSessionCommandSignal
 
     internal int? ExitCode { get; }
 
-    internal static TerminalSessionCommandSignal Ready()
+    internal string? CurrentDirectory { get; }
+
+    internal static TerminalSessionCommandSignal Ready(string? currentDirectory = null)
     {
-        return new TerminalSessionCommandSignal(TerminalSessionCommandSignalKind.Ready, default, null);
+        return new TerminalSessionCommandSignal(TerminalSessionCommandSignalKind.Ready, default, null,
+                                                currentDirectory);
     }
 
     internal static TerminalSessionCommandSignal Started(TerminalCommandExecutionId executionId)
@@ -40,10 +45,12 @@ internal readonly record struct TerminalSessionCommandSignal
         return new TerminalSessionCommandSignal(TerminalSessionCommandSignalKind.Started, executionId, null);
     }
 
-    internal static TerminalSessionCommandSignal Finished(TerminalCommandExecutionId executionId, int? exitCode)
+    internal static TerminalSessionCommandSignal Finished(TerminalCommandExecutionId executionId, int? exitCode,
+                                                          string? currentDirectory = null)
     {
         ValidateExecutionId(executionId);
-        return new TerminalSessionCommandSignal(TerminalSessionCommandSignalKind.Finished, executionId, exitCode);
+        return new TerminalSessionCommandSignal(TerminalSessionCommandSignalKind.Finished, executionId, exitCode,
+                                                currentDirectory);
     }
 
     internal static TerminalSessionCommandSignal IntegrationLost()

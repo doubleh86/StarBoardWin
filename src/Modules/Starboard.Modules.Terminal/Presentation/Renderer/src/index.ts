@@ -4,6 +4,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
+import { shouldApplyCurrentDirectory } from "./savedTabDirectoryPolicy";
 
 const ProtocolVersion = 2;
 const MaximumTabs = 8;
@@ -41,7 +42,8 @@ type SessionRendererMessageType =
   | "move-session"
   | "set-starting-directory"
   | "confirmation-response"
-  | "session-error";
+  | "session-error"
+  | "saved-tab-directory-request";
 
 type RendererMessage =
   | {
@@ -78,7 +80,8 @@ type SessionHostMessageType =
   | "confirmation-cancel"
   | "path-drop-result"
   | "url-open-result"
-  | "new-output-state";
+  | "new-output-state"
+  | "saved-tab-directory-result";
 
 type HostMessage =
   | {
@@ -322,6 +325,15 @@ let launchProfilesMenu: HTMLElement | undefined;
 let savedTabsMenu: HTMLElement | undefined;
 let savedTabsDialog: HTMLDialogElement | undefined;
 let savedTabsDialogFocusReturnSessionId: string | undefined;
+let pendingSavedTabDirectory: {
+  requestId: string;
+  sessionId: string;
+  sessionGeneration: number;
+  dialog: HTMLDialogElement;
+  path: HTMLInputElement;
+  guidance: HTMLElement;
+  edited: boolean;
+} | undefined;
 let savedTabsSnapshot: SavedTabsSnapshotPayload | undefined;
 let savedTabsFeedback = "";
 let pendingSavedTabLaunchRequestId: string | undefined;
@@ -375,7 +387,8 @@ function isSessionHostMessageType(value: string): value is SessionHostMessageTyp
     value === "confirmation-cancel" ||
     value === "path-drop-result" ||
     value === "url-open-result" ||
-    value === "new-output-state"
+    value === "new-output-state" ||
+    value === "saved-tab-directory-result"
   );
 }
 
@@ -1401,8 +1414,25 @@ function appendSavedTabEditor(dialog: HTMLDialogElement, tab?: SavedTab, createD
   if (createDefault !== undefined) {
     const guidance = document.createElement("p");
     guidance.className = "saved-tab-guidance";
-    guidance.textContent = "현재 터미널에서 이동한 폴더와 다를 수 있습니다.";
+    guidance.textContent = "현재 위치를 확인할 수 없어 설정된 시작 폴더를 표시합니다.";
     editor.append(guidance);
+    const sessionId = savedTabsDialogFocusReturnSessionId;
+    const entry = sessionId === undefined ? undefined : sessions.get(sessionId);
+    if (entry !== undefined) {
+      const requestId = createRequestId();
+      pendingSavedTabDirectory = {
+        requestId, sessionId: entry.id, sessionGeneration: entry.sessionGeneration,
+        dialog, path, guidance, edited: false,
+      };
+      path.addEventListener("input", () => {
+        if (pendingSavedTabDirectory?.requestId === requestId) {
+          pendingSavedTabDirectory.edited = true;
+        }
+      });
+      postSession("saved-tab-directory-request", sessionId, {
+        requestId, sessionGeneration: entry.sessionGeneration, rendererInstanceId: RendererInstanceId,
+      });
+    }
   }
   const actions = document.createElement("div");
   actions.className = "saved-tab-editor-actions";
@@ -1499,6 +1529,7 @@ function showSavedTabsDialog(createDefault?: SavedTabDraft, focusReturnSessionId
       pendingSavedTabLaunchRequestId = undefined;
     }
     const returnSessionId = savedTabsDialogFocusReturnSessionId;
+    pendingSavedTabDirectory = undefined;
     savedTabsDialogFocusReturnSessionId = undefined;
     savedTabsDialog = undefined;
     dialog.remove();
@@ -1979,6 +2010,10 @@ function upsertSession(sessionId: string, payload: SessionPayload): void {
   entry.exitCode = payload.exitCode;
   entry.order = payload.order;
   entry.sessionGeneration = payload.sessionGeneration;
+  if (pendingSavedTabDirectory?.sessionId === sessionId &&
+      pendingSavedTabDirectory.sessionGeneration !== entry.sessionGeneration) {
+    pendingSavedTabDirectory = undefined;
+  }
   entry.startingDirectory = payload.startingDirectory;
   entry.homeDirectory = payload.homeDirectory;
   entry.shellKind = payload.shellKind;
@@ -2558,6 +2593,31 @@ function handleHostMessage(value: unknown): void {
       payload.sessionGeneration === entry.sessionGeneration
     ) {
       setNewOutputState(entry, activeSessionId === sessionId ? false : payload.hasNewOutput);
+    }
+    return;
+  }
+
+  if (message.type === "saved-tab-directory-result") {
+    const pending = pendingSavedTabDirectory;
+    const response = {
+      requestId: payload.requestId,
+      sessionId,
+      sessionGeneration: payload.sessionGeneration,
+      currentDirectory: payload.currentDirectory,
+    };
+    if (pending !== undefined && shouldApplyCurrentDirectory({
+      requestId: pending.requestId,
+      sessionId: pending.sessionId,
+      sessionGeneration: pending.sessionGeneration,
+      edited: pending.edited,
+      dialogIsCurrent: pending.dialog === savedTabsDialog && pending.dialog.open === true &&
+        pending.dialog.contains(pending.path) === true,
+    }, response, entry.sessionGeneration) === true) {
+      pending.path.value = response.currentDirectory;
+      pending.guidance.textContent = "현재 터미널의 파일시스템 폴더입니다.";
+    }
+    if (pending?.requestId === payload.requestId) {
+      pendingSavedTabDirectory = undefined;
     }
     return;
   }

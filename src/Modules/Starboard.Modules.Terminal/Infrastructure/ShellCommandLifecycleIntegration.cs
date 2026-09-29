@@ -58,6 +58,7 @@ internal abstract class ShellCommandLifecycleIntegration : IShellCommandLifecycl
     private readonly Lock stateLock = new();
     private TerminalCommandExecutionId? activeExecutionId;
     private int? queuedFinishExitCode;
+    private string? queuedCurrentDirectory;
     private bool hasQueuedFinish;
     private bool isReady;
     private bool isBracketedPaste;
@@ -103,6 +104,7 @@ internal abstract class ShellCommandLifecycleIntegration : IShellCommandLifecycl
             isInputWritePending = true;
             pendingSubmission = isAvailable == true && isReady == true && ContainsCommandSubmission(data);
             queuedFinishExitCode = null;
+            queuedCurrentDirectory = null;
             hasQueuedFinish = false;
         }
     }
@@ -125,6 +127,7 @@ internal abstract class ShellCommandLifecycleIntegration : IShellCommandLifecycl
             {
                 pendingSubmission = false;
                 queuedFinishExitCode = null;
+                queuedCurrentDirectory = null;
                 hasQueuedFinish = false;
                 if (isAvailable == true)
                 {
@@ -142,9 +145,11 @@ internal abstract class ShellCommandLifecycleIntegration : IShellCommandLifecycl
 
                 if (hasQueuedFinish == true)
                 {
-                    finishedSignal = TerminalSessionCommandSignal.Finished(executionId, queuedFinishExitCode);
+                    finishedSignal = TerminalSessionCommandSignal.Finished(executionId, queuedFinishExitCode,
+                                                                           queuedCurrentDirectory);
                     activeExecutionId = null;
                     queuedFinishExitCode = null;
+                    queuedCurrentDirectory = null;
                     hasQueuedFinish = false;
                     isReady = true;
                     isBracketedPaste = false;
@@ -199,7 +204,7 @@ internal abstract class ShellCommandLifecycleIntegration : IShellCommandLifecycl
         return ValueTask.CompletedTask;
     }
 
-    protected void ObservePrompt(int? exitCode)
+    protected void ObservePrompt(int? exitCode, string? currentDirectory = null)
     {
         TerminalSessionCommandSignal? signal = null;
         lock (stateLock)
@@ -216,17 +221,18 @@ internal abstract class ShellCommandLifecycleIntegration : IShellCommandLifecycl
             {
                 activeExecutionId = null;
                 isReady = true;
-                signal = TerminalSessionCommandSignal.Finished(executionId, exitCode);
+                signal = TerminalSessionCommandSignal.Finished(executionId, exitCode, currentDirectory);
             }
             else if (isInputWritePending == true && pendingSubmission == true)
             {
                 queuedFinishExitCode = exitCode;
+                queuedCurrentDirectory = currentDirectory;
                 hasQueuedFinish = true;
             }
             else
             {
                 isReady = true;
-                signal = TerminalSessionCommandSignal.Ready();
+                signal = TerminalSessionCommandSignal.Ready(currentDirectory);
             }
         }
 
@@ -306,6 +312,7 @@ internal abstract class ShellCommandLifecycleIntegration : IShellCommandLifecycl
     {
         activeExecutionId = null;
         queuedFinishExitCode = null;
+        queuedCurrentDirectory = null;
         hasQueuedFinish = false;
         pendingSubmission = false;
         isReady = false;
@@ -431,7 +438,7 @@ internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecy
     internal void ProcessControlMessage(string message)
     {
         var fields = message.Split('|');
-        if (fields.Length != 4 || fields[0] != "P" ||
+        if (fields.Length != 5 || fields[0] != "P" ||
             string.Equals(fields[1], controlNonce, StringComparison.Ordinal) == false ||
             int.TryParse(fields[2], NumberStyles.None, CultureInfo.InvariantCulture, out var nestedPromptLevel) == false ||
             int.TryParse(fields[3], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var exitCode) == false)
@@ -444,7 +451,20 @@ internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecy
         // A nested PowerShell prompt suspends the outer command. Only its return to level zero proves completion.
         if (nestedPromptLevel == 0)
         {
-            ObservePrompt(exitCode);
+            string? currentDirectory = null;
+            try
+            {
+                if (fields[4].Length > 0 && fields[4].Length <= 131_072)
+                {
+                    currentDirectory = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(fields[4]));
+                }
+            }
+            catch (Exception exception) when (exception is FormatException or DecoderFallbackException)
+            {
+                // Invalid location metadata does not invalidate command completion.
+            }
+
+            ObservePrompt(exitCode, currentDirectory);
             inputReady.TrySetResult();
         }
     }
@@ -489,12 +509,13 @@ internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecy
 
     private void DisableIntegration(string operation, string message, Exception? exception = null)
     {
-        inputReady.TrySetResult();
         ObserveIntegrationLost();
         if (Interlocked.Exchange(ref readinessFailureReported, 1) == 0)
         {
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", operation, message, exception);
         }
+
+        inputReady.TrySetResult();
     }
 
     private static ShellLaunchSpec CreateLaunchSpec(ShellLaunchSpec shell, string pipeName, string controlNonce)
@@ -545,8 +566,15 @@ internal sealed class PowerShellCommandLifecycleIntegration : ShellCommandLifecy
                 $starboardDepthVariable = Get-Variable -Name NestedPromptLevel -ErrorAction Ignore
                 $starboardDepth = if ($null -eq $starboardDepthVariable) { 0 } else { [int]$starboardDepthVariable.Value }
                 $starboardExitCode = if ($starboardSucceeded) { 0 } else { 1 }
+                $starboardDirectory = ''
+                try {
+                    $starboardLocation = $executionContext.SessionState.Path.CurrentLocation
+                    if ($null -ne $starboardLocation -and $starboardLocation.Provider.Name -eq 'FileSystem') {
+                        $starboardDirectory = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($starboardLocation.ProviderPath))
+                    }
+                } catch { $starboardDirectory = '' }
                 if ($null -ne $global:__StarboardCommandWriter) {
-                    try { $global:__StarboardCommandWriter.WriteLine(('P|{{controlNonce}}|{0}|{1}' -f $starboardDepth, $starboardExitCode)) }
+                    try { $global:__StarboardCommandWriter.WriteLine(('P|{{controlNonce}}|{0}|{1}|{2}' -f $starboardDepth, $starboardExitCode, $starboardDirectory)) }
                     catch {
                         $global:__StarboardCommandWriter.Dispose()
                         $global:__StarboardCommandWriter = $null

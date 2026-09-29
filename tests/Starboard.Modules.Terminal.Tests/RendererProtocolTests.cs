@@ -11,6 +11,38 @@ public sealed class RendererProtocolTests
     private static readonly TerminalSessionId SessionId = new(Guid.Parse("10000000-0000-0000-0000-000000000001"));
 
     [TestMethod]
+    public void SavedTabDirectoryRequestRequiresRendererSessionAndRequestIdentity()
+    {
+        const string Valid = """
+            {"version":2,"type":"saved-tab-directory-request","sessionId":"10000000000000000000000000000001","payload":{"requestId":"40000000000000000000000000000001","rendererInstanceId":"50000000000000000000000000000001","sessionGeneration":3}}
+            """;
+
+        Assert.IsTrue(RendererProtocol.TryParse(Valid, out var message));
+        Assert.AreEqual(RendererMessageType.SavedTabDirectoryRequest, message?.Type);
+        Assert.AreEqual(SessionId, message?.SessionId);
+        Assert.AreEqual(3, message?.SessionGeneration);
+        Assert.AreEqual("40000000000000000000000000000001", message?.Data);
+        var staleGeneration = Valid.Replace("\"sessionGeneration\":3", "\"sessionGeneration\":0",
+                                            StringComparison.Ordinal);
+        var invalidRenderer = Valid.Replace("50000000000000000000000000000001", "invalid",
+                                            StringComparison.Ordinal);
+        Assert.IsFalse(RendererProtocol.TryParse(staleGeneration, out _));
+        Assert.IsFalse(RendererProtocol.TryParse(invalidRenderer, out _));
+    }
+
+    [TestMethod]
+    public void SavedTabDirectoryResultKeepsUnicodePathInSessionEnvelope()
+    {
+        var json = RendererProtocol.SerializeSessionMessage("saved-tab-directory-result", SessionId,
+                                                            new { requestId = "request", sessionGeneration = 3,
+                                                                   currentDirectory = "C:\\한글 폴더" });
+        using var document = JsonDocument.Parse(json);
+        Assert.AreEqual(SessionId.ToString(), document.RootElement.GetProperty("sessionId").GetString());
+        Assert.AreEqual("C:\\한글 폴더",
+                        document.RootElement.GetProperty("payload").GetProperty("currentDirectory").GetString());
+    }
+
+    [TestMethod]
     public void TryParseWithValidResizeReturnsDimensions()
     {
         const string Json = """

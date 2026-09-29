@@ -34,6 +34,75 @@ public sealed class TerminalSessionCoordinatorTests
     }
 
     [TestMethod]
+    public async Task CurrentDirectoryIsIsolatedValidatedAndClearedAcrossCommandsAndRestart()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"Starboard 위치 {Guid.NewGuid():N}");
+        var firstDirectory = Directory.CreateDirectory(Path.Combine(root, "한글 폴더")).FullName;
+        var secondDirectory = Directory.CreateDirectory(Path.Combine(root, "second folder")).FullName;
+        try
+        {
+            var factory = new FakeTerminalSessionFactory();
+            await using var coordinator = CreateCoordinator(factory);
+            var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+            var second = await coordinator.AddAsync(CancellationToken.None);
+            var firstSession = FindOutputState(coordinator.NewOutputState, first.SessionId).Session;
+            var secondSession = FindOutputState(coordinator.NewOutputState, second.SessionId).Session;
+
+            factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Ready(firstDirectory));
+            factory.Sessions[1].RaiseCommandSignal(TerminalSessionCommandSignal.Ready(secondDirectory));
+            Assert.AreEqual(firstDirectory, coordinator.GetCurrentDirectory(firstSession));
+            Assert.AreEqual(secondDirectory, coordinator.GetCurrentDirectory(secondSession));
+            Assert.IsNull(coordinator.GetCurrentDirectory(new TerminalSessionReference(firstSession.SessionId,
+                                                                                       firstSession.Generation + 1)));
+
+            var executionId = TerminalCommandExecutionId.CreateNew();
+            factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Started(executionId));
+            Assert.IsNull(coordinator.GetCurrentDirectory(firstSession));
+            factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Finished(executionId,
+                                                                                         0, firstDirectory));
+            Assert.AreEqual(firstDirectory, coordinator.GetCurrentDirectory(firstSession));
+            factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Ready("/tmp/linux"));
+            Assert.IsNull(coordinator.GetCurrentDirectory(firstSession));
+            factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Ready(firstDirectory + " missing"));
+            Assert.IsNull(coordinator.GetCurrentDirectory(firstSession));
+
+            await coordinator.RestartAsync(first.SessionId, CancellationToken.None);
+            Assert.IsNull(coordinator.GetCurrentDirectory(firstSession));
+            Assert.IsNull(coordinator.GetCurrentDirectory(FindOutputState(coordinator.NewOutputState,
+                                                                          first.SessionId).Session));
+            Assert.AreEqual(secondDirectory, coordinator.GetCurrentDirectory(secondSession));
+            Assert.IsTrue(factory.Sessions.All(session => session.Writes.Count == 0));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task CurrentDirectoryExpiresAndCmdCannotClaimPowerShellLocation()
+    {
+        var currentTime = DateTimeOffset.UtcNow;
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory, currentTime: () => currentTime);
+        var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var session = FindOutputState(coordinator.NewOutputState, tab.SessionId).Session;
+        factory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Ready(Path.GetTempPath()));
+        Assert.IsNotNull(coordinator.GetCurrentDirectory(session));
+
+        currentTime += TimeSpan.FromSeconds(61);
+        Assert.IsNull(coordinator.GetCurrentDirectory(session));
+
+        var cmdFactory = new FakeTerminalSessionFactory();
+        await using var cmdCoordinator = CreateCoordinator(cmdFactory);
+        var cmd = await cmdCoordinator.StartAsync(new ShellLaunchSpec("cmd.exe", ["/Q"], Path.GetTempPath()),
+                                                  80, 24, CancellationToken.None);
+        var cmdSession = FindOutputState(cmdCoordinator.NewOutputState, cmd.SessionId).Session;
+        cmdFactory.Sessions[0].RaiseCommandSignal(TerminalSessionCommandSignal.Ready(Path.GetTempPath()));
+        Assert.IsNull(cmdCoordinator.GetCurrentDirectory(cmdSession));
+    }
+
+    [TestMethod]
     public async Task WriteActiveAsyncAfterTabSelectionRoutesOnlyToSelectedSession()
     {
         var factory = new FakeTerminalSessionFactory();
@@ -1075,12 +1144,14 @@ public sealed class TerminalSessionCoordinatorTests
     private static TerminalSessionCoordinator CreateCoordinator(FakeTerminalSessionFactory factory,
                                                                 int maximumTabs = TerminalTabRegistry.DefaultMaximumTabs,
                                                                 TimeSpan? sessionCloseTimeout = null,
-                                                                TimeSpan? shutdownTimeout = null)
+                                                                TimeSpan? shutdownTimeout = null,
+                                                                Func<DateTimeOffset>? currentTime = null)
     {
         var nextIdentifier = 0;
         return new TerminalSessionCoordinator(factory, new NullDiagnosticLog(),
                                               () => new TerminalSessionId(CreateGuid(++nextIdentifier)), maximumTabs,
-                                              sessionCloseTimeout, shutdownTimeout);
+                                              sessionCloseTimeout, shutdownTimeout,
+                                              currentTime: currentTime);
     }
 
     private static TerminalTab FindTab(TerminalWorkspaceSnapshot snapshot, TerminalSessionId sessionId)

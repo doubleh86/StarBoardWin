@@ -2,7 +2,8 @@
 
 > 2026-09-29 후속 요구: 아래 2026-09-10~14의 `설정 시작 폴더` 미리 채우기는
 > 당시 구현 기록이다. **현재 탭에서 저장할 때의 최신 UX 계약은 문서 끝의
-> 「현재 디렉터리로 저장」 절**이 우선한다. 후속 구현은 아직 시작하지 않았다.
+> 「현재 디렉터리로 저장」 절**이 우선한다. 자동 검증 결과와 남은 실제 UI 검증은
+> 해당 절과 MAN-055에 기록한다.
 
 ## 목표와 완료 조건
 
@@ -199,6 +200,24 @@ Terminal 경로는 `src/Modules/Starboard.Modules.Terminal/` 기준이다. publi
 
 ## 2026-09-29 후속 — 현재 디렉터리로 저장
 
+### 관측 방법과 실패 정책 (구현 전 결정)
+
+- PowerShell 7과 Windows PowerShell의 기존 prompt wrapper가 별도 named pipe로 보내는
+  완료 신호에 `PathInfo.Provider.Name == FileSystem`인 현재 위치의 `ProviderPath`를
+  UTF-8/Base64 필드로 추가한다. prompt 화면 문자열은 읽지 않는다. 원래 prompt의
+  출력과 성공 상태를 유지하며 저장 창 진입 시 shell input을 쓰지 않는다.
+- Terminal session은 해당 prompt의 위치를 tab ID·session generation과 함께 메모리에만
+  보관한다. 명령 시작·integration 손실·세션 종료/재시작/제거 때 무효화한다. 수신 후
+  60초를 넘었거나 Windows 로컬 절대 경로 저장 계약과 실제 디렉터리 검증에 실패하면
+  응답에서 제외한다. 저장 dialog는 식별자와 generation을 포함해 요청하고 같은
+  renderer/dialog가 아직 열려 있으며 사용자가 경로를 편집하지 않았을 때만 적용한다.
+- CMD의 현재 prompt marker는 terminal output에서 완료 시점만 식별하고 별도 인증된
+  위치를 제공하지 않는다. CMD와 WSL/custom shell, 비파일시스템 PowerShell provider,
+  위치를 받지 못한 경우에는 설정된 시작 폴더와 명시적 미확인 안내를 사용한다.
+- 기존 저장 항목 편집과 관리 화면의 신규 항목은 실행 탭 위치를 요청하지 않는다.
+  위치는 진단 로그나 별도 영속 파일에 기록하지 않는다. 관련 Terminal unit/protocol,
+  renderer distribution과 전체 solution 검증 후 실제 WebView2는 MAN-055에 별도 기록한다.
+
 ### 목표와 완료 조건
 
 - 현재 탭의 `저장한 탭에 추가…`를 열면 `시작 폴더`에 **그 셸이 실제로 위치한
@@ -233,16 +252,19 @@ Terminal 경로는 `src/Modules/Starboard.Modules.Terminal/` 기준이다. publi
 
 ### 구현 단계와 검증
 
-- [ ] 셸별 현재 디렉터리의 신뢰 가능한 관측 경로와 fallback을 확정하고
+- [x] 셸별 현재 디렉터리의 신뢰 가능한 관측 경로와 fallback을 확정하고
   Terminal 계약·프로토콜·테스트 범위를 기록한다.
-- [ ] 관측 가능한 셸의 탭별 위치를 renderer에 전달하고, 현재 탭 저장 창의
+- [x] 관측 가능한 셸의 탭별 위치를 renderer에 전달하고, 현재 탭 저장 창의
   prefill·출처 안내를 변경한다. 수동 편집값은 뒤늦은 metadata가 덮지 않는다.
 - [ ] `cd`/`Set-Location` 후 저장→새 탭 시작 폴더, 두 탭 간 격리, 재시작·재연결,
   지원되지 않는 셸/경로, 한글·공백 경로, 취소 및 기존 PID·scrollback 보존을
   자동/실제 WebView2 검증으로 나눠 확인한다. 실제 UI 항목은
   [MAN-055](../test-plan.md)에 기록한다.
 
-두 작업 중 `현재 디렉터리로 저장`은 Terminal module/renderer를, 별도
-[잠금 해제 후 폭 복구](2026-09-29-unlock-panel-width-recovery.md)는
-DesktopIntegration을 소유하므로 파일 소유권을 분리하면 병렬 구현할 수 있다.
-이 문서는 요구사항 기록이며 제품 코드 수정, build, 배포는 아직 하지 않았다.
+2026-09-29 구현: 기존 PowerShell prompt 제어 pipe에 위치 필드를 추가하고 session
+metadata, generation·renderer request 검증과 현재 탭 신규 저장의 prefill을 연결했다.
+CMD와 지원하지 않는 경로에는 명시적 fallback을 유지한다. Node 정책 테스트 3개,
+Terminal 집중 테스트 315개, 전체 Debug 545개 테스트와 renderer build, 단일 작업자
+solution build가 통과했다. 실제 WebView2 메뉴·focus·PID·scrollback 조작은 수행하지
+않았으며 MAN-055가 수동 확인 항목으로 남는다. 별도
+[잠금 해제 후 폭 복구](2026-09-29-unlock-panel-width-recovery.md)는 이 변경 범위에 포함하지 않았다.

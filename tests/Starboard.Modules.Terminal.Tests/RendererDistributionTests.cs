@@ -213,6 +213,21 @@ public sealed class RendererDistributionTests
     }
 
     [TestMethod]
+    public void BundledRendererRequestsValidatedDirectoryOnlyForCurrentTabCreation()
+    {
+        var source = ReadRendererSource("index.ts");
+        var script = ReadRendererAsset("app.js");
+
+        StringAssert.Contains(source, "postSession(\"saved-tab-directory-request\", sessionId");
+        StringAssert.Contains(source, "if (createDefault !== undefined) {");
+        StringAssert.Contains(source, "shouldApplyCurrentDirectory({");
+        StringAssert.Contains(source, "pendingSavedTabDirectory.edited = true;");
+        StringAssert.Contains(source, "pendingSavedTabDirectory = undefined;");
+        StringAssert.Contains(script, "saved-tab-directory-request");
+        StringAssert.Contains(script, "saved-tab-directory-result");
+    }
+
+    [TestMethod]
     public void BundledRendererProvidesProfileLaunchRetryAndTabDuplicationWithoutGrowingTheTabStrip()
     {
         var source = ReadRendererSource("index.ts");

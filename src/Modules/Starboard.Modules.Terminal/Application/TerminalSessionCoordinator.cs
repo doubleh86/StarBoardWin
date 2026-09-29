@@ -11,6 +11,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 {
     private static readonly TimeSpan DefaultSessionCloseTimeout = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan CurrentDirectoryMaximumAge = TimeSpan.FromSeconds(60);
 
     private readonly ITerminalSessionFactory sessionFactory;
     private readonly IDiagnosticLog diagnosticLog;
@@ -25,6 +26,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     private readonly Dictionary<TerminalSessionId, bool> newOutputStates = [];
     private readonly HashSet<TerminalTabRequestId> handledTabRequests = [];
     private readonly Func<TerminalConfirmationRequestId> confirmationRequestIdFactory;
+    private readonly Func<DateTimeOffset> currentTime;
 
     private ShellLaunchSpec? defaultShell;
     private TerminalShellKind? defaultShellKind = TerminalShellKind.Automatic;
@@ -38,7 +40,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                                         Func<TerminalSessionId>? sessionIdFactory = null,
                                         int maximumTabs = TerminalTabRegistry.DefaultMaximumTabs,
                                         TimeSpan? sessionCloseTimeout = null, TimeSpan? shutdownTimeout = null,
-                                        Func<TerminalConfirmationRequestId>? confirmationRequestIdFactory = null)
+                                        Func<TerminalConfirmationRequestId>? confirmationRequestIdFactory = null,
+                                        Func<DateTimeOffset>? currentTime = null)
     {
         this.sessionFactory = sessionFactory;
         this.diagnosticLog = diagnosticLog;
@@ -48,6 +51,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         this.shutdownTimeout = ValidateTimeout(shutdownTimeout ?? DefaultShutdownTimeout, nameof(shutdownTimeout));
         this.confirmationRequestIdFactory = confirmationRequestIdFactory
             ?? TerminalConfirmationRequestId.CreateNew;
+        this.currentTime = currentTime ?? (() => DateTimeOffset.UtcNow);
     }
 
     internal event Action<TerminalWorkspaceSnapshot>? WorkspaceChanged;
@@ -84,6 +88,56 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 return CreateNewOutputSnapshotLocked();
             }
         }
+    }
+
+    internal string? GetCurrentDirectory(TerminalSessionReference session)
+    {
+        string? candidate;
+        DateTimeOffset observedAt;
+        SessionEntry expectedEntry;
+        lock (stateLock)
+        {
+            var sessionId = new TerminalSessionId(session.SessionId);
+            if (isDisposed == true || sessions.TryGetValue(sessionId, out var entry) == false ||
+                entry.SessionReference != session || entry.ActiveExecutionId is not null ||
+                entry.CurrentDirectoryObservedAt is null ||
+                currentTime() - entry.CurrentDirectoryObservedAt > CurrentDirectoryMaximumAge)
+            {
+                return null;
+            }
+
+            var executable = Path.GetFileName(tabShells[sessionId].ExecutablePath);
+            if (executable.Equals("pwsh.exe", StringComparison.OrdinalIgnoreCase) == false &&
+                executable.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase) == false)
+            {
+                return null;
+            }
+
+            candidate = entry.CurrentDirectory;
+            observedAt = entry.CurrentDirectoryObservedAt.Value;
+            expectedEntry = entry;
+        }
+
+        var validation = TerminalStartingDirectory.ValidateExisting(candidate);
+        if (validation.Succeeded == false)
+        {
+            return null;
+        }
+
+        lock (stateLock)
+        {
+            var sessionId = new TerminalSessionId(session.SessionId);
+            if (sessions.TryGetValue(sessionId, out var entry) == false ||
+                ReferenceEquals(entry, expectedEntry) == false || entry.ActiveExecutionId is not null ||
+                entry.CurrentDirectoryObservedAt != observedAt ||
+                string.Equals(entry.CurrentDirectory, candidate, StringComparison.Ordinal) == false ||
+                currentTime() - observedAt > CurrentDirectoryMaximumAge)
+            {
+                return null;
+            }
+        }
+
+        return validation.NormalizedPath;
     }
 
     internal async Task<TerminalTab> StartAsync(ShellLaunchSpec shell, int columns, int rows,
@@ -1359,6 +1413,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             _ = expectedEntry.CommandLifecycleTracker.TryApply(
                 TerminalShellIntegrationSignal.IntegrationLost(expectedEntry.SessionReference), out _);
             expectedEntry.ActiveExecutionId = null;
+            expectedEntry.CurrentDirectory = null;
+            expectedEntry.CurrentDirectoryObservedAt = null;
             tabRegistry.SetState(expectedEntry.SessionId, TerminalSessionState.Exited, exitCode);
             snapshot = tabRegistry.CreateSnapshot();
         }
@@ -1386,6 +1442,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 _ = expectedEntry.CommandLifecycleTracker.TryApply(
                     TerminalShellIntegrationSignal.IntegrationLost(expectedEntry.SessionReference), out _);
                 expectedEntry.ActiveExecutionId = null;
+                expectedEntry.CurrentDirectory = null;
+                expectedEntry.CurrentDirectoryObservedAt = null;
                 return;
             }
 
@@ -1400,6 +1458,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 }
 
                 expectedEntry.ActiveExecutionId = signal.ExecutionId;
+                expectedEntry.CurrentDirectory = null;
+                expectedEntry.CurrentDirectoryObservedAt = null;
                 started = new TerminalSessionCommandStarted(expectedEntry.SessionReference, signal.ExecutionId);
             }
             else if (signal.Kind == TerminalSessionCommandSignalKind.Finished &&
@@ -1427,6 +1487,13 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 expectedEntry.ActiveExecutionId = null;
                 finished = new TerminalSessionCommandFinished(expectedEntry.SessionReference, signal.ExecutionId,
                                                               signal.ExitCode);
+            }
+
+            if (signal.Kind == TerminalSessionCommandSignalKind.Ready || finished.HasValue == true)
+            {
+                expectedEntry.CurrentDirectory = signal.CurrentDirectory;
+                expectedEntry.CurrentDirectoryObservedAt = signal.CurrentDirectory is null
+                    ? null : currentTime();
             }
         }
 
@@ -1703,6 +1770,10 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         internal TerminalCommandLifecycleTracker CommandLifecycleTracker { get; set; }
 
         internal TerminalCommandExecutionId? ActiveExecutionId { get; set; }
+
+        internal string? CurrentDirectory { get; set; }
+
+        internal DateTimeOffset? CurrentDirectoryObservedAt { get; set; }
 
         internal Action<string>? OutputHandler { get; set; }
 
