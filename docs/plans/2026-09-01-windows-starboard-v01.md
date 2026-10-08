@@ -1,4 +1,3 @@
-<!-- Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 -->
 
 # Windows용 Starboard v0.1 구현 계획
 
@@ -642,7 +641,7 @@ composition control로 즉시 전환하지 않고 다음 순서로 fallback한�
 Phase 0에서 다음 문서를 수정·추가했다.
 
 - `AGENTS.md`
-- `.hallmark/preflight.json`
+- `.hallmark/preflight.json` (초기 디자인 점검 기록; 2026-10-08 공개 저장소 정리에서 삭제)
 - `docs/architecture-reference.md`
 - `docs/architecture.md`
 - `docs/test-plan.md`

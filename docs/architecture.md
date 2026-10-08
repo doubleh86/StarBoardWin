@@ -675,7 +675,7 @@ write는 같은 directory의 temp file을 flush한 뒤 atomic replace한다. cor
 
 ### Visual system
 
-Hallmark 적용값은 desktop application에 맞게 다음처럼 제한한다.
+화면의 시각 규칙은 desktop application에 맞게 다음처럼 제한한다.
 
 - genre: atmospheric
 - application-shell 구조: Workbench
@@ -725,7 +725,7 @@ root를 벗어나면 중단한다. 두 모드의 출력 격리, runtime DLL 유�
 Desktop framework runtimeconfig를 검사해 잔여 런타임 혼입을 차단한다.
 `release-metadata.json`의 `selfContained`도 실제 publish 모드와 일치해야 한다.
 WebView2 Runtime 자체는 두 배포 모두 포함하지 않는다. committed `Renderer` asset,
-제품 MIT `LICENSE`, README, third-party
+루트에서 복사한 제품 MIT `LICENSE`, README, third-party
 notice/license와 release metadata를 포함한 뒤 settings/workspace/saved-tabs JSON과 그
 backup·temporary 파일, logs(회전 보관본 포함)/WebView2 user data, dump, database, PDB와 개발 PC 절대 경로가 없는지
 검사한다.

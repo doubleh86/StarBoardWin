@@ -8,6 +8,8 @@ assets are local; the application does not fetch these packages from a CDN.
 | Microsoft.Web.WebView2 | 1.0.4191.47 | WPF renderer host | BSD-style Microsoft license; see `licenses/Microsoft.Web.WebView2-LICENSE.txt` and `licenses/Microsoft.Web.WebView2-NOTICE.txt` |
 | @xterm/xterm | 6.0.0 | terminal emulator | MIT; license copied beside the renderer bundle |
 | @xterm/addon-fit | 0.11.0 | terminal sizing | MIT; license copied beside the renderer bundle |
+| @xterm/addon-search | 0.16.0 | terminal output search | MIT; license copied beside the renderer bundle |
+| @xterm/addon-web-links | 0.12.0 | terminal URL detection | MIT; license copied beside the renderer bundle |
 | esbuild | 0.28.2 | build-time bundler only | MIT; see `licenses/esbuild-LICENSE.txt` |
 | MSTest | 4.3.3 | test-time only | MIT |
 

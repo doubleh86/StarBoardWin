@@ -4,6 +4,19 @@ namespace Starboard.Modules.Terminal.Tests;
 public sealed class RendererDistributionTests
 {
     [TestMethod]
+    [DataRow("xterm-LICENSE.txt")]
+    [DataRow("xterm-addon-fit-LICENSE.txt")]
+    [DataRow("xterm-addon-search-LICENSE.txt")]
+    [DataRow("xterm-addon-web-links-LICENSE.txt")]
+    public void BundledRendererLicenseFilePreservesUpstreamNotice(string fileName)
+    {
+        var license = ReadRendererAsset(fileName);
+
+        StringAssert.Contains(license, "The xterm.js authors");
+        StringAssert.Contains(license, "Permission is hereby granted, free of charge");
+    }
+
+    [TestMethod]
     public void BundledRendererDocumentUsesOnlyLocalAssetsAndBlocksNetwork()
     {
         var html = ReadRendererAsset("index.html");

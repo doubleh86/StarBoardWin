@@ -1502,27 +1502,50 @@ function renderSavedTabsDialog(editTab?: SavedTab, create = false, createDefault
       details.textContent = `${tab.startingDirectory} · ${shellLabel(tab.shellKind)}`;
       const actions = document.createElement("div");
       actions.className = "saved-tab-editor-actions";
-      const edit = document.createElement("button"); edit.type = "button"; edit.textContent = "편집";
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "편집";
       edit.addEventListener("click", () => renderSavedTabsDialog(tab));
-      const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "삭제";
-      remove.addEventListener("click", () => postGlobal("delete-saved-tab", { requestId: createRequestId(), savedTabId: tab.savedTabId }));
-      actions.append(edit, remove); item.append(title, details, actions); list.append(item);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "삭제";
+      remove.addEventListener("click", () => postGlobal("delete-saved-tab", {
+        requestId: createRequestId(),
+        savedTabId: tab.savedTabId,
+      }));
+      actions.append(edit, remove);
+      item.append(title, details, actions);
+      list.append(item);
     }
   }
   dialog.append(list);
-  const actions = document.createElement("div"); actions.className = "saved-tabs-actions";
-  const add = document.createElement("button"); add.type = "button"; add.className = "saved-tab-primary"; add.textContent = "새 저장 탭";
+  const actions = document.createElement("div");
+  actions.className = "saved-tabs-actions";
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "saved-tab-primary";
+  add.textContent = "새 저장 탭";
   add.disabled = snapshot !== undefined && snapshot.tabs.length >= snapshot.maximumSavedTabs;
   add.addEventListener("click", () => renderSavedTabsDialog(undefined, true));
-  const close = document.createElement("button"); close.type = "button"; close.textContent = "닫기"; close.addEventListener("click", () => dialog.close());
-  actions.append(add, close); dialog.append(actions);
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "닫기";
+  close.addEventListener("click", () => dialog.close());
+  actions.append(add, close);
+  dialog.append(actions);
 }
 
 function showSavedTabsDialog(createDefault?: SavedTabDraft, focusReturnSessionId?: string): void {
-  if (savedTabsDialog !== undefined) { renderSavedTabsDialog(); return; }
+  if (savedTabsDialog !== undefined) {
+    renderSavedTabsDialog();
+    return;
+  }
   const dialog = document.createElement("dialog");
   dialog.className = "saved-tabs-dialog";
-  dialog.addEventListener("cancel", (event) => { event.preventDefault(); dialog.close(); });
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    dialog.close();
+  });
   dialog.addEventListener("close", () => {
     if (pendingSavedTabLaunchRequestId !== undefined) {
       postGlobal("cancel-saved-tab-launch", { requestId: pendingSavedTabLaunchRequestId });

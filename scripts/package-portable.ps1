@@ -187,6 +187,8 @@ function Test-PortableContents {
         "Renderer/app.css",
         "Renderer/xterm-LICENSE.txt",
         "Renderer/xterm-addon-fit-LICENSE.txt",
+        "Renderer/xterm-addon-search-LICENSE.txt",
+        "Renderer/xterm-addon-web-links-LICENSE.txt",
         "ThirdParty/Microsoft.Web.WebView2-LICENSE.txt",
         "ThirdParty/Microsoft.Web.WebView2-NOTICE.txt"
     )
@@ -494,33 +496,8 @@ New-Item -ItemType Directory -Path (Join-Path $publishDirectory "Assets") -Force
 Copy-Item -LiteralPath (Join-Path $repositoryRoot "src/Starboard.Windows/Assets/Starboard.ico") `
     -Destination (Join-Path $publishDirectory "Assets/Starboard.ico")
 
-$licenseText = @"
-MIT License
-
-Copyright (c) 2026 Starboard contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-"@
-[System.IO.File]::WriteAllText(
-    (Join-Path $publishDirectory "LICENSE"),
-    $licenseText.Replace("`r`n", "`n"),
-    [System.Text.UTF8Encoding]::new($false))
+Copy-Item -LiteralPath (Join-Path $repositoryRoot "LICENSE") `
+    -Destination (Join-Path $publishDirectory "LICENSE")
 
 $releaseMetadata = [ordered]@{
     product = "Starboard for Windows"

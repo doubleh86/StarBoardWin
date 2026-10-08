@@ -22,6 +22,10 @@ node_modules/
 WebView2Data/
 Starboard.settings.json
 
+# Local agent records
+/.ai-orchestrator/
+/.hallmark/
+
 # OS metadata
 Thumbs.db
 Desktop.ini

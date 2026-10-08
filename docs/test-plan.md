@@ -95,6 +95,21 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-10-08 (공개 저장소 개발 흔적·배포 고지 정리)
+- C# IDE0005/IDE0051/IDE0052 미사용 진단은 0건이며 정렬 검사 self-test와 WorkingTree가
+  통과했다. 기존 C# 런타임 멤버는 제거하지 않았다. 저장한 탭 UI의 TypeScript 정렬 후
+  생성된 `app.js`는 이전 main과 동일하고, `app.css` 규칙도 점검 주석을 제외하면 동일하다.
+- renderer 재생성 및 Node 정책 테스트 3개, renderer asset 관련 테스트 22개가 통과했다.
+  xterm과 fit/search/web-links 애드온의 저작권·허용 고지 4개 회귀 사례를 추가했다.
+- solution Debug restore/build/test와 기본 경량 portable의 Release restore/build/test가
+  통과했다. 두 configuration 모두 경고·오류 0개, 전체 549개 test 실패·skip 0개다.
+- 기본 경량 ZIP 생성·재현성·SHA-256·추출 smoke가 통과했다. 제품 `LICENSE`와
+  애드온 라이선스는 source와 publish·추출본의 SHA-256이 각각 일치한다.
+  배포 스크립트는 search/web-links 고지의 누락도 필수 파일 검사에서 거부한다.
+- 런타임 포함판의 모드 분기는 수정하지 않았으며 이번에는 기본 경량판만 재생성했다.
+  바탕화면 앱 교체와 실제 UI·IME·멀티모니터/DPI 조작은 수행하지 않았다.
+  실제 장비 항목의 기존 Not run/Blocked 상태를 유지한다.
+
 - 실행일: 2026-10-07 (런타임 별도 설치 경량 배포 생성)
 - `package-portable.ps1`의 기본 framework-dependent와 `-SelfContained`를 각각
   실행했다. 두 Release build 모두 경고·오류 0개, 전체 545개 test가 실패·skip
