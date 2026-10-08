@@ -25,7 +25,7 @@
 | settings | `%LOCALAPPDATA%/Starboard/settings.json`, versioned atomic write |
 | startup | per-user `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run` |
 | privacy | telemetry와 runtime network 없음, command/output logging 없음 |
-| portable release | central product version + Git build commit, self-contained win-x64 ZIP + SHA-256 |
+| portable release | central product version + Git build commit, 기본 framework-dependent win-x64 ZIP + SHA-256, 선택적 self-contained |
 
 ## 모듈러 모놀리스
 
@@ -716,13 +716,23 @@ build는 commit을 `unknown`으로 표시할 수 있고, package 흐름은 확�
 설정 화면과 `release-metadata.json`은 이 두 값을 함께 사용한다.
 
 `scripts/package-portable.ps1`은 Git이 보고한 root와 script의 root가 일치하는지 먼저
-검사한다. 출력은 ignored `out/portable/<version>` 아래에 두고 재실행 때는 그 버전의
-`staging`만 정리한다. staging이 reparse point이거나 계산한 경로가 root를 벗어나면
-중단한다. publish는 self-contained `win-x64`, multi-file이고 WebView2 Runtime 자체는
-포함하지 않는다. committed `Renderer` asset, 제품 MIT `LICENSE`, README, third-party
+검사한다. 기본 publish는 framework-dependent `win-x64`, multi-file이며 설치된
+.NET Desktop Runtime 10 x64를 사용한다. 출력은 ignored
+`out/portable/<version>/framework-dependent` 아래에 둔다. `-SelfContained`는 이전
+런타임 포함 배포와 `out/portable/<version>` 출력 경로를 유지한다. 재실행 때는
+선택한 배포의 `staging`만 정리한다. staging이 reparse point이거나 계산한 경로가
+root를 벗어나면 중단한다. 두 모드의 출력 격리, runtime DLL 유무와 경량판의
+Desktop framework runtimeconfig를 검사해 잔여 런타임 혼입을 차단한다.
+`release-metadata.json`의 `selfContained`도 실제 publish 모드와 일치해야 한다.
+WebView2 Runtime 자체는 두 배포 모두 포함하지 않는다. committed `Renderer` asset,
+제품 MIT `LICENSE`, README, third-party
 notice/license와 release metadata를 포함한 뒤 settings/workspace/saved-tabs JSON과 그
 backup·temporary 파일, logs(회전 보관본 포함)/WebView2 user data, dump, database, PDB와 개발 PC 절대 경로가 없는지
 검사한다.
+
+경량판의 .NET 누락 안내와 설치된 런타임 선택은 표준 apphost에 맡긴다. WPF 앱 코드가
+시작되기 전의 요구사항이므로 자체 WPF installer 화면이나 자동 다운로드를 추가하지 않는다.
+SDK/일반 .NET Runtime만 설치됐다는 사실을 Desktop Runtime 충족으로 간주하지 않는다.
 
 앱 executable과 WPF 창은 `src/Starboard.Windows/Assets/Starboard.ico`를 application/resource로
 사용한다. notification icon은 DesktopIntegration assembly의

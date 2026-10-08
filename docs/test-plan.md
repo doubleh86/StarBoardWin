@@ -95,6 +95,21 @@ fullscreen application 종류는 실행할 때 별도로 기록한다.
 
 ## 최근 자동 검증 결과
 
+- 실행일: 2026-10-07 (런타임 별도 설치 경량 배포 생성)
+- `package-portable.ps1`의 기본 framework-dependent와 `-SelfContained`를 각각
+  실행했다. 두 Release build 모두 경고·오류 0개, 전체 545개 test가 실패·skip
+  없이 통과했고 사용자 data 제외, mode/runtimeconfig 검사, ZIP 재현성·SHA-256과
+  추출 smoke가 통과했다. packaging 변경은 미커밋이며 앱 코드 기준은 `1cc1295`다.
+- 경량판은 33개 파일/26.53 MiB, ZIP 6.86 MiB다. 포함판은 501개 파일/197.19 MiB,
+  ZIP 76.93 MiB다. 경량 ZIP SHA-256은
+  `e6bae2eeac5be7b5fa904adfef38bd564acaa12217b55e7c735770b035b335dc`다.
+- 설치 경로 환경 변수를 제거한 별도 apphost smoke의 trace에서 시스템의
+  .NETCore 및 WindowsDesktop 10.0.12 선택과 exit code 0을 확인했다.
+  child process에 빈 `DOTNET_ROOT_X64`를 지정하고 GUI를 억제한 simulation은
+  .NET 설치 필요 메시지와 exit code -2147450749를 반환했다. 시스템 런타임은
+  제거하거나 변경하지 않았다. 실제 미설치 PC의 GUI 설치 안내·링크·설치 후
+  정상 실행은 Not run (manual)이며 simulation 성공으로 대체하지 않는다.
+
 - 실행일: 2026-09-21 (clipboard 중복 붙여넣기 회귀 수정)
 - renderer의 keyboard paste와 native paste event를 host clipboard 경계의 단일
   `paste-request` 호출부로 통합했다. `RendererDistributionTests`는 browser 기본 동작
@@ -945,7 +960,8 @@ WebView2/terminal UI, 오프라인 Release 화면, 업데이트와 rollback은 �
 renderer·셸·ConPTY 실패 복구/재시작의 실제 관찰 결과도 자동 package 결과와 구분한다.
 
 - clean restore/build/test 성공
-- self-contained `win-x64` publish 성공
+- 기본 framework-dependent `win-x64` publish 성공, runtime DLL 미포함 및 Desktop runtimeconfig 확인
+- 선택한 배포와 release metadata의 `selfContained` 일치; 포함판은 `-SelfContained`로 별도 검증
 - committed renderer `dist`와 license notice 존재
 - renderer source 재빌드 결과와 committed `dist`가 일치하고 runtime CDN/remote asset이 없음
 - 제품 version/build commit과 `release-metadata.json` 일치

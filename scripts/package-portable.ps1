@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$DotNetPath = ""
+    [string]$DotNetPath = "",
+    [switch]$SelfContained
 )
 
 Set-StrictMode -Version Latest
@@ -166,12 +167,16 @@ function Test-PortableContents {
         [string]$PublishDirectory,
 
         [Parameter(Mandatory = $true)]
-        [string]$RepositoryRoot
+        [string]$RepositoryRoot,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$IsSelfContained
     )
 
     $requiredPaths = @(
         "Starboard.exe",
         "Starboard.dll",
+        "Starboard.runtimeconfig.json",
         "LICENSE",
         "README.md",
         "THIRD-PARTY-NOTICES.md",
@@ -189,6 +194,29 @@ function Test-PortableContents {
         $requiredPath = Join-Path $PublishDirectory $relativePath
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
             throw "Required portable file is missing: $relativePath"
+        }
+    }
+
+    foreach ($runtimeFile in @("coreclr.dll", "System.Private.CoreLib.dll", "PresentationFramework.dll")) {
+        $runtimeExists = Test-Path -LiteralPath (Join-Path $PublishDirectory $runtimeFile) -PathType Leaf
+        if ($runtimeExists -ne $IsSelfContained) {
+            throw "Runtime contents do not match the selected deployment mode: $runtimeFile"
+        }
+    }
+
+    $metadata = Get-Content -LiteralPath (Join-Path $PublishDirectory "release-metadata.json") -Raw |
+        ConvertFrom-Json
+    if ($metadata.selfContained -ne $IsSelfContained) {
+        throw "Release metadata does not match the selected deployment mode."
+    }
+
+    if ($IsSelfContained -eq $false) {
+        $runtimeConfiguration = Get-Content -LiteralPath (
+            Join-Path $PublishDirectory "Starboard.runtimeconfig.json") -Raw | ConvertFrom-Json
+        $desktopFrameworks = @($runtimeConfiguration.runtimeOptions.frameworks |
+            Where-Object { $_.name -eq "Microsoft.WindowsDesktop.App" })
+        if ($desktopFrameworks.Count -ne 1) {
+            throw "The lightweight package must require the installed .NET Desktop Runtime."
         }
     }
 
@@ -369,19 +397,27 @@ if ($archiveTimestamp -lt $minimumZipTimestamp) {
 
 $portableRoot = Join-Path $repositoryRoot "out/portable"
 $versionRoot = Join-Path $portableRoot $version
-$stagingRoot = Join-Path $versionRoot "staging"
+$isSelfContained = $SelfContained.IsPresent
+$selfContainedArgument = $isSelfContained.ToString().ToLowerInvariant()
+$packageRoot = $versionRoot
+$archiveName = "Starboard-$version-win-x64.zip"
+if ($isSelfContained -eq $false) {
+    $packageRoot = Join-Path $versionRoot "framework-dependent"
+    $archiveName = "Starboard-$version-win-x64-framework-dependent.zip"
+}
+
+$stagingRoot = Join-Path $packageRoot "staging"
 $publishDirectory = Join-Path $stagingRoot "publish"
 $smokeDirectory = Join-Path $stagingRoot "smoke"
 $buildArtifactsPath = Join-Path $stagingRoot "build"
-$archiveName = "Starboard-$version-win-x64.zip"
-$archivePath = Join-Path $versionRoot $archiveName
+$archivePath = Join-Path $packageRoot $archiveName
 $hashPath = "$archivePath.sha256"
 
 Assert-SafeChildPath -ParentPath $repositoryRoot -ChildPath $portableRoot
 Assert-SafeChildPath -ParentPath $portableRoot -ChildPath $versionRoot
 Assert-SafeChildPath -ParentPath $versionRoot -ChildPath $stagingRoot
-New-Item -ItemType Directory -Path $versionRoot -Force | Out-Null
-Remove-SafeDirectory -ParentPath $versionRoot -TargetPath $stagingRoot
+New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+Remove-SafeDirectory -ParentPath $packageRoot -TargetPath $stagingRoot
 New-Item -ItemType Directory -Path $publishDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $smokeDirectory -Force | Out-Null
 
@@ -437,7 +473,7 @@ try {
         "--runtime",
         "win-x64",
         "--self-contained",
-        "true",
+        $selfContainedArgument,
         "--no-restore",
         "--disable-build-servers",
         "-maxcpucount:1",
@@ -491,7 +527,7 @@ $releaseMetadata = [ordered]@{
     productVersion = $version
     buildCommit = $commit
     runtimeIdentifier = "win-x64"
-    selfContained = $true
+    selfContained = $isSelfContained
     archive = $archiveName
     sourceDateUtc = $archiveTimestamp.ToString("O")
 }
@@ -519,10 +555,11 @@ if ([string]::Equals(
 
 Test-PortableContents `
     -PublishDirectory $publishDirectory `
-    -RepositoryRoot $repositoryRoot
+    -RepositoryRoot $repositoryRoot `
+    -IsSelfContained $isSelfContained
 
 foreach ($outputFile in @($archivePath, $hashPath)) {
-    Assert-SafeChildPath -ParentPath $versionRoot -ChildPath $outputFile
+    Assert-SafeChildPath -ParentPath $packageRoot -ChildPath $outputFile
     if (Test-Path -LiteralPath $outputFile) {
         $outputItem = Get-Item -LiteralPath $outputFile -Force
         if (($outputItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
@@ -572,7 +609,8 @@ if ([string]::Equals(
 [System.IO.Compression.ZipFile]::ExtractToDirectory($archivePath, $smokeDirectory)
 Test-PortableContents `
     -PublishDirectory $smokeDirectory `
-    -RepositoryRoot $repositoryRoot
+    -RepositoryRoot $repositoryRoot `
+    -IsSelfContained $isSelfContained
 Invoke-PortableSmoke `
     -ExecutablePath (Join-Path $smokeDirectory "Starboard.exe") `
     -Version $version `
