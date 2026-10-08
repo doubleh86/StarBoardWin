@@ -11,8 +11,12 @@ assets are local; the application does not fetch these packages from a CDN.
 | esbuild | 0.28.2 | build-time bundler only | MIT; see `licenses/esbuild-LICENSE.txt` |
 | MSTest | 4.3.3 | test-time only | MIT |
 
-Starboard analyzes the MIT-licensed `palamim/starboard` project as a product
-reference. Its Swift source and assets are not copied into this implementation.
+Starboard for Windows independently reimplements the product concept and UX of
+[palamim/starboard](https://github.com/palamim/starboard), a macOS project by
+Leonardo Palamim Cardozo released under the
+[MIT License](https://github.com/palamim/starboard/blob/main/LICENSE).
+It is not an official Windows release of that project. Its Swift source and assets
+are not copied into this implementation.
 
 Portable packages include the Starboard for Windows MIT `LICENSE` at the archive
 root. That product license does not replace the component-specific license files

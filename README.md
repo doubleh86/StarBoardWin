@@ -1,105 +1,200 @@
 # Starboard for Windows
 
-Starboard는 Windows 작업표시줄 바로 위에 계속 머무는 작은 terminal panel이다.
-호출할 때만 나타나는 drop-down terminal과 달리, 탭별 실제 shell session을 앱
-수명 동안 유지하면서 현재 사용 중인 창의 focus를 불필요하게 빼앗지 않는 것을
-목표로 한다.
+Windows 작업표시줄 바로 위에 붙어 있는 작고 지속적인 터미널.
 
-현재 구현은 v0.2 portable release 기준이다. Windows 11 x64를 우선 지원하며
-Windows 10 1809 이상은 best-effort 대상이다.
+별도의 터미널 창을 찾아다니지 않고, 작업 중인 화면 아래에서 빠르게 명령을 실행할 수
+있습니다. 평소에는 얇은 패널로 두고, 필요할 때 확장하거나 숨겨도 각 탭의 셸 세션은
+그대로 유지됩니다. 다른 앱의 포커스를 불필요하게 빼앗지 않는 것을 우선합니다.
 
-## 현재 동작
+[palamim/starboard](https://github.com/palamim/starboard)의 macOS용 상시 터미널
+콘셉트와 UX에서 영감을 받아 Windows에 맞게 독립적으로 재구현한 프로젝트입니다.
+원본 프로젝트의 공식 Windows 버전은 아니며, Swift/AppKit 코드를 기계적으로
+포팅하거나 원본 소스·에셋을 복사한 구현이 아닙니다.
 
-- 축소된 하단 panel은 작업표시줄 안쪽 경계에 외부 간격 없이 밀착하고, terminal 본문 안쪽의 6 DIP 하단 여백으로 입력 줄을 보호
-- `pwsh.exe` → `powershell.exe` → `cmd.exe` 순서의 shell 탐색
-- Windows ConPTY를 통한 실제 양방향 persistent session
-- bundled xterm.js와 local-only WebView2 renderer
-- 하나의 WebView2 안에서 탭별 xterm, scrollback과 shell 상태 유지
-- 최대 8개 탭, 탭별 독립 ConPTY process·working directory·interactive state와 이름·순서 변경
-- `+` 옆 새 탭 menu에서 PowerShell 7, Windows PowerShell, 명령 프롬프트와 발견된 WSL 배포판 선택
-- 축소 panel 상단 경계를 drag해 96~720 DIP 범위에서 높이 조절; double-click으로 200 DIP 복원
-- tab 우클릭 또는 `Shift+F10` menu에서 현재 탭의 이름·설정 시작 폴더·launch profile만 새 session으로 복제
-- `저장한 탭` 메뉴에서 이름·시작 폴더·셸을 최대 20개 저장하고 새 독립 탭으로 실행
-- terminal resize를 ConPTY cell size로 전달
-- shell/renderer 오류 surface와 shell restart
-- 실행 중인 탭 닫기는 기본적으로 확인하며, 여러 줄 clipboard 붙여넣기는 확인한 동일 미리보기만 전달
-- Explorer에서 현재 탭으로 드롭한 로컬 파일·폴더 경로를 shell별로 인용해 확인 후 입력
-- 비활성 탭의 non-empty output은 조용한 `새 출력` 점으로만 표시
-- 설정에서 명시적으로 켠 경우 PowerShell 7/Windows PowerShell 명령의 실제 종료 뒤 성공·실패만 알리는 완료 알림
-- `Ctrl+Alt+E` global hotkey로 work area 전체 확장/축소
-- `Ctrl+Alt+S`로 가려졌거나 숨겨진 panel 호출, 활성 panel 숨김
-- 32 DIP 탭 바 아래 terminal 본문 약 8행이 보이는 200 DIP 기본 높이
-- notification area icon 왼쪽 클릭으로 panel 표시·활성화
-- tray menu의 `터미널 표시/숨기기`와 `종료`
-- tray의 `단축키 안내`에서 현재 적용·등록된 전역 키와 terminal 입력 규칙 확인
-- 평소에는 다른 앱을 덮어두지 않는 normal z-order, tray 표시 요청 때만 활성화
-- selection-aware `Ctrl+C`, `Ctrl+Shift+C` 복사와 `Ctrl+V`, `Ctrl+Shift+V` 붙여넣기
-- single instance와 1초 taskbar geometry reconciliation
-- tray에서 여는 설정 창, 사용자별 JSON 설정과 Dark, Light, One Dark, Tokyo Night theme
-- 설정 화면의 제품 버전과 package build commit 표시
+Built with Codex.
 
-실제 multi-monitor/mixed-DPI, taskbar auto-hide, fullscreen, IME와 로그인 자동 시작
-장비 검증은 아직 남아 있다. 구현 범위와 미수행 matrix는
-[`docs/test-plan.md`](docs/test-plan.md)를 참고한다.
+## 주요 기능
 
-WSL은 설치된 distribution을 조회해 새 persistent session으로 실행하는 선택 profile이다.
-`wsl.exe`가 없거나 distribution 조회가 실패해도 PowerShell/CMD profile은 계속 사용할 수 있고,
-조회 실패는 menu의 재시도 가능한 상태로 표시한다. WSL tab은 항상 distribution의 Linux home에서
-시작하며 Windows 시작 폴더를 Linux path로 변환하지 않는다. WSL profile은 첫 범위에서 workspace와
-저장한 탭에 영속화되지 않으므로 앱 재시작 또는 workspace restore 뒤 builtin 기본 탭으로 대체될 수
-있다.
+- 작업표시줄에 밀착하는 테두리 없는 패널과 높이 조절 손잡이
+- Windows ConPTY 기반의 실제 대화형 셸: 탭마다 작업 폴더·환경·실행 상태 유지
+- 최대 8개 독립 탭, 이름 변경·순서 이동·탭 구성 복제
+- `+`에서 PowerShell 7, Windows PowerShell, 명령 프롬프트와 설치된 WSL 배포판 선택
+- 자주 쓰는 이름·시작 폴더·셸을 최대 20개 저장하고 새 탭으로 실행
+- 선택적 작업공간 복원: 다음 실행에 탭 구성을 다시 열기
+- 현재 탭 출력 검색, 복사·붙여넣기, 여러 줄 붙여넣기와 탭 닫기 확인
+- 파일·폴더 드롭 시 경로 확인 및 셸별 인용, HTTP/HTTPS 링크 확인 후 열기
+- 비활성 탭의 새 출력 표시와 선택적 PowerShell 명령 완료 알림
+- 트레이 메뉴, 전역 단축키, 로그인 시 자동 실행 설정
+- Dark, Light, One Dark, Tokyo Night 테마와 글꼴·크기·불투명도 설정
+- 로컬 xterm.js/WebView2 렌더러: 실행 중 CDN이나 외부 폰트 없이 동작
 
-`설정 > 작업공간 복원`은 기본적으로 꺼져 있다. 켜면 다음 시작에 탭 이름·순서,
-선택된 탭, 시작 폴더와 기본 shell 종류를 새 ConPTY process로 복원한다. 실행 중인
-shell, PID, 현재 working directory, history, command, output, scrollback, clipboard와
-environment는 저장하거나 복원하지 않는다. 복원 탭은 항상 새 PID를 얻으며, 폴더나
-shell 시작 실패는 해당 탭만 오류 상태로 남기고 나머지 탭 복원을 계속한다.
+항상 다른 창 위에 올라오는 터미널이나 분할 화면 중심의 터미널을 지향하지 않습니다.
+작업표시줄 근처에서 빠르고 간단하게 쓰는 보조 작업 공간이 목표입니다.
 
-옵션을 끄고 설정 저장에 성공하면 저장된 작업공간을 삭제하고 다음 시작에는 기본 탭
-하나로 시작한다. 비활성 탭은 DOM에서 제거하지 않아 10,000줄 xterm scrollback과
-shell 상태를 유지하지만, renderer process 자체가 재시작되면 과거 scrollback은
-복원하지 않고 살아 있는 ConPTY의 이후 output과 현재 탭 snapshot만 다시 연결한다.
-실제 mixed-DPI, 한글 IME와 작업공간 재시작 UI smoke는 아직 수동 검증이 필요하다.
+## 실행 환경
 
-탭의 우클릭 또는 `Shift+F10` 메뉴에서 `저장한 탭에 추가…`를 선택하면 현재 탭의
-이름·시작 폴더·셸 종류를 편집해 저장할 수 있다. PowerShell 7/Windows PowerShell은
-최근 프롬프트에서 확인된 실제 파일시스템 폴더를 우선 표시한다. 현재 위치를 확인하지
-못했거나 CMD 등 지원하지 않는 셸이면 설정된 시작 폴더와 미확인 안내를 표시하므로
-경로를 확인한 뒤 저장해야 한다. `+` 옆의 `저장한 탭` 메뉴에서
-항목을 선택하면 기존 탭을 바꾸지 않고 지정 폴더에서 새 셸을 시작한다. `저장한 탭
-관리…`에서는 추가·편집·삭제할 수 있으며, 저장 실패 시 메모리 목록도 바뀌지 않아
-편집 화면을 다시 열어 재시도할 수 있다. 실행 중 탭은 계속 최대 8개다.
+Windows 11 x64를 기준으로 개발합니다. Windows 10 1809 이상은 best-effort
+대상이며, 런타임 지원 조건과 실제 장비에 따른 호환성을 보장하지 않습니다.
 
-저장 목록은 작업공간 복원 옵션과 별개로 항상 `%LOCALAPPDATA%/Starboard/saved-tabs.json`에
-유지된다. 작업공간 복원을 꺼도 저장 목록은 삭제되지 않고, 저장 항목은 PID, 입력 상태,
-현재 shell working directory, history, output 또는 scrollback을 보관하지 않는다. 따라서
-저장 항목을 열 때마다 새 PID와 빈 interactive state를 얻는다. 현재 탭 저장 창을 여는
-동작은 셸에 명령을 입력하지 않으며 확인된 위치는 메모리에서만 잠시 유지된다. 기존
-저장 항목의 편집과 관리 화면의 신규 항목은 실행 중 탭의 위치를 자동 적용하지 않는다.
+| 요구 사항 | 경량 배포 — 기본 | 런타임 포함 배포 |
+| --- | --- | --- |
+| .NET Desktop Runtime 10 x64 | 별도 설치 또는 기존 설치 사용 | 배포물에 포함 |
+| Microsoft Edge WebView2 Evergreen Runtime | 필요 | 필요 |
+| 개발용 .NET SDK / Node.js | 실행에 불필요 | 실행에 불필요 |
 
-`설정 > 명령 완료 알림`은 기본적으로 꺼져 있다. 켜면 PowerShell 7 또는 Windows
-PowerShell의 명시적 명령 시작·종료 신호가 같은 shell session generation에서 짝을
-이룬 경우에만 Windows 알림을 한 번 표시한다. `cmd.exe`와 custom shell은 신뢰할 수
-있는 종료 결과 연동이 없어 알림 대상이 아니다. 출력이 잠시 멈추거나 prompt처럼 보이는
-문자열이 나타난 것만으로 완료를 추측하지 않으며, 알림은 panel을 표시·활성화하거나 다른
-앱의 focus를 가져오지 않는다. 명령 내용, 출력, 작업 폴더와 탭 이름은 알림에 포함하지 않는다.
+- [.NET 10 다운로드](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)에서
+  Windows용 **.NET Desktop Runtime x64**를 선택하세요. 호환되는 10.0.x가 이미
+  설치되어 있다면 다시 설치할 필요가 없습니다. 일반 .NET Runtime, x86 또는 다른
+  메이저 버전만 설치된 경우에는 요구 사항을 충족하지 않습니다.
+- [WebView2 다운로드](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)에서
+  Evergreen Runtime을 설치할 수 있습니다. 두 배포 방식 모두 WebView2는 별도로
+  필요하며, Starboard가 설치 프로그램을 자동으로 내려받거나 실행하지는 않습니다.
+- PowerShell 7을 우선 탐색하고, 없으면 Windows PowerShell → `cmd.exe` 순으로
+  선택합니다. WSL은 이미 설치된 배포판이 있을 때 선택할 수 있습니다.
 
-PowerShell 완료 연동은 profile을 건너뛰지 않고 startup encoded command로 설치되며, 내부 초기화 문자열을
-interactive stdin에 쓰지 않는다. 첫 prompt 준비를 제한 시간 동안 기다린 뒤 연결 실패 시에는 해당
-session의 완료 알림만 끄고 shell 입력을 계속 허용한다. PowerShell 7/Windows PowerShell 실제 ConPTY와
-격리된 느린 profile output/custom·nested prompt 자동 검증은 완료했지만 WebView2 화면의 새 탭·한글
-IME·`Ctrl+C`·알림 표시는 아직 수동 검증하지 않았다.
+Starboard의 일반 실행에는 관리자 권한이 필요하지 않습니다.
 
-## 요구 사항
+## 시작하기
 
-- Windows 11 x64 권장
-- .NET 10 SDK `10.0.301` 이상(빌드 시)
-- Microsoft Edge WebView2 Evergreen Runtime
-- PowerShell 7 권장; 없으면 Windows PowerShell 또는 `cmd.exe` 사용
+1. 배포 ZIP 전체를 원하는 폴더에 압축 해제합니다. `Starboard.exe`만 따로 옮기지 마세요.
+2. 함께 제공되는 `.sha256` 값과 ZIP의 SHA-256을 비교할 수 있습니다.
+   `Get-FileHash -Algorithm SHA256 <ZIP 경로>`로 확인합니다.
+3. `Starboard.exe`를 실행하면 작업표시줄 바로 위에 터미널이 나타납니다.
+4. 패널을 클릭해 입력하고, `+`로 새 탭의 셸을 선택합니다.
+5. 트레이 아이콘을 오른쪽 클릭하면 표시·숨기기, 설정, 단축키 안내와 종료를 사용할 수 있습니다.
 
-일반 실행에 관리자 권한은 필요하지 않는다.
+기본 높이는 200 DIP입니다. 탭 바의 가운데 손잡이나 패널 상단 경계를 드래그하면
+96~720 DIP 범위에서 조절할 수 있습니다. 탭이 많아 손잡이가 좁아지면 상단 경계를
+사용하세요. 상단 경계를 두 번 클릭하면 기본 높이로 돌아갑니다. `Ctrl+Alt+E`로
+작업 영역까지 확장했다가 이전 크기로 복원할 수 있습니다.
 
-## 빌드와 실행
+패널 숨기기는 세션 종료가 아닙니다. 앱을 완전히 종료하려면 실행 중인 작업을 정리한
+뒤 트레이의 `종료`를 선택하세요. 종료된 셸의 작업을 다음 실행에서 이어받지는 않습니다.
+
+### 런타임이 없거나 오프라인 PC에서 실행하는 경우
+
+.NET이 없으면 실행기의 누락 안내에 따라 Desktop Runtime을 설치한 뒤 다시
+실행하세요. WebView2가 없으면 앱의 안내 화면에서 설치 후 `다시 시도`할 수 있습니다.
+
+오프라인 PC에는 연결 가능한 PC에서 Microsoft의 .NET 설치 파일과 WebView2
+**Evergreen Standalone Installer x64**를 받아 전달하세요. 설치 파일의 디지털 서명
+게시자가 `Microsoft Corporation`인지 확인하고, 조직 정책으로 설치가 막힌 경우
+관리자에게 런타임 배포를 요청하세요. 필요한 런타임이 준비된 뒤에는 Starboard의
+터미널 렌더링에 네트워크가 필요하지 않습니다.
+
+### 업데이트
+
+실행 중인 작업을 정리하고 트레이에서 종료한 뒤, 새 ZIP을 새 폴더에 압축 해제해
+실행하세요. 특히 런타임 포함 배포에서 경량 배포로 바꿀 때는 기존 폴더에 덮어써서
+이전 런타임 DLL을 남기지 않는 것이 좋습니다.
+
+사용자 설정은 배포 폴더 밖에 저장됩니다. 실행 파일 위치를 바꿨고 로그인 자동
+실행을 사용 중이라면, 설정에서 해당 옵션을 한 번 껐다가 다시 켜 경로를 갱신하세요.
+이전 버전으로 돌아갈 때는 설정 스키마 호환성을 확인하고 사용자 데이터를 먼저
+백업하세요. 자동 실행 경로도 이전 실행 파일로 다시 등록해야 합니다.
+
+## 단축키와 입력
+
+| 입력 | 동작 |
+| --- | --- |
+| `Ctrl+Alt+S` | 숨김·비활성 패널 표시 및 활성화 / 활성 패널 숨기기 |
+| `Ctrl+Alt+E` | 패널 확장 / 이전 축소 크기로 복원 |
+| `Ctrl+Shift+T` | 기본 프로필로 새 탭 열기 |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | 다음 / 이전 탭 |
+| `Ctrl+Shift+W` | 현재 탭 닫기 요청; 살아 있는 세션은 확인 후 종료 |
+| `Ctrl+C` | 선택이 있으면 복사, 없으면 셸에 인터럽트 전달 |
+| `Ctrl+Shift+C` | 선택한 텍스트 복사 |
+| `Ctrl+V` / `Ctrl+Shift+V` | 붙여넣기; 여러 줄이면 미리보기·확인 |
+| `Ctrl+F` | 현재 탭 출력 검색; `Enter` / `Shift+Enter`로 다음 / 이전 결과 |
+| `Escape` | 검색 등 현재 열린 보조 화면 닫기 |
+| 탭 우클릭 / 탭에서 `Shift+F10` | 이름 변경, 이동, 시작 폴더, 복제·저장 메뉴 |
+| HTTP/HTTPS 주소 `Ctrl+클릭` | 대상 주소를 확인한 뒤 기본 브라우저에서 열기 |
+
+전역 단축키는 설정에서 바꿀 수 있습니다. 다른 프로그램이 이미 사용 중이면 등록이
+실패할 수 있으며, 트레이의 `단축키 안내`에서 실제 적용·등록 상태를 확인할 수 있습니다.
+
+여러 줄 붙여넣기는 확인한 텍스트를 한 번만 전달합니다. 취소하면 입력하지 않습니다.
+파일·폴더 드롭은 내용이 아닌 로컬 경로만 확인 후 입력하고, Enter는 자동으로 보내지
+않습니다. 지원하지 않는 셸이나 안전하게 인용할 수 없는 경로는 입력을 거부합니다.
+HTTP/HTTPS 외의 URL 스킴은 열지 않습니다.
+
+## 저장한 탭과 작업공간 복원
+
+### 자주 쓰는 탭 저장
+
+탭 메뉴의 `저장한 탭에 추가…`에서 이름·시작 폴더·셸을 저장하고,
+`저장한 탭` 메뉴에서 다시 열 수 있습니다. 저장 항목을 열 때마다 새 셸 세션을
+시작하며, 기존 탭의 실행 중인 명령이나 상태를 복제하지 않습니다.
+
+PowerShell 7과 Windows PowerShell에서는 최근 프롬프트에서 확인한 실제 현재 폴더를
+저장 화면에 우선 표시합니다. 확인할 수 없거나 CMD 등 미지원 셸인 경우에는 설정된
+시작 폴더와 안내가 표시되므로 경로를 확인한 뒤 저장하세요.
+
+### 다음 실행에 탭 구성 복원
+
+`설정 > 작업공간 복원`은 기본적으로 꺼져 있습니다. 켜면 탭 이름·순서·선택된 탭,
+설정된 시작 폴더와 기본 셸 종류를 저장하고 다음 실행에서 새 프로세스로 엽니다.
+
+실행 중인 명령·작업, PID, 환경 변수, 명령 이력, 출력·스크롤백과 클립보드는
+저장하거나 복원하지 않습니다. 실행 중 `cd`로 이동한 위치가 자동으로 다음 시작
+폴더가 되지는 않으며, 필요한 위치는 명시적으로 저장해야 합니다.
+
+복원 옵션을 끄고 설정 저장에 성공하면 저장된 작업공간 구성을 삭제합니다.
+`저장한 탭` 목록은 별개이므로 그대로 유지됩니다.
+
+WSL 탭은 배포판의 Linux 홈에서 시작하며 Windows 시작 폴더를 Linux 경로로 변환하지
+않습니다. 현재 WSL 프로필은 저장한 탭·작업공간 복원 대상이 아니며, 앱 재시작 시
+기본 내장 셸 탭으로 대체될 수 있습니다.
+
+## 개인정보와 로컬 데이터
+
+Starboard 자체에는 분석·텔레메트리·크래시 업로드·원격 설정 기능이 없습니다.
+렌더러 스크립트와 스타일은 배포물에 포함되며 CDN을 사용하지 않습니다.
+명령 내용·터미널 출력·클립보드·환경 변수를 수집해 파일에 기록하거나 외부로
+전송하지 않습니다. 셸 및 사용자가 실행한 프로그램의 기록·네트워크 동작,
+시스템 런타임의 업데이트 정책은 별개입니다.
+
+사용자 데이터는 다음 위치에 저장됩니다. ZIP 배포물에는 포함되지 않습니다.
+
+```text
+%LOCALAPPDATA%/Starboard/
+  settings.json       # 화면·입력·자동 실행 등 설정
+  workspace.json      # 복원 옵션을 켠 경우의 탭 구성
+  saved-tabs.json     # 사용자가 저장한 이름·시작 폴더·셸
+  Logs/starboard.log  # 제한된 진단 메타데이터, 회전 보관
+  WebView2/           # 렌더러 사용자 데이터
+```
+
+설정 저장·복구 과정에서 `.bak`이나 `.tmp` 파일이 생길 수 있습니다. 구성 파일은
+암호화되지 않은 로컬 JSON이므로 탭 이름과 저장한 폴더 경로를 공유할 때 주의하세요.
+진단 로그는 수준·하위 시스템·동작·네이티브 오류 코드만 기록하며, 원본 예외 본문이나
+터미널 내용은 남기지 않습니다. 로그는 파일당 512 KiB, 회전 보관본을 포함해 최대
+2.5 MiB로 제한합니다.
+
+`명령 완료 알림`은 기본적으로 꺼져 있으며 PowerShell 7/Windows PowerShell의
+명시적 완료 신호에만 반응합니다. 알림에는 성공·실패만 표시하고 명령·출력·작업 폴더·
+탭 이름은 포함하지 않습니다. 출력이 멈췄다는 이유만으로 완료를 추측하거나 알림을
+위해 패널을 활성화하지 않습니다.
+
+## 알려진 제약
+
+- Windows x64 전용입니다. macOS/Linux용 빌드나 ARM64 네이티브 배포는 제공하지 않습니다.
+- 다른 앱을 계속 덮는 always-on-top 동작이나 모든 가상 데스크톱에 고정하는 기능은 제공하지 않습니다.
+- 전체 화면 앱 위에 패널을 강제로 표시하지 않습니다.
+- 셸 오류 시 다시 시작할 수 있지만 종료된 셸의 작업 상태는 복구할 수 없습니다.
+- 렌더러 재시작 시 살아 있는 셸에 다시 연결하지만, 이전 렌더러의 스크롤백은 복원되지 않습니다.
+- 멀티모니터·mixed-DPI·작업표시줄 자동 숨김·Explorer 재시작·전체 화면·한글 IME 등
+  실제 장비의 수동 검증에는 미완료 항목이 있습니다. 자동 테스트 통과와 실제 환경
+  검증을 구분하며, 상세 상태는 [테스트 계획](docs/test-plan.md)을 확인하세요.
+
+## 소스에서 빌드하기
+
+Windows와 [global.json](global.json)에 지정한 .NET 10 SDK가 필요합니다.
+기준 SDK는 `10.0.301`이며 같은 feature band의 최신 패치만 허용합니다.
+일반 빌드는 저장소에 포함된 렌더러를 사용하므로 Node.js가 필요하지 않습니다.
+의존성 복원에는 NuGet 및 취약점 메타데이터 소스에 대한 접근이 필요합니다.
+
+저장소 루트에서 실행합니다.
 
 ```powershell
 dotnet restore Starboard.Windows.sln
@@ -108,89 +203,36 @@ dotnet test Starboard.Windows.sln --configuration Debug --no-build --no-restore
 dotnet run --project src/Starboard.Windows/Starboard.Windows.csproj
 ```
 
-## Portable 배포 만들기
-
-다음 한 명령은 build server를 정상 종료한 뒤 restore, Release build/test,
-self-contained `win-x64` publish, ZIP과 SHA-256 생성, 추출 smoke를 순서대로 수행한다.
+### Portable ZIP 만들기
 
 ```powershell
+# 기본: 설치된 .NET Desktop Runtime을 사용하는 경량 배포
 powershell -NoProfile -File scripts/package-portable.ps1
+
+# 선택: .NET 런타임을 포함하는 배포
+powershell -NoProfile -File scripts/package-portable.ps1 -SelfContained
 ```
 
-Windows PowerShell 5.1과 PowerShell 7(`pwsh`)을 모두 지원한다. package 흐름은
-Release restore도 수행하므로 NuGet package source와 vulnerability metadata source에
-접근할 수 있어야 한다. 격리된 환경에서는 `api.nuget.org` 또는 조직 mirror 접근을
-허용한 뒤 같은 명령을 다시 실행한다. runtime과 이미 생성된 portable package는
-network를 요구하지 않는다. `Get-FileHash`가 없는 PowerShell host도 지원하며, 이 경우
-스크립트가 .NET SHA-256 API로 같은 소문자 checksum을 생성한다. 별도 hash 도구나
-network dependency는 필요하지 않다.
+Windows PowerShell 5.1과 PowerShell 7을 지원합니다. `dotnet`이 PATH에 없다면
+`-DotNetPath '<dotnet.exe 경로>'`를 전달할 수 있습니다.
+스크립트는 Release restore/build/test, publish, ZIP·SHA-256 생성과 추출 실행
+검증을 수행합니다. 결과 경로는 다음과 같습니다.
 
-`dotnet`이 PATH에 없으면 절대 경로를 저장소에 기록하지 않고 실행 시에만 넘긴다.
+```text
+out/portable/<version>/framework-dependent/
+  Starboard-<version>-win-x64-framework-dependent.zip
+  Starboard-<version>-win-x64-framework-dependent.zip.sha256
 
-```powershell
-powershell -NoProfile -File scripts/package-portable.ps1 -DotNetPath '<dotnet.exe 경로>'
+out/portable/<version>/
+  Starboard-<version>-win-x64.zip
+  Starboard-<version>-win-x64.zip.sha256
 ```
 
-결과는 `out/portable/<version>/Starboard-<version>-win-x64.zip`과 같은 이름의
-`.sha256` 파일이다. 스크립트는 Git이 확인한 저장소 루트 아래의 해당 버전
-`staging`만 정리하며, reparse point나 범위를 벗어난 경로는 거부한다. ZIP은 실행
-파일, 앱·트레이와 같은 multi-resolution `Assets/Starboard.ico`, local renderer, 제품 `LICENSE`, third-party notice와 release metadata를 포함하고
-사용자 설정, 작업공간·저장한 탭 JSON과 backup/temporary 파일, 로그, WebView2 user data와
-PDB 및 command/history/output capture 파일은 거부한다. 같은 source commit과 SDK/
-dependency 입력에서 파일 순서와 ZIP entry 시각을 고정해 다시 만들 수 있다.
+ZIP에는 앱, 로컬 렌더러, 아이콘, 라이선스·third-party 고지와
+`release-metadata.json`이 포함됩니다. 설정 화면의 버전·빌드 커밋을 이 메타데이터와
+대조할 수 있습니다. 사용자 데이터·로그·PDB는 포함하지 않습니다.
 
-portable package는 .NET Runtime을 포함하므로 별도 .NET 설치가 필요 없지만,
-**Microsoft Edge WebView2 Evergreen Runtime은 별도 필수 요구사항**이다. WebView2가
-없으면 앱은 비정상 종료하지 않고 Runtime 누락 안내와 `다시 시도`, `앱 종료`를 표시한다.
-Runtime을 설치한 뒤 실행 중인 오류 surface에서 바로 다시 시도할 수 있다. 앱은 installer를
-포함하거나 자동 다운로드·실행하지 않는다.
-
-네트워크가 차단된 PC에는 다음 오프라인 절차를 사용한다.
-
-1. 인터넷에 연결된 신뢰할 수 있는 PC에서 Microsoft의
-   [WebView2 다운로드 페이지](https://developer.microsoft.com/microsoft-edge/webview2/)를 열고
-   **Evergreen Standalone Installer x64**를 받는다.
-2. 파일의 디지털 서명 게시자가 `Microsoft Corporation`인지 확인한 뒤 대상 PC로 복사한다.
-3. 대상 PC에서 installer를 실행하고 설치가 끝나면 Starboard의 `다시 시도`를 선택한다.
-4. 조직 정책으로 설치가 차단되면 `앱 종료`를 선택하고 시스템 관리자에게 Runtime 배포를 요청한다.
-
-Renderer process가 실행 중 중단되면 Starboard는 각 ConPTY와 shell process를 유지하고 세션별
-최대 4 MiB의 새 출력만 메모리에 보관한 뒤 새 WebView2 control에 다시 연결한다. 중단 전 renderer
-scrollback은 WebView process 메모리와 함께 사라져 복원되지 않으며 command와 terminal output은
-로그나 디스크에 저장하지 않는다.
-
-## Portable 설치·업데이트·복귀
-
-Starboard는 설치 프로그램 없이 버전별 새 폴더에 압축을 풀어 사용한다. 업데이트
-전에 terminal의 foreground/background 작업을 모두 끝내고 shell을 종료한 다음 tray의
-`종료`를 선택한다. 앱 process가 남아 있는 상태에서 파일을 덮어쓰지 않는다.
-
-1. 새 ZIP을 이전 버전과 다른 새 폴더에 압축 해제한다.
-2. `.sha256`의 값과 ZIP의 `Get-FileHash -Algorithm SHA256` 결과가 같은지 확인한다.
-3. 새 폴더의 `Starboard.exe`를 실행하고 terminal과 설정 화면의 버전·build commit을
-   `release-metadata.json`과 대조한다.
-4. `%LOCALAPPDATA%/Starboard/settings.json`은 배포 폴더 밖에 있으므로 기존 사용자
-   설정이 유지된다.
-5. `로그인 시 자동 실행`이 켜져 있었다면 설정에서 한 번 끈 뒤 다시 켜 새 폴더의
-   실행 경로로 갱신한다. 재로그인 전에 새 경로가 적용됐는지 확인한다.
-
-문제가 생기면 새 앱을 tray에서 종료하고 이전 버전 폴더의 `Starboard.exe`를 다시
-실행한다. 자동 실행을 사용하면 이전 버전 설정에서 껐다 켜 경로를 되돌린다. 사용자
-설정 schema가 이전 버전에서 지원되지 않는 경우에는 `%LOCALAPPDATA%/Starboard`를
-먼저 백업하고, 필요할 때 `settings.json.bak`을 복원한다. 두 버전 폴더는 복귀 확인이
-끝날 때까지 유지한다.
-
-2026-09-10 격리 검증에서는 서로 다른 build commit의 499-file 폴더로
-`이전 → 현재 → 이전` smoke를 통과했고 기존 배포 PID를 종료하거나 폴더를 덮어쓰지
-않았다. 다만 해당 계정에는 settings/workspace와 HKCU Run `Starboard` 값이 없었으므로
-실제 설정 migration 및 활성화된 자동 실행 경로의 변경·복귀는 아직 수동 확인이
-필요하다. 업데이트는 시작 프로그램 경로를 자동 이동하지 않으므로 위 5단계를
-생략하면 로그인 시 이전 폴더가 계속 실행될 수 있다.
-
-## Renderer 갱신
-
-일반 build와 runtime에는 Node.js나 network가 필요 없다. xterm.js source 또는
-package version을 바꿀 때만 다음 명령으로 committed `dist`를 다시 만든다.
+렌더러 소스나 패키지 버전을 변경할 때만 Node.js/npm으로 번들을 다시 생성합니다.
 
 ```powershell
 Set-Location src/Modules/Starboard.Modules.Terminal/Presentation/Renderer
@@ -198,96 +240,46 @@ npm ci
 npm run build
 ```
 
-renderer는 runtime CDN, 외부 font, remote script를 사용하지 않는다.
-package의 local asset/CSP 계약은 자동 검증됐지만, system network를 끈 실제 WebView2
-화면 실행은 아직 수동 검증 대상이다.
+## 구조와 개발 문서
 
-## 입력 규칙
-
-| 입력 | 동작 |
-|---|---|
-| terminal click | Starboard를 의도적으로 활성화하고 IME/키보드 입력 허용 |
-| tray icon 왼쪽 클릭 | shell session을 유지한 채 panel 표시·활성화 |
-| tray icon 오른쪽 클릭 | `터미널 표시/숨기기`, `종료` menu 표시 |
-| `Ctrl+C` | 선택이 있으면 복사, 없으면 shell에 ETX 전달 |
-| `Ctrl+Shift+C` | 선택 text 복사 |
-| `Ctrl+V`, `Ctrl+Shift+V` | Windows clipboard text 붙여넣기 |
-| `Ctrl+Shift+T` | 새 terminal 탭 열기 |
-| `Ctrl+Tab`, `Ctrl+Shift+Tab` | 다음/이전 terminal 탭 선택 |
-| `Ctrl+Shift+W` | 현재 terminal 탭 닫기 요청; 살아 있는 session은 확인 뒤 종료 |
-| `Ctrl+W` | shell에 그대로 전달 |
-| `Ctrl+F` | 현재 활성 탭의 메모리 scrollback 검색; Enter/Shift+Enter로 다음/이전, Escape로 닫고 terminal focus 복귀 |
-| Explorer file/folder drop | 현재 탭의 shell에 맞게 인용한 경로를 미리보기·확인 후 입력; Enter나 개행은 추가하지 않음 |
-| 출력의 HTTP/HTTPS 주소 Ctrl+click | 실제 대상 주소를 확인한 뒤 Windows 기본 브라우저에서 열기; 일반 click/drag는 text selection 유지 |
-| `Ctrl+Alt+E` | collapsed/expanded geometry 전환 |
-| `Ctrl+Alt+S` | 숨김·비활성 panel 호출, 활성 panel 숨김 |
-
-`Ctrl+Alt+E` 또는 `Ctrl+Alt+S`가 다른 프로그램에 이미 등록돼 있으면 앱은 계속
-실행되지만 해당 global shortcut은 사용할 수 없다. 충돌은 로컬 진단 로그에
-기록한다. tray의 `단축키 안내`는 설정 문자열이 아니라 실제 적용·등록 상태를
-표시한다.
-
-여러 줄 붙여넣기는 CR 또는 LF를 포함한 경우에만 확인 창을 열며, 취소·Escape·창
-닫기는 아무 입력도 전달하지 않는다. 확인 뒤에는 clipboard를 다시 읽지 않고 사용자가
-확인한 snapshot만 한 번 전달한다. 새 출력 점은 완료·성공 알림이 아니며, 해당 탭을
-선택하면 사라진다.
-
-경로 드롭은 PowerShell에서 작은따옴표를 안전하게 이중화하고 `cmd.exe`에서
-큰따옴표를 사용한다. `cmd.exe`에서 재해석될 수 있는 `%`/`!`가 있는 경로,
-custom shell, 상대·device 경로는 입력하지 않고 오류를 보여 준다. 파일 내용을
-읽지 않으며 확인 전후에 탭·session·renderer가 바뀌면 느린 요청을 폐기한다.
-
-출력 URL은 HTTP와 HTTPS 절대 주소만 대상으로 하며 file, command, JavaScript와 사용자 정의
-protocol은 열지 않는다. Ctrl+click 뒤 표시되는 실제 주소를 확인해야만 기본 브라우저로 전달하고,
-Starboard는 link preview나 background network request를 만들지 않는다. URL 원문은 설정이나
-진단 로그에 저장하지 않으며 브라우저 실행 실패가 terminal session을 종료하지 않는다.
-
-## 로컬 데이터와 개인정보
+.NET 10 + WPF 기반의 모듈러 모놀리스입니다. 하나의 앱 프로세스·배포 단위를
+유지하면서 기능 모듈은 별도 class library로 분리합니다.
 
 ```text
-%LOCALAPPDATA%/Starboard/
-  settings.json
-  settings.json.bak
-  workspace.json                 # 복원 옵션을 켠 경우의 탭 구성만
-  workspace.json.bak
-  workspace.json.tmp             # 원자 저장 중에만 존재 가능
-  saved-tabs.json                # 작업공간 복원 옵션과 독립적인 저장 탭 정의
-  saved-tabs.json.tmp            # 원자 저장 중에만 존재 가능
-  Logs/starboard.log              # 512 KiB, .1~.4 회전 보관본 포함 최대 2.5 MiB
-  WebView2/
+Starboard.Windows                         # 실행 파일, UI와 모듈 조합
+  ├─ Starboard.Modules.Terminal           # ConPTY, 셸, WebView2/xterm.js
+  ├─ Starboard.Modules.DesktopIntegration # 작업표시줄, 모니터, Win32 연동
+  ├─ Starboard.Modules.Preferences        # 설정과 저장
+  └─ Starboard.SharedKernel               # 최소 공통 계약
 ```
 
-Starboard에는 analytics, telemetry, crash upload, remote configuration이 없다.
-작업공간과 저장한 탭 파일은 각각 최대 64 KiB의 일반 로컬 JSON이며 암호화되지 않는다. 작업공간에는 탭
-구성 ID, 이름, 순서, 시작 폴더, shell 종류와 활성 탭만 들어가고, 저장한 탭 파일에는
-저장 ID, 이름, 시작 폴더와 shell 종류만 들어간다. terminal command, output, clipboard
-내용, environment 값, runtime PID/session ID는 로그나 두 구성
-파일에 남기지 않는다. 닫기 확인 token, 여러 줄 붙여넣기·경로 드롭 미리보기와 새 출력 표시는
-메모리의 현재 session 세대에만 묶이며 disk·log·package에 저장하지 않는다. 로그는
-level, subsystem, operation과 native error code의 제한된 metadata만 기록하며 message와 exception 본문은 저장하지 않는다. 파일 잠금·회전·쓰기 실패는 앱 동작을 막지 않는다. portable ZIP에는
-이 사용자 데이터, backup, temporary 파일이 포함되지 않는다.
-완료 알림도 메모리의 opaque session generation·execution ID와 exit result만 사용하며
-알림 설정의 boolean 외에는 설정·로그·배포물에 저장하지 않는다.
+모듈끼리 직접 참조하지 않으며 아키텍처 테스트가 참조 방향과 공개 API 경계를
+검증합니다. 구현 범위와 기여 규칙은 다음 문서를 참고하세요.
 
-## 구조
+- [Windows 아키텍처](docs/architecture.md)
+- [원본 프로젝트 분석](docs/architecture-reference.md)
+- [테스트 계획과 검증 상태](docs/test-plan.md)
+- [개발 작업 규칙](docs/development-workflow.md)
+- [코드 스타일](docs/code-style.md)
+- [기능 계획과 작업 기록](docs/plans/README.md)
 
-Starboard는 단일 프로세스와 단일 배포 단위를 유지하는 모듈러 모놀리스다.
+버그 제보에는 앱 버전·빌드 커밋, Windows 버전, 화면 배율, 작업표시줄 설정과 재현
+절차를 포함해 주세요. 스크린샷·설정 파일에 명령, 개인 경로 또는 토큰이 노출되지
+않는지 먼저 확인해 주세요.
 
-```text
-Starboard.Windows
-  ├─ Starboard.Modules.Terminal
-  ├─ Starboard.Modules.DesktopIntegration
-  ├─ Starboard.Modules.Preferences
-  └─ Starboard.SharedKernel
-```
+## 참고 프로젝트와 감사
 
-기능 module끼리는 직접 참조하지 않는다. Host만 module을 조합하며 architecture
-test가 reference 방향과 public surface를 검사한다. 설계 근거는
-[`docs/architecture.md`](docs/architecture.md), 원본 프로젝트 분석은
-[`docs/architecture-reference.md`](docs/architecture-reference.md)에 있다.
+이 프로젝트의 출발점은 Leonardo Palamim Cardozo의
+[palamim/starboard](https://github.com/palamim/starboard)입니다. macOS Dock 옆에
+머무는 터미널이라는 제품 아이디어와, 사용자 작업을 방해하지 않으면서 셸을 유지하는
+상호작용 원칙을 참고했습니다. 좋은 프로젝트를 공개해 준 원작자에게 감사드립니다.
+
+Windows 버전은 WPF, ConPTY, WebView2와 xterm.js로 별도 구현하며, 원본의
+macOS 전용 동작이나 플랫폼 간 완전한 기능 일치를 보장하지 않습니다.
+원본 프로젝트의 라이선스는 [MIT](https://github.com/palamim/starboard/blob/main/LICENSE)입니다.
 
 ## 라이선스
 
-third-party package와 배포 고지는 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)에
-정리돼 있다. 제품 참고 대상은 [palamim/starboard](https://github.com/palamim/starboard)이며,
-원본 Swift 코드나 asset을 기계적으로 복사하지 않았다.
+Starboard for Windows는 [MIT License](LICENSE)로 배포합니다.
+포함된 라이브러리와 에셋의 개별 라이선스·고지는
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)를 참고하세요.
