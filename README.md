@@ -13,6 +13,22 @@ Windows 작업표시줄 바로 위에 붙어 있는 작고 지속적인 터미�
 
 Built with Codex.
 
+## 다운로드
+
+[최신 GitHub 릴리즈](https://github.com/doubleh86/StarBoardWin/releases/latest)에서
+Windows x64용 ZIP을 받을 수 있습니다. 릴리즈의 `Assets`에서 다음 중 하나를
+선택하세요. GitHub가 자동으로 제공하는 `Source code`는 실행용 배포물이 아닙니다.
+
+- `Starboard-<version>-win-x64-framework-dependent.zip`: 경량판. .NET Desktop
+  Runtime 10 x64가 이미 설치되어 있거나 별도로 설치할 때 권장합니다.
+- `Starboard-<version>-win-x64.zip`: .NET 런타임 포함판. .NET 별도 설치 없이
+  실행할 수 있지만 ZIP 용량이 더 큽니다.
+- 각 ZIP의 `.sha256`: 다운로드한 파일의 무결성 확인용입니다.
+
+두 배포판 모두 WebView2 Evergreen Runtime이 필요합니다. 압축을 전부 해제한 뒤
+`Starboard.exe`를 실행하세요. 아래 [실행 환경](#실행-환경)과
+[시작하기](#시작하기)에서 자세한 설치·업데이트 방법을 확인할 수 있습니다.
+
 ## 주요 기능
 
 - 작업표시줄에 밀착하는 테두리 없는 패널과 높이 조절 손잡이
