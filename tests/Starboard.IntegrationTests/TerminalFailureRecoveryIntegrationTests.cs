@@ -6,6 +6,37 @@ namespace Starboard.IntegrationTests;
 public sealed class TerminalFailureRecoveryIntegrationTests
 {
     [TestMethod]
+    public void ReorderHostWiringGuardsSenderAndDelimitsOneCurrentWorkspaceSnapshot()
+    {
+        // Static wiring guard complements the executable renderer/coordinator round trip.
+        // It does not exercise native WebView2 event dispatch.
+        var source = ReadRepositoryFile("src", "Modules", "Starboard.Modules.Terminal", "Presentation",
+                                        "TerminalView.xaml.cs");
+        StringAssert.Contains(source, "ReorderSession(reorderRequest, rendererGeneration, isStaleSender == false);");
+        StringAssert.Contains(source, "isReorderEnvelope == true && CreateReorderContext().IsAvailable == true");
+        var reorderStart = source.IndexOf("private void ReorderSession(", StringComparison.Ordinal);
+        var reorderEnd = source.IndexOf("private void SelectStartingDirectory(", reorderStart, StringComparison.Ordinal);
+        var reorder = source[reorderStart..reorderEnd];
+        StringAssert.Contains(reorder, "context.CanApply(request, requestRendererGeneration, isCurrentSender) == true");
+        StringAssert.Contains(reorder, "sessionCoordinator.Reorder(request)");
+        StringAssert.Contains(reorder, "result == TerminalTabReorderResult.Moved");
+        Assert.IsTrue(reorder.IndexOf("return;", StringComparison.Ordinal) <
+                      reorder.IndexOf("SyncWorkspace(sessionCoordinator.Snapshot)", StringComparison.Ordinal));
+
+        var syncStart = source.IndexOf("private void SyncWorkspace(", StringComparison.Ordinal);
+        var syncEnd = source.IndexOf("private void Session_NewOutputStateChanged(", syncStart, StringComparison.Ordinal);
+        var sync = source[syncStart..syncEnd];
+        var snapshot = sync.IndexOf("var rendererWorkspace = sessionCoordinator.RendererWorkspace;", StringComparison.Ordinal);
+        var begin = sync.IndexOf("SerializeWorkspaceSyncMessage(\"workspace-sync-begin\", rendererWorkspace)", StringComparison.Ordinal);
+        var upsert = sync.IndexOf("SendSessionMessage(\"session-upsert\"", StringComparison.Ordinal);
+        var activate = sync.IndexOf("SendSessionMessage(\"activate-session\"", StringComparison.Ordinal);
+        var complete = sync.IndexOf("SerializeWorkspaceSyncMessage(\"workspace-sync-complete\", rendererWorkspace)", StringComparison.Ordinal);
+        Assert.IsTrue(snapshot >= 0 && snapshot < begin && begin < upsert && upsert < activate && activate < complete);
+        StringAssert.Contains(sync, "snapshot = rendererWorkspace.Workspace;");
+        StringAssert.Contains(sync, "sessionGeneration = rendererWorkspace.Order[index].Generation");
+    }
+
+    [TestMethod]
     public void RendererRecoveryRecreatesWebViewAndResynchronizesLiveShellGenerations()
     {
         var source = ReadRepositoryFile("src", "Modules", "Starboard.Modules.Terminal", "Presentation",

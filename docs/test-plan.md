@@ -989,3 +989,52 @@ renderer·셸·ConPTY 실패 복구/재시작의 실제 관찰 결과도 자동 
 - 실제로 실행한 manual case만 `Passed`로 표시하며, 배포 제외 항목은
   `Out of scope`로 표시
 - 미실행 DPI, multi-monitor, fullscreen과 IME case가 숨김없이 남아 있음
+
+## 탭 드래그 정렬 통합 회귀 — 2026-10-13
+
+Run `20261013-031759-766349-893463eb`, Task `tab-drag-reorder-integration`.
+기존 완료 Task·fixture·과거 실행 결과는 보존한다. 이 절의 결과는 이번 실행 결과이며
+이전 `Blocked`/`Not run`을 소급해 바꾸지 않는다.
+
+| 검증 경계 | 이번 결과 | 증명 범위와 한계 |
+|---|---|---|
+| Node production renderer listener | 자동·모의 PASS, 71 passed / 0 skipped | 기존 fixture gesture·취소·경쟁·양방향 overflow와 새 matrix 12건. DOM/layout/xterm은 모형이다. |
+| 1·3·8개 탭 × Dark/Light/One Dark/Tokyo Night | 모의 PASS, 12건 | 제품 theme definition을 읽어 appearance를 적용한다. 긴 한글 이름, 180 CSS px 목록, overflow scroll clamp·focus·요청 수를 확인한다. 실제 글자 clipping·marker contrast·CSS layout은 증명하지 않는다. 1개 탭은 정렬 요청 없이 일반 pointer focus 경로다. |
+| renderer↔C# coordinator↔workspace 파일↔restore | 자동·모의 PASS, 새 연결 테스트 1건 | 실제 production JS가 보낸 drop을 C# parser/context/coordinator에 전달한다. C# 직렬화 begin/upsert/activate/complete를 같은 renderer에 돌려보내고 완료 전 시작 순서 비공개·DOM 순서 미확정, 완료 후 전체 순서·generation, 다음 요청의 새 startOrder를 검사한다. Escape 취소는 요청·저장 없이 종료하고 이전 요청 재전송은 stale-order로 거절하여 파일 bytes를 보존한다. |
+| 활성 탭·세션·입출력·scrollback | 자동·모의 PASS | 기존 TerminalTabReorderTests의 fake shell/input/output/resize/dispose 보존 검증을 재실행했다. 연결 테스트는 renderer terminal/pane 객체·active ID·textarea focus·fit/reset/dispose·모의 출력 buffer를 보존한다. 실제 PID·ConPTY 출력·xterm scrollback 증거는 아니다. |
+| 저장 옵션·실패·경쟁 | 자동 PASS, 기존 테스트 재사용 | opt-in/off·저장 실패·좌우 이동·추가/닫기/재시작 경쟁은 기존 fixture suite에 맡긴다. 새 연결 테스트만 실제 FileTerminalWorkspaceStore 파일의 저장·load와 새 coordinator restore를 연결한다. configuration ID 순서·활성 configuration·한글 이름은 보존하고 runtime ID는 새로 생성한다. |
+| TerminalView host 연결 | 정적 PASS, 새 wiring guard 1건 | sender/generation guard, moved의 event 경로, 거절 resync와 하나의 최신 snapshot의 batch 순서를 source에서 검사한다. native WebMessageReceived를 실행한 결과가 아니다. |
+| 전체 .NET Debug suite | 자동 PASS, 568 passed / 0 skipped | Terminal 337, DesktopIntegration 112, Preferences 37, Architecture 13, Integration 69. 기존 ConPTY/WPF integration의 통과도 이번 drag 화면 관찰과 구분한다. |
+| 실제 WebView2 mouse/IME/focus/PID/scrollback/DPI | Not run (manual) | 현재 세션의 native 앱 제어가 비활성화되어 앱 화면을 열거나 pointer·IME 입력 및 DPI별 screenshot을 관찰하지 않았다. |
+
+재현 순서는 저장소 루트에서 renderer `npm ci` → `npm test` → `npm run build` →
+solution restore → Debug build → Debug test → C# WorkingTree 정렬 검사 → `git diff --check`다.
+C# 연결 테스트도 Node.js와 renderer node_modules가 필요하다(이번 Node 24.18.0).
+`reorderRoundTrip.mjs`는 C# 테스트가 stdin/stdout JSON으로 실행하는 bridge이며 npm test의
+독립 test case가 아니다. test output 아래 임시 workspace 파일만 생성·삭제하며 실제 사용자
+workspace를 읽거나 변경하지 않는다. 실패를 skip/inconclusive로 숨기지 않는다.
+
+이번 `npm ci`는 통과했고 audit 취약점은 0이었다. 기본 sandbox의 npm test는 esbuild
+`spawn EPERM`으로 실패했고 sandbox focused .NET test는 restore 이후 진행 없이 중단했다.
+같은 로컬 검증을 허용된 실행 환경에서 수행해 최종 통과했다. 연결 테스트 작성 중 탭 이름
+길이 제한, Node VM 객체 비교, Windows 표준 stream UTF-8/BOM 기대값을 바로잡은 뒤
+통과했다. 이 실패·중단은 성공 결과에 포함하지 않는다. 이전 Task의 접근 거부 원인을 이번
+통과로 해결했다고 주장하지 않는다. 최종 solution build는 경고 0 / 오류 0,
+renderer build·C# 정렬 검사·diff check도 통과했으며 배포 asset의 Git diff는 없다.
+
+### 실제 WebView2 수동 인수 절차 (모두 대기)
+
+사용 중인 앱을 종료·재시작하거나 설정을 덮어쓰지 않는다. 검증자는 기존 앱과 사용자
+설정/workspace를 보존한 상태에서 별도 검증 실행을 준비하고, 변경 전 설정값과 workspace
+백업을 확보한다. 기존 세션을 종료해 재시작할 검증은 실행 중 작업이 없는 검증 세션에서만 한다.
+새 Debug 빌드의 실행 파일·commit, Windows/WebView2 버전, monitor·DPI·theme·panel 폭을
+결과에 남긴다. 각 조합은 수행한 경우에만 Passed/Failed와 screenshot·관찰 증거를 기록한다.
+
+| 수동 ID | 재현과 관찰 항목 | 이번 상태 |
+|---|---|---|
+| DRAG-MAN-01 | 1/3/8개 탭, 짧은 이름·허용 길이의 긴 이름·한글, 좁은 panel/overflow를 Dark·Light·One Dark·Tokyo Night에서 확인한다. 1개는 요청 없음, 3/8개는 앞·뒤·중간 양방향 이동, insertion marker·clipping·contrast, 가장자리 scroll과 +/▾/높이 손잡이 고정 배치를 관찰한다. | Not run — native 앱 제어 비활성화 |
+| DRAG-MAN-02 | DRAG-MAN-01을 실제 100/125/150/200% 배율 각각에서 반복한다(탭 수×theme×DPI 48조합). 드래그 임계값·pointer/marker 일치, taskbar 비침범, mixed-DPI monitor 이동과 재연결 후 재정렬을 확인한다. 시스템 배율을 모형 CSS 폭으로 대신하지 않는다. | Not run — 실제 DPI/display 조작 미수행 |
+| DRAG-MAN-03 | 각 PowerShell 검증 탭에서 `$PID`, 현재 폴더, environment marker를 기록하고 여러 화면의 출력을 만든다. 출력 일부 선택·과거 scrollback 위치·미완성 입력을 남긴 채 비활성/활성 탭을 정렬한다. 같은 PID·폴더·환경·입력·출력·선택·scrollback과 활성 탭이 유지되고 background 출력 및 장기 작업이 이어지는지 확인한다. 재실행 때 PID 보존을 기대하지 않는다. | Not run — 실제 shell/renderer 조작 미수행 |
+| DRAG-MAN-04 | terminal 한글 IME 조합, 이름 편집 IME, tab keyboard focus·search focus, 일반 click/doubleclick 및 Shift+F10 좌우 이동을 확인한다. 비활성 탭 drag가 활성 terminal을 바꾸지 않는지, drag 직후 click/doubleclick이 선택·편집을 일으키지 않는지, Ctrl+C/붙여넣기·본문 selection·외부 경로 drop이 그대로인지 관찰한다. | Not run — 실제 IME/focus 미수행 |
+| DRAG-MAN-05 | Escape·목록 밖 release·pointer capture 취소·panel hide로 정렬을 취소한다. drag 중 다른 탭 추가·종료 탭 닫기·restart·renderer recovery를 발생시켜 marker/scroll/capture가 정리되고 최신 host 순서로 돌아오는지 확인한다. 취소 Escape가 shell에 전달되지 않고 workspace에 preview 순서가 저장되지 않는지 확인한다. | Not run — native capture/recovery 미수행 |
+| DRAG-MAN-06 | 복원 ON에서 유효 drop 후 저장 완료를 기다리고 정상 종료·재실행하여 순서·이름·활성 configuration을 확인한다. OFF에서는 runtime 정렬만 적용되고 기존 저장 옵션과 파일을 바꾸지 않는지 확인한다. 취소·stale 요청·저장 실패 뒤 runtime과 저장 상태를 구분해 기록하고 검증 후 설정/백업을 복원한다. | Not run — 실제 앱 재실행/사용자 저장소 검증 미수행 |

@@ -84,6 +84,15 @@ Starboard의 일반 실행에는 관리자 권한이 필요하지 않습니다.
 사용하세요. 상단 경계를 두 번 클릭하면 기본 높이로 돌아갑니다. `Ctrl+Alt+E`로
 작업 영역까지 확장했다가 이전 크기로 복원할 수 있습니다.
 
+탭 이름 영역을 마우스 왼쪽 버튼으로 끌어 삽입 표시가 있는 위치에 놓으면 순서가
+바뀝니다. 목록 양끝에 머무르면 넘친 탭 목록이 가로로 스크롤됩니다. `Escape` 또는
+목록 밖에서 놓기로 취소할 수 있습니다. 비활성 탭을 끌어도 활성 탭은 유지됩니다.
+우클릭이나 `Shift+F10`의 `왼쪽으로 이동`·`오른쪽으로 이동`도 사용할 수 있습니다.
+작업공간 복원이 켜져 있으면 새 순서를 다음 실행에 복원하며, 꺼져 있으면 현재 실행에만
+적용됩니다. 앱 재실행은 새 셸을 만들며 PID·출력·scrollback을 복원하지 않습니다.
+드래그 정렬은 구현·자동 검증을 마쳤으며 실제 WebView2·IME·DPI 화면 인수는
+[수동 검증 절차](docs/test-plan.md#탭-드래그-정렬-통합-회귀--2026-10-13)에 남아 있습니다.
+
 패널 숨기기는 세션 종료가 아닙니다. 앱을 완전히 종료하려면 실행 중인 작업을 정리한
 뒤 트레이의 `종료`를 선택하세요. 종료된 셸의 작업을 다음 실행에서 이어받지는 않습니다.
 
@@ -208,11 +217,14 @@ Starboard 자체에는 분석·텔레메트리·크래시 업로드·원격 설�
 Windows와 [global.json](global.json)에 지정한 .NET 10 SDK가 필요합니다.
 기준 SDK는 `10.0.301`이며 같은 feature band의 최신 패치만 허용합니다.
 일반 빌드는 저장소에 포함된 렌더러를 사용하므로 Node.js가 필요하지 않습니다.
+전체 테스트의 renderer↔host 연결 검증에는 Node.js와 renderer dependency가 필요합니다
+(검증 환경: Node.js 24.18.0). 아래 `npm ci`를 먼저 실행하세요. 앱 실행에는 필요하지 않습니다.
 의존성 복원에는 NuGet 및 취약점 메타데이터 소스에 대한 접근이 필요합니다.
 
 저장소 루트에서 실행합니다.
 
 ```powershell
+npm --prefix src/Modules/Starboard.Modules.Terminal/Presentation/Renderer ci
 dotnet restore Starboard.Windows.sln
 dotnet build Starboard.Windows.sln --configuration Debug --no-restore
 dotnet test Starboard.Windows.sln --configuration Debug --no-build --no-restore

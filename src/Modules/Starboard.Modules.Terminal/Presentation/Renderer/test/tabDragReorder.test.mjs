@@ -6,6 +6,14 @@ import { createHarness } from "./rendererHarness.mjs";
 const fixtures = JSON.parse(await readFile(new URL(
   "../../../../../../tests/Starboard.Modules.Terminal.Tests/Fixtures/tab-drag-reorder/cases.json", import.meta.url), "utf8"));
 const base = fixtures.states.base;
+// Read the shipped definitions so this matrix uses all four product palettes.
+const themeSource = await readFile(new URL("../../../../Starboard.Modules.Preferences/Application/ThemeCatalog.cs", import.meta.url), "utf8");
+const themes = [...themeSource.matchAll(/Create\("([^"]+)", ([^\n]+)\n\s+\[([^\]]+)\]/g)].map((match) => {
+  const colors = [...match[2].matchAll(/"(#[0-9A-F]+)"/g)].map((color) => color[1]);
+  return { name: match[1], canvas: colors[0], foreground: colors[1], muted: colors[2], accent: colors[3],
+    cursor: colors[4], selection: colors[5], ansiPalette: [...match[3].matchAll(/"(#[0-9A-F]+)"/g)].map((color) => color[1]) };
+});
+assert.equal(themes.length, 4);
 const message = (type, payload, sessionId) => ({ version: 2, type, payload,
   ...(sessionId === undefined ? {} : { sessionId }) });
 function upsert(harness, session, order, extra = {}) {
@@ -53,6 +61,44 @@ function assertClean(harness) {
   assert.equal(harness.nodes.get("#session-tabs").dataset.reordering, undefined);
   for (const type of ["pointermove", "pointerup", "pointercancel"]) {
     assert.equal((harness.document.listeners.get(type) ?? []).length, 0);
+  }
+}
+
+for (const theme of themes) {
+  for (const count of [1, 3, 8]) {
+    test(`simulated narrow overflow: ${count} tabs, long Korean names, ${theme.name}`, () => {
+      const sessions = Array.from({ length: count }, (_, index) => ({
+        sessionId: (index + 1).toString(16).padStart(32, "0"), sessionGeneration: index + 1,
+      }));
+      const harness = initialized({ sessions, activeSessionId: sessions.at(-1).sessionId });
+      harness.deliver(message("apply-appearance", { fontFamily: "Cascadia Mono", fontSize: 14, theme }));
+      sessions.forEach((session, index) => upsert(harness, session, index, {
+        name: `아주 긴 한글 탭 이름 ${index} — long terminal workspace title`,
+      }));
+      harness.flushFrames();
+      const list = harness.nodes.get("#session-tabs");
+      list.clientWidth = 180;
+      list.scrollWidth = count * 100;
+      const active = harness.api.sessions.get(sessions.at(-1).sessionId);
+      active.terminal.focus();
+      harness.posted.length = 0;
+      down(harness, sessions[0].sessionId);
+      move(harness, 175);
+      for (let frame = 0; frame < 35 && harness.frameCount() > 0; frame++) { harness.stepFrame(); }
+      release(harness, 175);
+      assert.equal(reorderRequests(harness).length, count === 1 ? 0 : 1);
+      if (count > 1) { assert.ok(list.scrollLeft > 0); }
+      assert.ok(list.scrollLeft <= Math.max(0, list.scrollWidth - list.clientWidth));
+      assert.equal(harness.document.activeElement, count === 1 ? active.tabButton : active.terminal.textarea);
+      assert.deepEqual(harness.startOrder(), sessions);
+      for (const session of sessions) {
+        const entry = harness.api.sessions.get(session.sessionId);
+        assert.ok(entry.tabLabel.textContent.includes("아주 긴 한글"));
+        assert.equal(entry.terminal.options.theme.background, theme.canvas);
+        assert.equal(entry.terminal.resetCount, 0);
+      }
+      assertClean(harness);
+    });
   }
 }
 

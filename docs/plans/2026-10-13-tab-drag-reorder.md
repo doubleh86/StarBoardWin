@@ -2,14 +2,15 @@
 
 ## 현재 상태
 
-**계약·공통 fixture, runtime·workspace 동기화 보충 및 renderer 구현 완료.**
+**계약·공통 fixture, runtime·workspace 동기화 및 renderer 구현, integration 자동 검증 완료.**
 2026-10-13 사용자 요청으로 추가한 독립 실행 계획이다. `bd6e89f`의 runtime 구현 위에
 동기화 경계와 포커스 보존을 보완했고, renderer Task에서 마우스 drag UI를 구현했다.
-전체 기능 인수와 실제 WebView2 검증은 후속 integration Task 범위다.
+integration에서 메시지 왕복·저장/복원 회귀와 사용 문서를 보완했다. 실제 WebView2·IME·focus·DPI
+화면 인수는 수동 검증 대기이며 자동·모의 결과로 통과 처리하지 않는다.
 계약 Task에서는 이 계획과 테스트 fixture만 변경하며 제품 코드, renderer 배포 asset, 앱 버전과 바탕화면 배포를 변경하지 않는다.
 오케스트레이터는 아래 Task를 새 구현 대상으로 계획하되 기존 완료 기능을 다시 구현하지 않는다.
 
-기준선은 `main`의 `1505ccb`다. 현재 탭 우클릭/`Shift+F10`의 `왼쪽으로 이동`·`오른쪽으로 이동`은
+초기 기획의 기준선은 `main`의 `1505ccb`였다. 당시 탭 우클릭/`Shift+F10`의 `왼쪽으로 이동`·`오른쪽으로 이동`은
 구현돼 있지만 마우스 드래그 정렬은 없다. `TerminalTabRegistry`의 순서와
 `TerminalSessionCoordinator.WorkspaceChanged`를 정본으로 유지하며 renderer만의 별도 순서를 만들지 않는다.
 
@@ -280,7 +281,7 @@ contract 완료 후 runtime과 renderer는 확정된 메시지 fixture를 공유
 - [x] `tab-drag-reorder-contract`: 할당된 worktree/dirty 상태를 확인하고 내부 요청·취소 계약과 fixture를 고정한다.
 - [x] `tab-drag-reorder-runtime`: 기존 순서 변경 및 stale/no-op·저장 경로를 보존하고 동기화·세션 보존 회귀 검증을 보완했다.
 - [x] `tab-drag-reorder-renderer`: drag UI·자동 스크롤·수명 정리, Node 이벤트 검증과 source/dist를 구현한다.
-- [ ] `tab-drag-reorder-integration`: 전체 자동 검증, 구현 상태·사용법·수동 검증 matrix를 갱신한다.
+- [x] `tab-drag-reorder-integration`: 메시지 왕복·저장/복원과 전체 자동 검증, 구현 상태·사용법·수동 검증 matrix 갱신 완료. 실제 화면 인수는 대기다.
 
 ## 검증 방법
 
@@ -430,3 +431,31 @@ git diff --check
   후속 integration에서 비활성 탭을 양방향으로 끌고 Escape/밖 release/재시작·탭 추가로 취소한 뒤,
   close/+/▾/손잡이, 이름 편집 및 본문 IME/selection/파일 drop을 함께 확인한다.
   이 Task는 앱 실행·설치·배포·commit을 수행하지 않았다.
+
+## integration Task 완료 요약 — 2026-10-13
+
+- 할당된 worktree에서 기존 fixture·경쟁·저장 실패·저장 옵션·세션 보존 테스트를 재사용했다.
+  공통 fixture, 제품 코드, renderer dist, 앱 버전과 배포 경로는 변경하지 않았다.
+- TerminalTabReorderTests에 production renderer listener와 C# parser/context/coordinator의
+  JSON 왕복 테스트를 추가했다. Escape 취소 후 유효 drop 한 번, 전체 batch 완료 전후 DOM/startOrder,
+  다음 drag의 최신 순서, 이전 요청 거절과 저장 파일 bytes 보존을 연결한다. 실제 파일 store load와
+  새 coordinator restore에서 configuration 순서·활성 configuration·한글 이름 및 새 runtime ID를
+  검사한다. DOM/xterm과 shell은 모형이며 native TerminalView dispatch는 실행하지 않는다.
+- TerminalView dispatch·sender/generation guard·최신 snapshot batch 순서는 별도 정적 wiring guard로
+  확인했다. renderer에 1/3/8개 탭×네 제품 theme, 긴 한글 이름·180 CSS px 폭·overflow 모의 matrix
+  12건을 추가했다. 실제 marker 색·글자 clipping·WebView2 layout 결과로 확대하지 않는다.
+- 검증 PASS: npm ci, npm test **71 passed / 0 skipped**, npm run build;
+  지정 SDK `C:\Users\round1studio_14\.dotnet\dotnet.exe` solution restore, Debug build **경고 0 / 오류 0**,
+  Debug solution test **568 passed / 0 skipped**(Terminal 337, DesktopIntegration 112, Preferences 37,
+  Architecture 13, Integration 69), C# WorkingTree 정렬 검사와 `git diff --check`.
+  새 연결 테스트는 먼저 focused target **1 passed**로 검증했다. npm ci가 선행돼야 C# bridge도 실행된다.
+- 기본 sandbox의 esbuild spawn EPERM 및 진행 없는 focused SDK 실행은 통과로 계산하지 않았다.
+  이번 테스트의 이름 길이·VM 비교·표준 stream UTF-8/BOM 문제를 수정한 후 허용된 실행 환경에서
+  최종 검증했다. 과거 Task의 접근 거부 원인 해결을 추정하지 않고 기존 실패·완료 기록을 유지한다.
+- README에 drag·overflow·Escape/밖 release·좌우 이동 대체 경로와 복원 ON/OFF 사용법을 추가했다.
+  전체 C# 테스트의 Node dependency를 명시하고 계획 index를 구현·자동 검증 완료 상태로 갱신했다.
+- 실제 WebView2 mouse/capture·PID·입력·출력·scrollback·IME·focus·100/125/150/200% 및 mixed-DPI는
+  **Not run (manual)**이다. 현재 세션은 native 앱 제어가 비활성화되어 화면 인수를 수행하지 않았다.
+  [수동 matrix와 재현 절차](../test-plan.md#탭-드래그-정렬-통합-회귀--2026-10-13)의 DRAG-MAN-01~06을
+  대기로 남겼다. 자동 Task 완료는 실제 제품 화면 인수 또는 release 완료를 의미하지 않는다.
+  사용자 앱 재시작·설치·commit·push·배포는 수행하지 않았다.

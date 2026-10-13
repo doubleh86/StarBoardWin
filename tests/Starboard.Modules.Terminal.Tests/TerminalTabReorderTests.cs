@@ -1,8 +1,11 @@
+using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using Starboard.Modules.Terminal.Application;
 using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
+using Starboard.Modules.Terminal.Infrastructure;
 using Starboard.SharedKernel.Diagnostics;
 
 namespace Starboard.Modules.Terminal.Tests;
@@ -11,6 +14,173 @@ namespace Starboard.Modules.Terminal.Tests;
 public sealed class TerminalTabReorderTests
 {
     private static readonly ShellLaunchSpec _shell = new("pwsh.exe", ["-NoLogo"], Path.GetTempPath());
+
+    [TestMethod]
+    public async Task RendererDragRoundTripConfirmsOrderRejectsReplayAndRestoresSavedConfiguration()
+    {
+        using var fixture = ReadFixture();
+        var state = fixture.RootElement.GetProperty("states").GetProperty("base");
+        var identifiers = new Queue<TerminalSessionId>(state.GetProperty("sessions").EnumerateArray().Select(ReadId));
+        var factory = new RecordingSessionFactory();
+        await using var coordinator = new TerminalSessionCoordinator(factory, new NullDiagnosticLog(),
+                                                                     () => identifiers.Dequeue());
+        foreach (var entry in state.GetProperty("sessions").EnumerateArray())
+        {
+            var tab = factory.Sessions.Count == 0
+                ? await coordinator.StartAsync(_shell, 80, 24, CancellationToken.None)
+                : await coordinator.AddAsync(CancellationToken.None);
+            for (var generation = 1; generation < entry.GetProperty("sessionGeneration").GetInt64(); generation++)
+            {
+                await coordinator.RestartAsync(tab.SessionId, CancellationToken.None);
+            }
+            Assert.IsTrue(coordinator.Rename(tab.SessionId, $"긴 이름 한글 terminal {factory.Sessions.Count}"));
+        }
+        Assert.IsTrue(coordinator.Select(ReadId(state, "activeSessionId")));
+        var before = coordinator.RendererWorkspace;
+        var eventCount = 0;
+        coordinator.WorkspaceChanged += _ => eventCount++;
+        var directory = Path.Combine(AppContext.BaseDirectory, "reorder-round-trip-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var startInfo = new ProcessStartInfo("node")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        startInfo.ArgumentList.Add(FindRendererBridge());
+        using var renderer = Process.Start(startInfo);
+        Assert.IsNotNull(renderer);
+        var errors = renderer.StandardError.ReadToEndAsync();
+        try
+        {
+            var path = Path.Combine(directory, "workspace.json");
+            var store = new FileTerminalWorkspaceStore(path);
+            await using var persistence = new TerminalWorkspacePersistence(store, coordinator, new NullDiagnosticLog(),
+                                                                           TimeSpan.FromMilliseconds(5));
+            _ = await persistence.InitializeAsync(true, CancellationToken.None);
+            var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            persistence.StatusChanged += status =>
+            {
+                if (status.State == TerminalWorkspaceSaveState.Saved)
+                {
+                    saved.TrySetResult();
+                }
+            };
+            // The bridge cancels one gesture before returning a valid drop. No host mutation or save occurred.
+            var wire = await ExchangeRendererAsync(renderer, before, "start");
+            Assert.AreEqual(0, eventCount);
+            Assert.IsFalse(File.Exists(path));
+            Assert.IsTrue(RendererProtocol.TryParse(wire, out var message));
+            Assert.IsNotNull(message?.ReorderRequest);
+            var request = message.ReorderRequest;
+            var context = new RendererReorderContext(true, 1, Guid.ParseExact(state.GetProperty("rendererInstanceId").GetString()!, "N"));
+            Assert.IsTrue(context.CanApply(request, 1));
+            Assert.AreEqual(TerminalTabReorderResult.Moved, coordinator.Reorder(request));
+            var confirmed = coordinator.RendererWorkspace;
+            CollectionAssert.AreEqual(new[] { before.Order[1], before.Order[2], before.Order[0], before.Order[3] },
+                                      confirmed.Order.ToArray());
+            var nextWire = await ExchangeRendererAsync(renderer, confirmed, "next");
+            Assert.IsTrue(RendererProtocol.TryParse(nextWire, out var nextMessage));
+            Assert.IsNotNull(nextMessage?.ReorderRequest);
+            CollectionAssert.AreEqual(confirmed.Order.ToArray(), nextMessage.ReorderRequest.StartOrder.ToArray());
+            await saved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var savedBytes = await File.ReadAllBytesAsync(path);
+            var loaded = await store.LoadAsync(CancellationToken.None);
+            var configuration = loaded.Configuration;
+            Assert.IsNotNull(configuration);
+            Assert.AreEqual(TerminalTabReorderResult.StaleOrder, coordinator.Reorder(request));
+            Assert.AreEqual(1, eventCount);
+            var rejectionWire = await ExchangeRendererAsync(renderer, coordinator.RendererWorkspace, "check");
+            using var rejection = JsonDocument.Parse(rejectionWire);
+            Assert.IsTrue(rejection.RootElement.GetProperty("preserved").GetBoolean());
+            var bytesAfterRejection = await File.ReadAllBytesAsync(path);
+            CollectionAssert.AreEqual(savedBytes, bytesAfterRejection);
+
+            var restoredFactory = new RecordingSessionFactory();
+            await using var restored = new TerminalSessionCoordinator(restoredFactory, new NullDiagnosticLog());
+            _ = await restored.StartAsync(_shell, TerminalShellKind.Automatic, configuration, _ => _shell,
+                                          80, 24, CancellationToken.None);
+            CollectionAssert.AreEqual(confirmed.Workspace.Tabs.Select(tab => tab.ConfigurationId).ToArray(),
+                                      restored.Snapshot.Tabs.Select(tab => tab.ConfigurationId).ToArray());
+            Assert.AreEqual(configuration.ActiveTabConfigurationId,
+                            restored.Snapshot.Tabs.Single(tab => tab.SessionId == restored.Snapshot.ActiveSessionId).ConfigurationId);
+            Assert.IsFalse(restored.RendererWorkspace.Order.Any(session => confirmed.Order.Contains(session)));
+            var restoredWire = await ExchangeRendererAsync(renderer, restored.RendererWorkspace, "restored", fresh: true);
+            using var restoredReply = JsonDocument.Parse(restoredWire);
+            CollectionAssert.AreEqual(confirmed.Workspace.Tabs.Select(tab => tab.Name).ToArray(),
+                                      restoredReply.RootElement.GetProperty("names").EnumerateArray().Select(name => name.GetString()).ToArray());
+            renderer.StandardInput.Close();
+            await renderer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            var rendererErrors = await errors;
+            Assert.AreEqual(0, renderer.ExitCode, rendererErrors);
+        }
+        catch (Exception exception) when (renderer.HasExited == true)
+        {
+            throw new InvalidOperationException("Renderer bridge failed: " + await errors, exception);
+        }
+        finally
+        {
+            if (renderer.HasExited == false)
+            {
+                renderer.Kill(entireProcessTree: true);
+                await renderer.WaitForExitAsync();
+            }
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static async Task<string> ExchangeRendererAsync(Process renderer, TerminalRendererWorkspaceSnapshot snapshot,
+                                                            string action, bool fresh = false)
+    {
+        var messages = new List<string> { RendererProtocol.SerializeWorkspaceSyncMessage("workspace-sync-begin", snapshot) };
+        for (var index = 0; index < snapshot.Workspace.Tabs.Count; index++)
+        {
+            var tab = snapshot.Workspace.Tabs[index];
+            messages.Add(RendererProtocol.SerializeSessionMessage("session-upsert", tab.SessionId,
+                                                                  new
+                                                                  {
+                                                                      tab.Name,
+                                                                      state = "running",
+                                                                      exitCode = (int?)null,
+                                                                      order = index,
+                                                                      canAddSession = true,
+                                                                      sessionGeneration = snapshot.Order[index].Generation,
+                                                                      tab.StartingDirectory,
+                                                                      homeDirectory = tab.StartingDirectory,
+                                                                      shellKind = "automatic",
+                                                                  }));
+        }
+        messages.Add(RendererProtocol.SerializeSessionMessage("activate-session", snapshot.Workspace.ActiveSessionId!.Value, new { }));
+        messages.Add(RendererProtocol.SerializeWorkspaceSyncMessage("workspace-sync-complete", snapshot));
+        var command = JsonSerializer.Serialize(new { action, fresh, messages = messages.Select(json => JsonSerializer.Deserialize<JsonElement>(json)) });
+        await renderer.StandardInput.WriteLineAsync(command);
+        await renderer.StandardInput.FlushAsync();
+        var reply = await renderer.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.IsNotNull(reply, "Renderer bridge terminated before confirming the host snapshot.");
+
+        return reply;
+    }
+
+    private static string FindRendererBridge()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Starboard.Windows.sln")) == true)
+            {
+                return Path.Combine(directory.FullName, "src", "Modules", "Starboard.Modules.Terminal", "Presentation",
+                                    "Renderer", "test", "reorderRoundTrip.mjs");
+            }
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not find the renderer bridge.");
+    }
 
     [TestMethod]
     public async Task ReorderSharedCasesPreserveSessionsAndPersistOnlyAppliedOptInOrder()
