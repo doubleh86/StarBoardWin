@@ -615,16 +615,27 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void Core_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
     {
-        if (isDisposed == true || ReferenceEquals(sender, renderer.CoreWebView2) == false)
+        if (isDisposed == true)
         {
             return;
         }
 
         var json = eventArgs.WebMessageAsJson;
-        if (RendererProtocol.TryParse(json, out var message) == false || message is null)
+        if (RendererProtocol.TryParse(json, out var message, out var isReorderEnvelope) == false || message is null)
         {
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererMessage",
                                 "A malformed or unsupported renderer message was ignored.");
+            if (isReorderEnvelope == true && CreateReorderContext().IsAvailable == true)
+            {
+                SyncWorkspace(sessionCoordinator.Snapshot);
+            }
+
+            return;
+        }
+
+        var isStaleSender = ReferenceEquals(sender, renderer.CoreWebView2) == false;
+        if (isStaleSender == true && message.Type != RendererMessageType.ReorderSession)
+        {
             return;
         }
 
@@ -728,6 +739,12 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 if (message.SessionId is { } moveSessionId)
                 {
                     MoveSession(moveSessionId, message.Data);
+                }
+                break;
+            case RendererMessageType.ReorderSession:
+                if (message.ReorderRequest is { } reorderRequest)
+                {
+                    ReorderSession(reorderRequest, rendererGeneration, isStaleSender == false);
                 }
                 break;
             case RendererMessageType.SetStartingDirectory:
@@ -1057,6 +1074,33 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         {
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "MoveSession",
                                 "A terminal tab move request was rejected.");
+        }
+    }
+
+    private RendererReorderContext CreateReorderContext()
+    {
+        var available = isDisposed == false && rendererFailed == false && renderer.CoreWebView2 is not null &&
+                        rendererReady.Task.IsCompletedSuccessfully == true && rendererInstanceId != Guid.Empty;
+
+        return new RendererReorderContext(available, rendererGeneration, rendererInstanceId);
+    }
+
+    private void ReorderSession(TerminalTabReorderRequest request, long requestRendererGeneration, bool isCurrentSender)
+    {
+        var context = CreateReorderContext();
+        if (context.CanApply(request, requestRendererGeneration, isCurrentSender) == true)
+        {
+            var result = sessionCoordinator.Reorder(request);
+            if (result == TerminalTabReorderResult.Moved)
+            {
+                // WorkspaceChanged synchronizes the applied order and schedules opt-in persistence.
+                return;
+            }
+        }
+
+        if (CreateReorderContext().IsAvailable == true)
+        {
+            SyncWorkspace(sessionCoordinator.Snapshot);
         }
     }
 
@@ -1658,16 +1702,26 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             return;
         }
 
-        _ = Dispatcher.BeginInvoke(() => SyncWorkspace(sessionCoordinator.Snapshot));
+        var requestRendererGeneration = rendererGeneration;
+        _ = Dispatcher.BeginInvoke(() =>
+        {
+            if (rendererGeneration == requestRendererGeneration)
+            {
+                SyncWorkspace(sessionCoordinator.Snapshot);
+            }
+        });
     }
 
     private void SyncWorkspace(TerminalWorkspaceSnapshot snapshot)
     {
-        if (isDisposed == true || rendererFailed == true || renderer.CoreWebView2 is null)
+        if (CreateReorderContext().IsAvailable == false)
         {
             return;
         }
 
+        var rendererWorkspace = sessionCoordinator.RendererWorkspace;
+        // The supplied snapshot can predate a restart; refresh order and generations under one coordinator lock.
+        snapshot = rendererWorkspace.Workspace;
         var currentSessionIds = snapshot.Tabs
             .Select(tab => tab.SessionId)
             .ToHashSet();
@@ -1682,8 +1736,6 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
 
         var canAddSession = snapshot.Tabs.Count < TerminalTabRegistry.DefaultMaximumTabs;
-        var sessionLifetimes = sessionCoordinator.NewOutputState.States
-            .ToDictionary(state => new TerminalSessionId(state.Session.SessionId), state => state.Session.Generation);
         for (var index = 0; index < snapshot.Tabs.Count; index++)
         {
             var tab = snapshot.Tabs[index];
@@ -1695,7 +1747,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                                    tab.ExitCode,
                                    order = index,
                                    canAddSession,
-                                   sessionGeneration = sessionLifetimes[tab.SessionId],
+                                   sessionGeneration = rendererWorkspace.Order[index].Generation,
                                    tab.StartingDirectory,
                                    homeDirectory = defaultShell?.WorkingDirectory ?? tab.StartingDirectory,
                                    shellKind = tab.ShellKind?.ToString().ToLowerInvariant() ?? "automatic",

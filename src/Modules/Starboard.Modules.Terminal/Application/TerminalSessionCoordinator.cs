@@ -7,6 +7,9 @@ using Starboard.SharedKernel.Diagnostics;
 
 namespace Starboard.Modules.Terminal.Application;
 
+internal sealed record TerminalRendererWorkspaceSnapshot(TerminalWorkspaceSnapshot Workspace,
+                                                         IReadOnlyList<TerminalSessionReference> Order);
+
 internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 {
     private static readonly TimeSpan DefaultSessionCloseTimeout = TimeSpan.FromSeconds(6);
@@ -86,6 +89,17 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
             lock (stateLock)
             {
                 return CreateNewOutputSnapshotLocked();
+            }
+        }
+    }
+
+    internal TerminalRendererWorkspaceSnapshot RendererWorkspace
+    {
+        get
+        {
+            lock (stateLock)
+            {
+                return CreateRendererWorkspaceLocked();
             }
         }
     }
@@ -560,6 +574,60 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     internal bool MoveRight(TerminalSessionId sessionId)
     {
         return UpdateWorkspace(() => tabRegistry.MoveRight(sessionId));
+    }
+
+    internal TerminalTabReorderResult Reorder(TerminalTabReorderRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var result = TerminalTabReorderResult.SamePosition;
+        UpdateWorkspace(() =>
+        {
+            result = ReorderLocked(request);
+            return result == TerminalTabReorderResult.Moved;
+        });
+
+        return result;
+    }
+
+    private TerminalTabReorderResult ReorderLocked(TerminalTabReorderRequest request)
+    {
+        var sessionId = new TerminalSessionId(request.Session.SessionId);
+        if (tabRegistry.Contains(sessionId) == false)
+        {
+            return TerminalTabReorderResult.MissingSession;
+        }
+
+        if (sessionGenerations[sessionId] != request.Session.Generation)
+        {
+            return TerminalTabReorderResult.StaleGeneration;
+        }
+
+        if (tabRegistry.Contains(request.TargetSessionId) == false)
+        {
+            return TerminalTabReorderResult.MissingTarget;
+        }
+
+        if (sessionId == request.TargetSessionId)
+        {
+            return TerminalTabReorderResult.SelfTarget;
+        }
+
+        var current = CreateRendererWorkspaceLocked();
+        if (current.Order.SequenceEqual(request.StartOrder) == false)
+        {
+            return TerminalTabReorderResult.StaleOrder;
+        }
+
+        return tabRegistry.Reorder(sessionId, request.TargetSessionId, request.Position);
+    }
+
+    private TerminalRendererWorkspaceSnapshot CreateRendererWorkspaceLocked()
+    {
+        var workspace = tabRegistry.CreateSnapshot();
+        var order = workspace.Tabs.Select(tab => new TerminalSessionReference(tab.SessionId.Value,
+                                                                              sessionGenerations[tab.SessionId])).ToArray();
+
+        return new TerminalRendererWorkspaceSnapshot(workspace, Array.AsReadOnly(order));
     }
 
     internal TerminalStartingDirectoryUpdateResult UpdateStartingDirectory(TerminalSessionId sessionId,

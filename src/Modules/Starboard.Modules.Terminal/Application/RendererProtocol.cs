@@ -154,7 +154,13 @@ internal static class RendererProtocol
 
     internal static bool TryParse(string json, out RendererMessage? message)
     {
+        return TryParse(json, out message, out _);
+    }
+
+    internal static bool TryParse(string json, out RendererMessage? message, out bool isReorderEnvelope)
+    {
         message = null;
+        isReorderEnvelope = false;
         if (string.IsNullOrWhiteSpace(json) == true || json.Length > MaximumMessageLength)
         {
             return false;
@@ -165,6 +171,7 @@ internal static class RendererProtocol
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object || root.TryGetProperty("version", out var version) == false ||
+                version.ValueKind != JsonValueKind.Number ||
                 version.TryGetInt32(out var versionNumber) == false || versionNumber != CurrentVersion ||
                 root.TryGetProperty("type", out var typeElement) == false ||
                 typeElement.ValueKind != JsonValueKind.String)
@@ -173,6 +180,7 @@ internal static class RendererProtocol
             }
 
             var type = typeElement.GetString();
+            isReorderEnvelope = type == "reorder-session";
             root.TryGetProperty("payload", out var payload);
 
             message = type switch
@@ -196,6 +204,7 @@ internal static class RendererProtocol
                 "restart-session" => ParseSession(RendererMessageType.RestartSession, root, payload),
                 "rename-session" => ParseData(RendererMessageType.RenameSession, root, payload, "name", 128),
                 "move-session" => ParseData(RendererMessageType.MoveSession, root, payload, "direction", 5),
+                "reorder-session" => ParseReorder(root, payload),
                 "set-starting-directory" => ParseData(RendererMessageType.SetStartingDirectory, root, payload,
                                                       "startingDirectory", 32_767),
                 "session-error" => ParseSession(RendererMessageType.SessionError, root, payload),
@@ -216,6 +225,72 @@ internal static class RendererProtocol
         {
             return false;
         }
+    }
+
+    private static RendererMessage? ParseReorder(JsonElement root, JsonElement payload)
+    {
+        if (TryParseSessionId(root, out var sessionId) == false || payload.ValueKind != JsonValueKind.Object ||
+            payload.TryGetProperty("rendererInstanceId", out var instanceElement) == false ||
+            instanceElement.ValueKind != JsonValueKind.String ||
+            TryParseCompactGuid(instanceElement.GetString(), out var instanceId) == false ||
+            TryParseReorderGeneration(payload, out var generation) == false ||
+            payload.TryGetProperty("targetSessionId", out var targetElement) == false ||
+            targetElement.ValueKind != JsonValueKind.String ||
+            TryParseCompactGuid(targetElement.GetString(), out var targetId) == false ||
+            payload.TryGetProperty("position", out var positionElement) == false ||
+            positionElement.ValueKind != JsonValueKind.String ||
+            payload.TryGetProperty("startOrder", out var orderElement) == false ||
+            orderElement.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var position = positionElement.GetString();
+        if (position != "before" && position != "after")
+        {
+            return null;
+        }
+
+        if (orderElement.GetArrayLength() < 1 || orderElement.GetArrayLength() > 8)
+        {
+            return null;
+        }
+
+        var order = new List<TerminalSessionReference>();
+        var identifiers = new HashSet<TerminalSessionId>();
+        foreach (var entry in orderElement.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object || TryParseSessionId(entry, out var entryId) == false ||
+                TryParseReorderGeneration(entry, out var entryGeneration) == false ||
+                identifiers.Add(entryId) == false)
+            {
+                return null;
+            }
+
+            order.Add(new TerminalSessionReference(entryId.Value, entryGeneration));
+        }
+
+        var source = new TerminalSessionReference(sessionId.Value, generation);
+        if (order.Contains(source) == false)
+        {
+            return null;
+        }
+
+        var insertionPosition = position == "before" ? TerminalTabInsertionPosition.Before
+                                                   : TerminalTabInsertionPosition.After;
+        var request = new TerminalTabReorderRequest(instanceId, source, new TerminalSessionId(targetId),
+                                                    insertionPosition, order.AsReadOnly());
+
+        return new RendererMessage(RendererMessageType.ReorderSession, sessionId,
+                                   RendererInstanceId: instanceId, SessionGeneration: generation, ReorderRequest: request);
+    }
+
+    private static bool TryParseReorderGeneration(JsonElement element, out long generation)
+    {
+        generation = 0;
+        return element.TryGetProperty("sessionGeneration", out var value) == true &&
+               value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out generation) == true &&
+               generation >= 1 && generation <= 9_007_199_254_740_991;
     }
 
     private static RendererMessage? ParseNewTab(JsonElement root, JsonElement payload)

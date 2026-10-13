@@ -5,6 +5,23 @@ namespace Starboard.Modules.Terminal.Domain;
 
 internal sealed record TerminalTabCloseResult(TerminalTab ClosedTab, TerminalTab? ReplacementTab);
 
+internal enum TerminalTabInsertionPosition
+{
+    Before,
+    After,
+}
+
+internal enum TerminalTabReorderResult
+{
+    Moved,
+    SamePosition,
+    MissingSession,
+    StaleGeneration,
+    MissingTarget,
+    SelfTarget,
+    StaleOrder,
+}
+
 internal sealed class TerminalTabRegistry
 {
     internal const int DefaultMaximumTabs = 8;
@@ -171,6 +188,41 @@ internal sealed class TerminalTabRegistry
     internal bool MoveRight(TerminalSessionId sessionId)
     {
         return Move(sessionId, 1);
+    }
+
+    internal TerminalTabReorderResult Reorder(TerminalSessionId sessionId, TerminalSessionId targetSessionId,
+                                              TerminalTabInsertionPosition position)
+    {
+        var sourceIndex = tabs.FindIndex(tab => tab.SessionId == sessionId);
+        if (sourceIndex < 0)
+        {
+            return TerminalTabReorderResult.MissingSession;
+        }
+
+        var targetIndex = tabs.FindIndex(tab => tab.SessionId == targetSessionId);
+        if (targetIndex < 0)
+        {
+            return TerminalTabReorderResult.MissingTarget;
+        }
+
+        if (sessionId == targetSessionId)
+        {
+            return TerminalTabReorderResult.SelfTarget;
+        }
+
+        // Calculate the insertion point in the list after removing the source.
+        var remainingTargetIndex = targetIndex > sourceIndex ? targetIndex - 1 : targetIndex;
+        var insertionIndex = remainingTargetIndex + (position == TerminalTabInsertionPosition.After ? 1 : 0);
+        if (insertionIndex == sourceIndex)
+        {
+            return TerminalTabReorderResult.SamePosition;
+        }
+
+        var source = tabs[sourceIndex];
+        tabs.RemoveAt(sourceIndex);
+        tabs.Insert(insertionIndex, source);
+
+        return TerminalTabReorderResult.Moved;
     }
 
     internal void SetStartingDirectory(TerminalSessionId sessionId, string startingDirectory)

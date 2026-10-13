@@ -24,6 +24,7 @@ internal enum RendererMessageType
     RestartSession,
     RenameSession,
     MoveSession,
+    ReorderSession,
     SetStartingDirectory,
     SessionError,
     RendererError,
@@ -34,6 +35,21 @@ internal enum RendererMessageType
     LaunchSavedTab,
     CancelSavedTabLaunch,
     SavedTabDirectoryRequest,
+}
+
+internal sealed record TerminalTabReorderRequest(Guid RendererInstanceId, TerminalSessionReference Session,
+                                                 TerminalSessionId TargetSessionId,
+                                                 TerminalTabInsertionPosition Position,
+                                                 IReadOnlyList<TerminalSessionReference> StartOrder);
+
+internal sealed record RendererReorderContext(bool IsAvailable, long Generation, Guid InstanceId)
+{
+    internal bool CanApply(TerminalTabReorderRequest request, long requestGeneration, bool isCurrentSender = true)
+    {
+        return IsAvailable == true && isCurrentSender == true && InstanceId != Guid.Empty &&
+               Generation == requestGeneration &&
+               InstanceId == request.RendererInstanceId;
+    }
 }
 
 internal sealed record RendererMessage(RendererMessageType Type, TerminalSessionId? SessionId = null,
@@ -48,4 +64,5 @@ internal sealed record RendererMessage(RendererMessageType Type, TerminalSession
                                        TerminalUrlOpenTarget? UrlOpenTarget = null,
                                        TerminalNewTabRequest? NewTabRequest = null,
                                        TerminalTabDuplicateRequest? TabDuplicateRequest = null,
-                                       TerminalCollapsedHeightChangeRequest? CollapsedHeightChangeRequest = null);
+                                       TerminalCollapsedHeightChangeRequest? CollapsedHeightChangeRequest = null,
+                                       TerminalTabReorderRequest? ReorderRequest = null);
