@@ -277,7 +277,7 @@ contract 완료 후 runtime과 renderer는 확정된 메시지 fixture를 공유
 ## 구현 단계
 
 - [x] `tab-drag-reorder-contract`: 할당된 worktree/dirty 상태를 확인하고 내부 요청·취소 계약과 fixture를 고정한다.
-- [ ] `tab-drag-reorder-runtime`: 순서 변경 및 stale/no-op 처리, 저장·복원 연결과 C# 자동 검증을 구현한다.
+- [x] `tab-drag-reorder-runtime`: 기존 순서 변경 및 stale/no-op·저장 경로를 보존하고 동기화·세션 보존 회귀 검증을 보완했다.
 - [ ] `tab-drag-reorder-renderer`: drag UI·자동 스크롤·수명 정리, Node 정책 검증과 source/dist를 구현한다.
 - [ ] `tab-drag-reorder-integration`: 전체 자동 검증, 구현 상태·사용법·수동 검증 matrix를 갱신한다.
 
@@ -349,3 +349,39 @@ git diff --check
 - 실제 WebView2 mouse drag·focus·IME·DPI는 **Not run (manual)**이다. 이번 결과는 자동 메시지·정책과
   simulated DOM 검증이며 실제 화면 인수를 대신하지 않는다. 새 public API·설정 schema·shell 생성/재시작
   경로와 다른 Task의 완료 상태는 변경하지 않았다.
+
+## runtime Task 보완 완료 요약 — 2026-10-13
+
+- 할당된 clean worktree의 `8d14ab9`에서 선행 workspace-sync와 `bd6e89f`의 registry/coordinator,
+  reorder-session parser, TerminalView 처리 및 기존 테스트를 확인했다. 기존 구현으로 요청 범위의
+  runtime 동작이 충족되어 제품 코드는 변경하지 않고 `TerminalTabReorderTests.cs`만 보완했다.
+  renderer, 배포 asset, 공통 fixture, public API와 설정·저장 schema는 변경하지 않았다.
+- 공통 fixture의 재동기화 사례에 실제 `workspace-sync-begin`/`workspace-sync-complete` 직렬화를
+  연결했다. 두 메시지의 payload 일치, 현재 활성 ID, 전체 순서 및 각 generation을 검증하며 기존
+  opt-in/off 저장·저장 실패·좌우 이동·선택·닫기 검증과 모든 shell 실행 구성 비교를 유지한다.
+- 추가 회귀 4건: drag 시작 뒤 탭 추가(`stale-order`), 종료된 대상 닫기(`missing-target`), source
+  재시작(`stale-generation`), target 재시작(`stale-order`). 거절은 WorkspaceChanged를 발생시키지
+  않으며 최신 snapshot으로 재요청하면 정확히 한 번 이동한다. 거절/재요청 사이 활성 ID, 탭 객체,
+  실제 테스트 session 객체, generation, 실행 구성, resize/dispose 횟수와 입력 경로를 보존한다.
+  shell 종료·재시작 자체의 수명 변경은 기준 snapshot 전에 수행해 정렬에 의한 변경과 구분했다.
+- 접근 조사: 작업 root·직접 상위 폴더·대상 obj는 Directory 속성이고 App.g.cs와
+  Starboard_MarkupCompile.cache는 Archive 속성으로 읽기 전용이 아니었다. 조사한 root/상위 폴더/
+  두 파일/테스트 obj ACL에 Deny 항목이 없었다. 작업 root, 해당 WPF obj 및 테스트 obj의 임시
+  파일 생성·삭제, 두 캐시 파일의 배타적 ReadWrite 열기가 통과했다. 테스트 obj에 남은 `*.tmp`는
+  없었다. probe는 지정 작업 디렉터리 내부에만 생성했고 제거했다.
+- sandbox 프로세스 명령줄 조회는 실제 접근 거부였으며 승인된 읽기 조회로 재실행했다. 다른
+  프로젝트의 .NET 프로세스는 종료하지 않았다. 현재 작업을 가리키는 중복 build/test 명령은
+  조회에서 확인되지 않았고 두 WPF 파일의 점유도 재현되지 않았다. 최초 sandbox Terminal test는
+  restore 이후 진행 출력이 없어 중단 신호를 보냈고 성공 결과로 계산하지 않았다. 허용된 실행
+  권한으로 같은 SDK·Debug 명령을 순차 실행하자 완료됐다. 과거 App.g.cs/MarkupCompile/테스트
+  임시 파일 접근 거부의 정확한 원인은 현재 증거로 확정할 수 없다. ACL/읽기 전용 변경이나
+  bin/obj 정리는 하지 않았고 제품 코드·검증 기준으로 실행 제한을 우회하지 않았다.
+- 최종 검증 PASS: 지정 SDK `C:\Users\round1studio_14\.dotnet\dotnet.exe`의 Terminal Debug test
+  **335 passed / 0 skipped**, solution restore, Debug solution build **0 warnings / 0 errors**,
+  같은 Debug solution test **565 passed / 0 skipped** (Terminal 335, DesktopIntegration 112,
+  Preferences 37, Architecture 13, Integration 68), C# WorkingTree 정렬 검사, `git diff --check`.
+  보완 중 internal enum의 public test 매개변수 노출, CA1826, 실행 중 탭 닫기 보호 정책과
+  continuation 정렬 실패를 수정한 뒤 검증했다. 검증 산출물 쓰기 차단은 최종 실행에서 재현되지 않았다.
+- 이번 검증은 C# coordinator·protocol 및 fake shell/store 회귀 검증이다. 실제 TerminalView/WebView2
+  메시지 dispatch, mouse drag·focus·IME·DPI와 실제 shell PID/scrollback 인수는 **Not run (manual)**로
+  유지한다. renderer/integration Task 완료 상태는 변경하지 않으며 commit/push/배포는 수행하지 않았다.

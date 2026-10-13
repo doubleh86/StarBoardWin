@@ -90,6 +90,10 @@ public sealed class TerminalTabReorderTests
                     }
 
                     Assert.AreEqual(expected.GetProperty("resync").GetString(), resync, label);
+                    if (resync == "current")
+                    {
+                        AssertSynchronization(coordinator.RendererWorkspace, label);
+                    }
                 }
 
                 var after = coordinator.RendererWorkspace;
@@ -100,6 +104,10 @@ public sealed class TerminalTabReorderTests
                 CollectionAssert.AreEqual(beforeSessions, factory.Sessions.ToArray(), label);
                 CollectionAssert.AreEqual(beforeResizes, beforeSessions.Select(session => session.ResizeCount).ToArray(), label);
                 CollectionAssert.AreEqual(beforeDisposals, beforeSessions.Select(session => session.DisposeCount).ToArray(), label);
+                foreach (var session in beforeSessions)
+                {
+                    Assert.AreEqual(_shell, session.Shell, label);
+                }
                 foreach (var tab in before.Workspace.Tabs)
                 {
                     Assert.AreSame(tab, after.Workspace.Tabs.Single(candidate => candidate.SessionId == tab.SessionId), label);
@@ -292,6 +300,98 @@ public sealed class TerminalTabReorderTests
         factory.Sessions[0].RaiseExit();
         Assert.IsTrue(await coordinator.CloseAsync(first.SessionId, CancellationToken.None));
         Assert.AreEqual(third.SessionId, coordinator.Snapshot.ActiveSessionId);
+    }
+
+    [TestMethod]
+    [DataRow("add", "stale-order")]
+    [DataRow("close-target", "missing-target")]
+    [DataRow("restart-source", "stale-generation")]
+    [DataRow("restart-target", "stale-order")]
+    public async Task ReorderAfterLifecycleChangeRejectsOldRequestAndSynchronizesCurrentSessions(string change,
+                                                                                                 string expectedReason)
+    {
+        var factory = new RecordingSessionFactory();
+        await using var coordinator = new TerminalSessionCoordinator(factory, new NullDiagnosticLog());
+        var first = await coordinator.StartAsync(_shell, 80, 24, CancellationToken.None);
+        _ = await coordinator.AddAsync(CancellationToken.None);
+        var third = await coordinator.AddAsync(CancellationToken.None);
+        var start = coordinator.RendererWorkspace;
+        var request = new TerminalTabReorderRequest(Guid.NewGuid(), start.Order[0], third.SessionId,
+                                                    TerminalTabInsertionPosition.After, start.Order);
+        switch (change)
+        {
+            case "add":
+                _ = await coordinator.AddAsync(CancellationToken.None);
+                break;
+            case "close-target":
+                factory.Sessions[2].RaiseExit();
+                Assert.IsTrue(await coordinator.CloseAsync(third.SessionId, CancellationToken.None));
+                break;
+            case "restart-source":
+                await coordinator.RestartAsync(first.SessionId, CancellationToken.None);
+                break;
+            case "restart-target":
+                await coordinator.RestartAsync(third.SessionId, CancellationToken.None);
+                break;
+        }
+
+        var current = coordinator.RendererWorkspace;
+        var sessions = factory.Sessions.ToArray();
+        var resizes = sessions.Select(session => session.ResizeCount).ToArray();
+        var disposals = sessions.Select(session => session.DisposeCount).ToArray();
+        var eventCount = 0;
+        coordinator.WorkspaceChanged += _ => eventCount++;
+
+        Assert.AreEqual(expectedReason, FormatReason(coordinator.Reorder(request)));
+        var synchronized = coordinator.RendererWorkspace;
+        AssertSynchronization(synchronized, change);
+        CollectionAssert.AreEqual(current.Order.ToArray(), synchronized.Order.ToArray());
+        Assert.AreEqual(current.Workspace.ActiveSessionId, synchronized.Workspace.ActiveSessionId);
+        Assert.AreEqual(0, eventCount);
+        foreach (var tab in current.Workspace.Tabs)
+        {
+            Assert.AreSame(tab, synchronized.Workspace.Tabs.Single(candidate => candidate.SessionId == tab.SessionId));
+        }
+
+        var freshRequest = request with
+        {
+            Session = synchronized.Order[0],
+            TargetSessionId = synchronized.Workspace.Tabs[synchronized.Workspace.Tabs.Count - 1].SessionId,
+            StartOrder = synchronized.Order,
+        };
+        Assert.AreEqual(TerminalTabReorderResult.Moved, coordinator.Reorder(freshRequest));
+        Assert.AreEqual(1, eventCount);
+        AssertSynchronization(coordinator.RendererWorkspace, change);
+        Assert.AreEqual(current.Workspace.ActiveSessionId, coordinator.Snapshot.ActiveSessionId);
+        CollectionAssert.AreEqual(sessions, factory.Sessions.ToArray());
+        CollectionAssert.AreEqual(resizes, sessions.Select(session => session.ResizeCount).ToArray());
+        CollectionAssert.AreEqual(disposals, sessions.Select(session => session.DisposeCount).ToArray());
+        CollectionAssert.AreEquivalent(current.Order.ToArray(), coordinator.RendererWorkspace.Order.ToArray());
+        await coordinator.WriteAsync(first.SessionId, "after resync", CancellationToken.None);
+        var sourceSession = change == "restart-source" ? sessions[sessions.Length - 1] : sessions[0];
+        Assert.AreEqual("after resync", sourceSession.Writes.Last());
+        Assert.IsTrue(sessions.All(session => session.Shell == _shell));
+    }
+
+    private static void AssertSynchronization(TerminalRendererWorkspaceSnapshot snapshot, string label)
+    {
+        var begin = RendererProtocol.SerializeWorkspaceSyncMessage("workspace-sync-begin", snapshot);
+        var complete = RendererProtocol.SerializeWorkspaceSyncMessage("workspace-sync-complete", snapshot);
+        using var beginDocument = JsonDocument.Parse(begin);
+        using var completeDocument = JsonDocument.Parse(complete);
+        var payload = completeDocument.RootElement.GetProperty("payload");
+        Assert.AreEqual(beginDocument.RootElement.GetProperty("payload").GetRawText(), payload.GetRawText(), label);
+        Assert.AreEqual(snapshot.Workspace.ActiveSessionId?.ToString(),
+                        payload.GetProperty("activeSessionId").GetString(), label);
+        var order = payload.GetProperty("order");
+        Assert.AreEqual(snapshot.Workspace.Tabs.Count, order.GetArrayLength(), label);
+        for (var index = 0; index < order.GetArrayLength(); index++)
+        {
+            Assert.AreEqual(snapshot.Workspace.Tabs[index].SessionId.ToString(),
+                            order[index].GetProperty("sessionId").GetString(), label);
+            Assert.AreEqual(snapshot.Order[index].Generation,
+                            order[index].GetProperty("sessionGeneration").GetInt64(), label);
+        }
     }
 
     private static TerminalTabRegistry CreateRegistry(JsonElement state)
