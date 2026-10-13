@@ -256,10 +256,11 @@ Terminal 경로는 `src/Modules/Starboard.Modules.Terminal/` 기준이다. publi
   Terminal 계약·프로토콜·테스트 범위를 기록한다.
 - [x] 관측 가능한 셸의 탭별 위치를 renderer에 전달하고, 현재 탭 저장 창의
   prefill·출처 안내를 변경한다. 수동 편집값은 뒤늦은 metadata가 덮지 않는다.
-- [ ] `cd`/`Set-Location` 후 저장→새 탭 시작 폴더, 두 탭 간 격리, 재시작·재연결,
-  지원되지 않는 셸/경로, 한글·공백 경로, 취소 및 기존 PID·scrollback 보존을
-  자동/실제 WebView2 검증으로 나눠 확인한다. 실제 UI 항목은
-  [MAN-055](../test-plan.md)에 기록한다.
+- [x] PowerShell 위치 전달·세션 격리·재시작, generation·renderer 응답 정책과 fallback의
+  자동 검증을 완료했다. 아래 2026-09-29 기록을 근거로 하며 실제 WebView2 조작을 포함하지 않는다.
+- **Not run (manual):** `cd`/`Set-Location` 후 저장→새 탭 시작 폴더, 두 탭 간 격리,
+  재시작·재연결, 지원되지 않는 셸/경로, 한글·공백 경로, 수동 편집·취소 및 기존
+  PID·scrollback·focus 보존의 실제 UI 확인은 [테스트 계획](../test-plan.md)의 MAN-055에 남긴다.
 
 2026-09-29 구현: 기존 PowerShell prompt 제어 pipe에 위치 필드를 추가하고 session
 metadata, generation·renderer request 검증과 현재 탭 신규 저장의 prefill을 연결했다.

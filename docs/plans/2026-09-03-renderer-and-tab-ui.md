@@ -16,12 +16,17 @@ host 사이의 session 대상 메시지는 항상 유효한 session identifier�
 - 기존 `TerminalSessionCoordinator`, `TerminalTabRegistry`, renderer protocol 및
   `TerminalView`
 
-현재 domain/application 계층에는 최대 8개 session을 관리하는 registry와
+최초 기획 당시 domain/application 계층에는 최대 8개 session을 관리하는 registry와
 coordinator가 있으나, presentation은 active session의 output만 단일 xterm으로
 전달한다. 따라서 새 session domain을 다시 만들지 않고 해당 계약을 renderer와
 view에 끝까지 연결한다.
 
 ## 현재 상태
+
+2026-10-13 `main` 코드 대조 결과, 다중 renderer·이름 변경 창·탭 버튼 위치는 구현과
+자동 검증이 완료됐다. 아래 초기 원인 후보와 제보는 당시 기록이며, 실제 WebView2 검증은
+[테스트 계획](../test-plan.md)의 미수행 상태를 유지한다. 새 탭 드래그 정렬은 별도의
+[후속 계획](2026-10-13-tab-drag-reorder.md)이고 아직 구현하지 않았다.
 
 ### 2026-09-10 탭 이름 편집·닫기 영역 배치 회귀 제보
 
@@ -62,7 +67,10 @@ view에 끝까지 연결한다.
 - 추가 인수 기준: `AAI Auto`, 한글 이름, 최대 길이 이름으로 전체 선택→입력→저장,
   Escape/취소/바깥 클릭, Tab으로 저장 버튼 이동, IME 조합과 오류 수정 과정을 확인한다.
   축소 200 DIP panel에서도 입력칸과 두 버튼이 모두 보이며 작업표시줄을 덮지 않아야 한다.
-- 상태: **제보·기획만 기록, 재현과 구현 미착수.** 사용자 이미지 첨부명은
+- 상태(2026-10-13 정정): **별도 이름 변경 창 구현·자동 검증 완료.** 현재 `startRename`은
+  `.tab-name-dialog`를 사용하며 탭 안의 좁은 인라인 입력은 사용하지 않는다. 실제 WebView2의
+  편집·IME·focus 확인은 [테스트 계획](../test-plan.md)의 MAN-042에 `Blocked (manual)`로
+  남아 있다. 사용자 이미지 첨부명은
   `codex-clipboard-5c1050b4-aa7d-46a5-a669-45aeab15dfd8.png`이며 임시 파일의 영구 존재를
   전제하지 않는다. 핵심 관찰은 위에 텍스트로 보존한다.
 - [저장한 탭 기획](2026-09-10-saved-terminal-tabs.md)의 메뉴 UI와 renderer 파일이
@@ -105,8 +113,9 @@ view에 끝까지 연결한다.
   `+`는 마지막 탭 밖의 독립 버튼이다. 닫기 영역을 별도 탭처럼 보이게 나누지 않는다.
 - 참고 이미지의 높이·여백을 그대로 복제하지 않고 기존 32px 탭 바와 테마를 유지한다.
   색상만으로 선택 상태를 전달하지 않으며 기존 접근성·키보드 focus 표시를 보존한다.
-- 오른쪽 `∨` 셸 선택 메뉴는 후속 후보로만 기록한다. 현재 범위에서는 새 메뉴를
-  추가하지 않고 `+`가 기존 기본 셸로 새 탭을 만드는 동작을 유지한다.
+- 당시에는 `∨` 셸 선택을 후속 후보로 두고 `+`로 기본 셸을 즉시 실행했다. 이후
+  [2026-09-16 메뉴 정정](2026-09-16-tab-strip-menu-correction.md)을 구현해 현재 `+`는
+  profile 선택 메뉴, 오른쪽 끝 `▾`는 저장한 탭 메뉴다. 기본 셸 즉시 생성은 `Ctrl+Shift+T`로 유지한다.
 - 탭 overflow는 기존 가로 스크롤로 처리하며 `+`는 스크롤 영역 밖에서 유지한다.
   닫기 기능·키보드 단축키·세션 수명과 32px 탭 바 높이는 변경하지 않는다.
 - 영향: renderer `src/styles.css`, 필요 시 탭 DOM을 구성하는 `src/index.ts`와
@@ -116,16 +125,16 @@ view에 끝까지 연결한다.
   접근성 이름, 4개 테마에서의 선택 구분과 키보드 focus를 확인한다.
   바탕화면 배포·앱 재실행은 이번 수정에 포함하지 않는다.
 - 상태(당시 구현 기록): 탭 목록은 남은 폭을 독점하지 않고 `+`는 마지막 탭 뒤의 독립
-  control로 남으며 `×`는 각 tab item 안에 포함됐다. 현재 `main`의 회귀 상태와 다음 구현은
-  아래 2026-09-14 항목 및 [독립 실행 계획](2026-09-15-tab-add-button-position.md)을 정본으로 삼는다.
+  control로 남으며 `×`는 각 tab item 안에 포함됐다. 아래 2026-09-14 회귀는 후속 수정이
+  완료됐으며, 현재 배치·메뉴 정본은 [2026-09-16 계획](2026-09-16-tab-strip-menu-correction.md)이다.
 - 후속 [작업공간 기획](2026-09-09-workspace-convenience.md)의 W2-C에서 함께 처리한다.
   실제 WebView2 수동 검증과 브라우저 검증은 구분한다.
 
 #### 2026-09-14 `+` 위치 회귀 수정
 
-- 현재 `main` 실행 화면에서 탭이 하나뿐인데도 `+`가 탭 바 오른쪽 끝에 고정되어 마지막
+- 당시 `main` 실행 화면에서 탭이 하나뿐인데도 `+`가 탭 바 오른쪽 끝에 고정되어 마지막
   탭과 큰 빈 공간으로 분리되는 회귀를 확인했다. 위의 구현 완료 기록은 당시 결과이며,
-  현재 버전의 위치 수정은 다시 필요한 상태다.
+  당시에는 위치 수정이 다시 필요한 상태였다.
 - 일반 폭에서는 `+`의 왼쪽 가장자리를 마지막 탭의 오른쪽 가장자리에서 0~8px 안에
   배치한다. 탭 목록 뒤의 `auto` margin이나 남은 폭을 채우는 spacer 때문에 `+`가 패널
   오른쪽 끝으로 밀려나면 안 된다.
@@ -136,8 +145,10 @@ view에 끝까지 연결한다.
 - 검증은 1/3/8개 탭과 좁은 폭에서 마지막 탭·`+`의 실제 경계 좌표를 확인하고, 네 가지
   테마와 100/125/150/200%에서 빈 간격·겹침·잘림이 없는지 구분해 기록한다. 자동화하지
   못한 실제 WebView2·DPI 화면은 완료로 보고하지 않는다.
-- 상태: 기획 완료, 제품 코드 수정 대기. 오케스트레이터가 참고 링크로만 해석해 누락하지
-  않도록 [독립 실행 계획](2026-09-15-tab-add-button-position.md)의 단일 Task로 분리했다.
+- 상태(2026-10-13 정정): **위치 수정 구현·자동 검증 완료.**
+  [독립 실행 계획](2026-09-15-tab-add-button-position.md)의 Task와 후속
+  [메뉴 정정](2026-09-16-tab-strip-menu-correction.md)이 완료됐다. 실제 위치·overflow·DPI 검증은
+  [테스트 계획](../test-plan.md)의 MAN-050b에 `Not run (manual)`로 남긴다.
 
 - protocol v2, session별 xterm registry, tab UI와 schema 3 migration 구현 완료
 - post-implementation 검토에서 확인한 TypeScript envelope scope와 tablist 방향키
@@ -164,7 +175,10 @@ view에 끝까지 연결한다.
 
 ## 제외 범위
 
-- drag reorder, split pane, 별도 terminal window, 앱 재시작 간 tab 복원
+- 최초 범위에서는 drag reorder와 앱 재시작 간 tab 복원을 제외했다. tab 복원은 이후
+  [작업공간 기획](2026-09-09-workspace-convenience.md)에서 구현했고, drag reorder는
+  [2026-10-13 계획](2026-10-13-tab-drag-reorder.md)의 미착수 후속 범위다.
+- split pane과 별도 terminal window는 계속 제외한다.
 - shell title escape sequence 기반 동적 tab 이름
 - 새 renderer/runtime dependency 추가
 - tray, global hotkey, focus/z-order 정책 변경
