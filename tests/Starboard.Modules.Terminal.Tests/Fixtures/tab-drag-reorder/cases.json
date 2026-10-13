@@ -1,0 +1,2702 @@
+{
+  "fixtureVersion": 1,
+  "protocolVersion": 2,
+  "persistenceModes": [
+    false,
+    true
+  ],
+  "states": {
+    "base": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "two": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "one": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000001",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "reordered": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "afterFirstMove": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        },
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "sourceClosed": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "targetClosed": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "sourceRestarted": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "targetRestarted": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "otherRestarted": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 3
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "tabAdded": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        },
+        {
+          "sessionId": "00000000000000000000000000000005",
+          "sessionGeneration": 1
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "rendererReplaced": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000002"
+    },
+    "rendererUnavailable": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": false,
+      "rendererInstanceId": null
+    },
+    "eight": {
+      "sessions": [
+        {
+          "sessionId": "00000000000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000002",
+          "sessionGeneration": 2
+        },
+        {
+          "sessionId": "00000000000000000000000000000003",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000004",
+          "sessionGeneration": 3
+        },
+        {
+          "sessionId": "00000000000000000000000000000005",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000006",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000007",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "00000000000000000000000000000008",
+          "sessionGeneration": 1
+        }
+      ],
+      "activeSessionId": "00000000000000000000000000000002",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    },
+    "hex": {
+      "sessions": [
+        {
+          "sessionId": "abcdef00000000000000000000000001",
+          "sessionGeneration": 1
+        },
+        {
+          "sessionId": "abcdef00000000000000000000000002",
+          "sessionGeneration": 1
+        }
+      ],
+      "activeSessionId": "abcdef00000000000000000000000001",
+      "rendererReady": true,
+      "rendererInstanceId": "10000000000000000000000000000001"
+    }
+  },
+  "cases": [
+    {
+      "id": "move-forward-middle",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "move-to-end-inactive",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000004",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004",
+          "00000000000000000000000000000001"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "move-to-front",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000004",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 3,
+          "targetSessionId": "00000000000000000000000000000001",
+          "position": "before",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "00000000000000000000000000000004",
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "move-backward-middle",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000004",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 3,
+          "targetSessionId": "00000000000000000000000000000002",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000004",
+          "00000000000000000000000000000003"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "move-active-id-preserved",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000002",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 2,
+          "targetSessionId": "00000000000000000000000000000004",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004",
+          "00000000000000000000000000000002"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "two-tabs-swap",
+      "hostState": "two",
+      "dragState": "two",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000002",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000001"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "eight-tabs-end-to-front",
+      "hostState": "eight",
+      "dragState": "eight",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000008",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000001",
+          "position": "before",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            },
+            {
+              "sessionId": "00000000000000000000000000000005",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000006",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000007",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000008",
+              "sessionGeneration": 1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "00000000000000000000000000000008",
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004",
+          "00000000000000000000000000000005",
+          "00000000000000000000000000000006",
+          "00000000000000000000000000000007"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "same-position-before",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000002",
+          "position": "before",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "no-op",
+        "reason": "same-position",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "same-position-after",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000003",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000002",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "no-op",
+        "reason": "same-position",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "cancel-escape",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "cancel:escape",
+      "message": null,
+      "expected": {
+        "parseAccepted": null,
+        "result": "cancelled",
+        "reason": "escape",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "local-current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "cancel-pointercancel",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "cancel:pointercancel",
+      "message": null,
+      "expected": {
+        "parseAccepted": null,
+        "result": "cancelled",
+        "reason": "pointercancel",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "local-current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "cancel-lost-capture",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "cancel:lost-capture",
+      "message": null,
+      "expected": {
+        "parseAccepted": null,
+        "result": "cancelled",
+        "reason": "lost-capture",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "local-current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "cancel-outside-drop",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "cancel:outside-drop",
+      "message": null,
+      "expected": {
+        "parseAccepted": null,
+        "result": "cancelled",
+        "reason": "outside-drop",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "local-current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "cancel-renderer-lifetime",
+      "hostState": "rendererUnavailable",
+      "dragState": "base",
+      "rendererAction": "cancel:renderer-lifetime",
+      "message": null,
+      "expected": {
+        "parseAccepted": null,
+        "result": "cancelled",
+        "reason": "renderer-lifetime",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "none",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "click-below-threshold",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "click",
+      "message": null,
+      "expected": {
+        "parseAccepted": null,
+        "result": "click",
+        "reason": "below-threshold",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "none",
+        "rendererOutcome": "click",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "one-tab-no-request",
+      "hostState": "one",
+      "dragState": "one",
+      "rendererAction": "cancel:single-tab",
+      "message": null,
+      "expected": {
+        "parseAccepted": null,
+        "result": "cancelled",
+        "reason": "single-tab",
+        "order": [
+          "00000000000000000000000000000001"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "local-current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "self-target",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000001",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "self-target",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "missing-target",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000005",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "missing-target",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "source-closed",
+      "hostState": "sourceClosed",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Renderer cancels before sending when this host change is visible; runtime tests the already-posted request arriving after the change.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "missing-session",
+        "order": [
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "target-closed",
+      "hostState": "targetClosed",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Renderer cancels before sending when this host change is visible; runtime tests the already-posted request arriving after the change.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "missing-target",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "source-restarted",
+      "hostState": "sourceRestarted",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Renderer cancels before sending when this host change is visible; runtime tests the already-posted request arriving after the change.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "stale-generation",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "target-restarted",
+      "hostState": "targetRestarted",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Renderer cancels before sending when this host change is visible; runtime tests the already-posted request arriving after the change.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "stale-order",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "other-tab-restarted",
+      "hostState": "otherRestarted",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Renderer cancels before sending when this host change is visible; runtime tests the already-posted request arriving after the change.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "stale-order",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "concurrent-left-right",
+      "hostState": "reordered",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Renderer cancels before sending when this host change is visible; runtime tests the already-posted request arriving after the change.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "stale-order",
+        "order": [
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "concurrent-add",
+      "hostState": "tabAdded",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Renderer cancels before sending when this host change is visible; runtime tests the already-posted request arriving after the change.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "stale-order",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004",
+          "00000000000000000000000000000005"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "duplicate-delayed-request",
+      "hostState": "afterFirstMove",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000004",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Renderer cancels before sending when this host change is visible; runtime tests the already-posted request arriving after the change.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "stale-order",
+        "order": [
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004",
+          "00000000000000000000000000000001"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "renderer-replaced",
+      "hostState": "rendererReplaced",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Renderer cancels before sending when this host change is visible; runtime tests the already-posted request arriving after the change.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "stale-renderer",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "renderer-not-ready",
+      "hostState": "rendererUnavailable",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Renderer cancels before sending when this host change is visible; runtime tests the already-posted request arriving after the change.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "rejected",
+        "reason": "renderer-unavailable",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "none",
+        "rendererOutcome": "cancelled",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "background-output-keeps-drag",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "Background output, name or state change leaves the ordered ID/generation pairs unchanged.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "order-restored-to-start",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "note": "An intervening order change followed by restoration to the exact start sequence is accepted; no revision token is introduced.",
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "uppercase-guid-equivalence",
+      "hostState": "hex",
+      "dragState": "hex",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "ABCDEF00000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "ABCDEF00000000000000000000000002",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "ABCDEF00000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "ABCDEF00000000000000000000000002",
+              "sessionGeneration": 1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "abcdef00000000000000000000000002",
+          "abcdef00000000000000000000000001"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    },
+    {
+      "id": "invalid-version",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 3,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "none",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "invalid-position",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "left",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "missing-renderer-instance",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "empty-renderer-instance",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "00000000000000000000000000000000",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "invalid-source-id",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "tab-a",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "empty-target-id",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000000",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "missing-start-order",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after"
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "empty-start-order",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": []
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "duplicate-start-id",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "too-many-start-tabs",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            },
+            {
+              "sessionId": "00000000000000000000000000000005",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000006",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000007",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000008",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000009",
+              "sessionGeneration": 1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "source-absent-from-start",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "source-start-generation-mismatch",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "generation-zero",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 0,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 0
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "generation-fraction",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1.5,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1.5
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "generation-string",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": "1",
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "generation-unsafe-integer",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 9007199254740992,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 9007199254740992
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "other-start-generation-null",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": null
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "payload-not-object",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "not-generated",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": []
+      },
+      "expected": {
+        "parseAccepted": false,
+        "result": "invalid-message",
+        "reason": "invalid-message",
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0,
+        "resync": "current",
+        "rendererOutcome": "not-generated",
+        "sendCount": 0
+      }
+    },
+    {
+      "id": "unknown-field-does-not-control-order",
+      "hostState": "base",
+      "dragState": "base",
+      "rendererAction": "drop",
+      "message": {
+        "version": 2,
+        "type": "reorder-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "rendererInstanceId": "10000000000000000000000000000001",
+          "sessionGeneration": 1,
+          "targetSessionId": "00000000000000000000000000000003",
+          "position": "after",
+          "startOrder": [
+            {
+              "sessionId": "00000000000000000000000000000001",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000002",
+              "sessionGeneration": 2
+            },
+            {
+              "sessionId": "00000000000000000000000000000003",
+              "sessionGeneration": 1
+            },
+            {
+              "sessionId": "00000000000000000000000000000004",
+              "sessionGeneration": 3
+            }
+          ],
+          "unusedFinalOrder": [
+            "00000000000000000000000000000004",
+            "00000000000000000000000000000003",
+            "00000000000000000000000000000002",
+            "00000000000000000000000000000001"
+          ]
+        }
+      },
+      "expected": {
+        "parseAccepted": true,
+        "result": "applied",
+        "reason": "moved",
+        "order": [
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 1,
+        "resync": "current",
+        "rendererOutcome": "request",
+        "sendCount": 1
+      }
+    }
+  ],
+  "legacyMoves": [
+    {
+      "id": "legacy-left",
+      "hostState": "base",
+      "message": {
+        "version": 2,
+        "type": "move-session",
+        "sessionId": "00000000000000000000000000000002",
+        "payload": {
+          "direction": "left"
+        }
+      },
+      "expected": {
+        "order": [
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 1
+      }
+    },
+    {
+      "id": "legacy-right",
+      "hostState": "base",
+      "message": {
+        "version": 2,
+        "type": "move-session",
+        "sessionId": "00000000000000000000000000000002",
+        "payload": {
+          "direction": "right"
+        }
+      },
+      "expected": {
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 1
+      }
+    },
+    {
+      "id": "legacy-left-boundary",
+      "hostState": "base",
+      "message": {
+        "version": 2,
+        "type": "move-session",
+        "sessionId": "00000000000000000000000000000001",
+        "payload": {
+          "direction": "left"
+        }
+      },
+      "expected": {
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0
+      }
+    },
+    {
+      "id": "legacy-right-boundary",
+      "hostState": "base",
+      "message": {
+        "version": 2,
+        "type": "move-session",
+        "sessionId": "00000000000000000000000000000004",
+        "payload": {
+          "direction": "right"
+        }
+      },
+      "expected": {
+        "order": [
+          "00000000000000000000000000000001",
+          "00000000000000000000000000000002",
+          "00000000000000000000000000000003",
+          "00000000000000000000000000000004"
+        ],
+        "workspaceChangedCount": 0
+      }
+    }
+  ]
+}

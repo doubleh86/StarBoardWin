@@ -2,8 +2,8 @@
 
 ## 현재 상태
 
-**기획 완료·구현 미착수.** 2026-10-13 사용자 요청으로 추가한 독립 실행 계획이다.
-이번 문서 커밋에서는 제품 코드, renderer 배포 asset, 앱 버전과 바탕화면 배포를 변경하지 않는다.
+**계약·공통 fixture 확정, 제품 구현 미착수.** 2026-10-13 사용자 요청으로 추가한 독립 실행 계획이다.
+계약 Task에서는 이 계획과 테스트 fixture만 변경하며 제품 코드, renderer 배포 asset, 앱 버전과 바탕화면 배포를 변경하지 않는다.
 오케스트레이터는 아래 Task를 새 구현 대상으로 계획하되 기존 완료 기능을 다시 구현하지 않는다.
 
 기준선은 `main`의 `1505ccb`다. 현재 탭 우클릭/`Shift+F10`의 `왼쪽으로 이동`·`오른쪽으로 이동`은
@@ -51,7 +51,7 @@
 - 기존 `move-session`은 `left`/`right` 한 칸 이동이다. drag를 여러 한 칸 메시지로 흉내 내면 탭
   추가·닫기와 경쟁할 수 있으므로 유효한 한 번의 위치 변경을 registry/coordinator에서 처리한다.
 - 내부 renderer 요청은 이동할 session ID와 generation, 기준 탭 ID 및 앞/뒤 위치를 명시한다.
-  renderer instance와 drag 시작 당시 순서가 여전히 유효한지 확인하는 정책을 계약 Task에서 확정한다.
+  renderer instance와 drag 시작 당시 순서의 유효성은 아래 확정 계약을 따른다.
   범위를 넘는 임의 배열, 없는/자기 자신 대상, 오래된 generation·renderer 요청은 거부한다.
 - 순서 변경은 coordinator의 기존 동기화·WorkspaceChanged·workspace persistence 흐름에 연결한다.
   동일 위치는 no-op이고 거절 시 현재 host snapshot으로 UI를 맞춘다. module 간 참조, public API,
@@ -62,6 +62,162 @@
 - Explorer 경로 드롭과 내부 탭 정렬을 구분한다. 외부 파일 drop, 터미널 본문 텍스트 선택, IME와
   clipboard shortcut handler를 가로채지 않는다. 추가 drag library나 runtime network는 사용하지 않는다.
 - 저장 실패는 기존 로컬 상태 안내·재시도 정책을 따른다. 오류를 숨기거나 실행 중인 shell을 종료하지 않는다.
+
+## 확정된 내부 메시지·동기화 계약
+
+### 현재 코드에서 확인한 경로와 변경 경계
+
+- `Application/RendererProtocol.cs`는 protocol version **2**, root의 `sessionId`, object `payload`를
+  사용한다. `move-session`은 `payload.direction` 문자열을 파싱하고 `TerminalView.MoveSession`이
+  coordinator의 `MoveLeft`/`MoveRight`에 연결한다. 기존 요청 형태와 한 칸 이동 의미를 유지한다.
+- `Domain/TerminalTabRegistry.cs`의 배열이 순서 정본이다. coordinator의 `UpdateWorkspace`는
+  `stateLock` 안에서 변경·snapshot 생성을 하고 lock 밖에서 `WorkspaceChanged`를 발행한다.
+  renderer `orderedSessions`/`renderTabs`는 `session-upsert.payload.order`로 기존 DOM을 재배치한다.
+- `TerminalView.Session_WorkspaceChanged`는 event에 실린 과거 snapshot 대신 처리 시점의
+  `sessionCoordinator.Snapshot`을 다시 읽어 `SyncWorkspace`한다. 이 경로는 제거된 ID의
+  `remove-session`, 모든 현재 탭의 `session-upsert`(order/generation), 현재 ID의 `activate-session`을 보낸다.
+- `TerminalWorkspacePersistence`는 같은 event를 소비하며 opt-in, restore/future schema/종료 guard와
+  기존 debounce·동일 구성 건너뛰기를 적용한다. 저장은 runtime ID 대신 configuration ID와 배열 순서에서
+  계산한 `Order`를 사용한다. 드래그 요청이나 시작 snapshot을 저장 입력으로 사용하지 않는다.
+- 현재 `SyncWorkspace`는 탭 snapshot과 generation을 각각 조회한다. runtime 담당자는 드래그의
+  비교·변경을 **동일 coordinator lock**에서 수행하고 resync의 ID/order/generation도 일관된 조회로
+  얻어야 한다. renderer generation/instance 수명 guard는 View가 소유한다. public contract나
+  SharedKernel type을 추가할 이유가 없으며 필요한 DTO와 진입점은 Terminal 내부에 둔다.
+
+### 요청 필드
+
+새 내부 요청 이름은 **`reorder-session`**이다. `move-session`을 확장하거나 여러 번 전송하지 않는다.
+host와 bundled renderer를 함께 배포하므로 기존 version 2 안에 이 내부 메시지를 추가한다.
+fixture의 `fixtureVersion`은 테스트 자료 형식이며 제품 protocol/settings version이 아니다.
+
+```json
+{
+  "version": 2,
+  "type": "reorder-session",
+  "sessionId": "00000000000000000000000000000001",
+  "payload": {
+    "rendererInstanceId": "10000000000000000000000000000001",
+    "sessionGeneration": 1,
+    "targetSessionId": "00000000000000000000000000000003",
+    "position": "after",
+    "startOrder": [
+      { "sessionId": "00000000000000000000000000000001", "sessionGeneration": 1 },
+      { "sessionId": "00000000000000000000000000000002", "sessionGeneration": 2 },
+      { "sessionId": "00000000000000000000000000000003", "sessionGeneration": 1 }
+    ]
+  }
+}
+```
+
+| 필드 | 파싱·의미 |
+|---|---|
+| `version`, `type` | 숫자 2, 정확한 `reorder-session` 문자열. 기존 envelope와 최대 메시지 길이 제한 유지 |
+| root `sessionId` | 이동할 runtime session ID. configuration ID가 아님 |
+| `payload.rendererInstanceId` | 현재 페이지가 `ready`에 보낸 instance ID. drag 시작 시 캡처한 값 |
+| `payload.sessionGeneration` | 이동할 세션의 시작 시 generation |
+| `payload.targetSessionId` | 삽입 기준이 되는 현재 runtime 탭 ID. 첫/끝 위치도 첫/끝 **다른** 탭을 기준으로 표현 |
+| `payload.position` | 정확히 `before` 또는 `after`. index, 방향 반복, 임의 최종 배열은 받지 않음 |
+| `payload.startOrder` | pointer down 시 캡처한 전체 순서. 1~8개 `{sessionId, sessionGeneration}` 배열. ID 중복 금지 |
+
+모든 ID는 기존 parser처럼 non-empty GUID `N` 형식(32 hex, 대소문자 허용)이다. 비교는 GUID 의미로
+하고 renderer가 보낼 때는 소문자로 정규화한다. 모든 generation은 JSON 숫자 safe integer
+`1..9007199254740991`이며 문자열·소수·null을 허용하지 않는다. root ID가 `startOrder`에 정확히 한 번
+있고 그 generation이 payload 값과 같아야 파싱 성공이다. 모든 필드는 필수다. 기존 parser처럼 알 수
+없는 추가 필드는 무시하되 정렬의 근거로 사용하지 않는다. 잘못된 필수 필드는 기본값으로 보정하지 않는다.
+target의 존재·자기 자신 여부는 파싱 이후 host 판정이다(닫힌 탭 요청도 정확히 구분한다).
+
+### 판정 순서와 원자적 이동
+
+아래 reason은 fixture의 테스트 기대값이며 새로운 공개 status API나 응답 메시지가 아니다.
+
+1. envelope/필드 조건을 파싱한다. 실패는 `invalid-message`, 순서 변경 없음.
+2. View가 disposed/renderer failed/not ready/CoreWebView2 부재 또는 현재 sender와 다른 경우
+   `renderer-unavailable`. 현재 `ready` instance와 다른 경우 `stale-renderer`. 지연 실행 callback은
+   캡처한 host의 `rendererGeneration`도 재확인한다. 이 host 값은 wire 필드로 노출하지 않는다.
+3. coordinator lock 안에서 이동 ID가 없으면 `missing-session`, payload generation이 현재와
+   다르면 `stale-generation`, target이 없으면 `missing-target`, target이 자신이면 `self-target`.
+4. 같은 lock 안에서 현재 전체 `(ID, generation)` 순서와 `startOrder`를 길이·위치·generation까지
+   비교한다. 하나라도 다르면 `stale-order`. 탭 추가/닫기, 좌우 이동, 다른 드래그와 **다른 탭의 재시작**도
+   여기서 거절한다. 배경 output/이름/state만 바뀌고 ID·generation·순서가 같으면 유효하다.
+5. source를 제거한 임시 목록에서 target을 찾아 그 직전/직후에 source를 삽입한다. source 제거 전
+   index를 재사용하지 않는다. 최종 순서가 현재와 같으면 `no-op`/`same-position`; 다르면 `applied`/`moved`.
+   전체를 한 번에 적용하며 active ID, generation, tab metadata, session 객체/PID와 terminal 상태를 보존한다.
+6. `applied`만 `WorkspaceChanged`를 한 번 발행한다. `no-op`/거절/취소는 발행하지 않는다.
+   persistence opt-in이면 기존 경로가 저장을 예약하고, off면 runtime 순서만 바뀐다.
+   opt-in이 켜져 있어도 기존 unsupported shell/future schema guard를 우회하지 않는다.
+
+`startOrder`는 optimistic 비교용이며 교체할 정본 배열이 아니다. 새 order revision/settings schema는
+도입하지 않는다. 처리 시 전체 ID·generation 순서가 시작값으로 돌아온 경우(순서만 변경 후 복귀)는
+동등한 상태로 수락한다. 한 번 처리된 메시지의 재전송은 순서가 달라졌으면 `stale-order`다. 따라서
+renderer는 유효한 drop당 한 번만 전송하고 자동 재시도하지 않는다. lock 밖에서 검증 후 lock 안에서
+적용하는 경로는 허용하지 않는다. 1개 탭은 renderer가 요청을 만들지 않는다; 강제로 보낸 자기 대상은 거절한다.
+
+### 취소·응답·재동기화
+
+- threshold 전 release는 기존 클릭이다. 정렬 이후 Escape/pointercancel/lost capture/대상 밖 release,
+  panel·renderer 수명 종료, drag 시작 목록과 다른 ID·generation·순서 수신은 `cancelled`다.
+  이동 wire 메시지를 보내지 않고 capture/삽입 표시/auto-scroll을 정리한다. 취소 Escape는 shell로 보내지 않는다.
+- renderer는 실제 배열/`entry.order`를 낙관적으로 바꾸지 않고 삽입 표시만 보여준다. 취소 시 마지막으로
+  받은 host 상태를 그대로 렌더한다(`local-current`). 과거 `startOrder`로 되돌리거나 host에 취소 메시지를
+  보내지 않는다. 수명 종료 후에는 새 페이지의 초기 동기화가 담당한다(`none`).
+- applied/no-op/파싱 가능한 거절 뒤에는 기존 `SyncWorkspace` 경로로 **처리 시점의 현재** 목록을
+  현재 살아 있는 renderer에 다시 보낸다(`current`). 거절 때문에 `WorkspaceChanged`를 발행하지 않는다.
+  오래된 renderer 요청을 받았어도 응답은 과거 instance에 보내지 않는다. 현재 instance가 ready인 경우
+  그 instance에만 동기화하고, 사용할 renderer가 없으면 다음 ready/initialize까지 보류한다.
+- 기존 parser가 모든 malformed 요청을 버리는 경로는 유지한다. 다만 정상 version/type envelope로
+  식별되는 `reorder-session`의 payload 파싱 실패는 ready인 현재 renderer를 동기화한다.
+  틀린 version/type/root 형태는 기존처럼 무시한다(`none`). command/output 내용을 log에 넣지 않는다.
+- `session-upsert`가 차례로 들어오는 중간 상태는 drag를 보수적으로 취소할 수 있다. batch 끝의 기존
+  `activate-session`까지 최신 order로 맞추며 이전 목록을 재전송하지 않는다. 별도 ack/request ID나
+  host order message는 추가하지 않는다. 드래그는 요청 후 재전송 없이 host 갱신을 따른다.
+- 같은 active ID의 순서 동기화는 탭/terminal에 focus를 요청하지 않으며 ConPTY resize/reset을 유발하지
+  않아야 한다. 현재 renderer `activateSession`의 `fitSession(nextEntry, true)` 경로에 그대로 연결하면
+  이 조건을 깨뜨릴 수 있으므로 renderer 담당자가 같은 ID의 정렬 갱신 경로를 구분한다.
+  실제 크기 변경과 기존 사용자 탭 선택의 fit/focus 정책은 유지한다. 취소 중 탭이 닫혔다면 host의
+  현재 active/focus 대상을 따른다; 이미 사라진 ID로 focus를 복원하지 않는다.
+
+## 공통 검증 자료와 소비 방법
+
+정본은 [cases.json](../../tests/Starboard.Modules.Terminal.Tests/Fixtures/tab-drag-reorder/cases.json)이다.
+`states`의 각 상태는 전체 ordered `sessions`(ID/generation), active ID, renderer ready/instance를 가진다.
+각 case의 `hostState`는 **처리 시점** 상태, `dragState`는 renderer의 **시작 시점** 상태다.
+`message`는 보정 없이 그대로 직렬화할 wire 입력이며 취소/클릭에는 null이다. `rendererAction`은
+`drop`, `click`, `cancel:<원인>`이며 malformed host 입력은 `not-generated`(renderer가 생성하지 않음)다.
+runtime 기대값은 `expected.parseAccepted/result/reason/order`,
+`workspaceChangedCount/resync`; renderer 기대값은 `rendererOutcome/sendCount`다. 모든 case에서 현재
+active ID와 host의 ID별 generation·metadata·세션 객체는 보존한다. `persistenceModes: [false, true]`는
+두 설정에서 실행하라는 뜻이며 새 설정 항목이 아니다.
+`legacyMoves`는 기존 version 2 `move-session` 좌우 요청과 끝 위치의 무변경 기대값이며 runtime 회귀
+테스트에서 함께 읽는다. 기존 좌우 이동에 드래그의 필수 필드나 새로운 거절 재동기화 정책을 강제하지 않는다.
+
+- runtime 담당자: 기존 `RendererProtocolTests`, registry/coordinator 테스트에서 `System.Text.Json`으로
+  같은 JSON을 읽는다. invalid message는 실제 parser를, 나머지는 host lifetime guard와 coordinator의
+  실제 이동 경로를 검증한다. source만 있는 세션 재시작뿐 아니라 전체 startOrder 비교를 검증한다.
+  `workspaceChangedCount`를 관찰하고 applied의 ID별 session/PID 보존, no-op/거절의 무변경을 확인한다.
+  opt-in/off 테스트는 기존 workspace 저장 mock에서 실제 debounce를 기다려 저장 off=0, on=지원되는
+  구성의 최신 순서 저장을 검증한다. fixture의 event 수를 물리 파일 쓰기 횟수로 간주하지 않는다.
+- C# fixture 탐색: `RendererDistributionTests.FindSolutionRoot`와 같은 solution-root 탐색 후
+  `tests/Starboard.Modules.Terminal.Tests/Fixtures/tab-drag-reorder/cases.json`을 읽는다. 작업 디렉터리나
+  개인 절대 경로에 의존하지 않는다. csproj copy 설정이나 package/public API 변경 없이 소비할 수 있다.
+- renderer 담당자: 기존 `Renderer/test/*.test.mjs` 방식의 Node 정책 테스트에서
+  `new URL("../../../../../../tests/Starboard.Modules.Terminal.Tests/Fixtures/tab-drag-reorder/cases.json", import.meta.url)`로
+  동일 파일을 읽는다. test 파일은 기존 `Presentation/Renderer/test/`에 둔다. 시작 상태로 순수 정책을
+  초기화하고 처리 상태를 입력한 후 click/cancel/drop을 실행해 실제 `sendCount`와 payload를 검증한다.
+  stale host 사례에서 renderer는 취소하되 runtime 테스트는 이미 전송돼 늦게 도착한 `message`를 검증한다.
+  JSON의 기대값이나 정렬 계산을 복사한 대체 구현으로 제품 테스트를 통과시키지 않는다.
+- [validate-fixtures.test.mjs](../../tests/Starboard.Modules.Terminal.Tests/Fixtures/tab-drag-reorder/validate-fixtures.test.mjs)는
+  fixture 자체의 구조·ID·순열·필수 사례·기대값 모순을 검사한다. **제품 구현 테스트가 아니다.**
+  이 Task에서 실행할 좁은 검증은 다음이며 이후 두 구현은 같은 자료를 읽는 실제 테스트를 추가한다.
+
+```powershell
+node tests/Starboard.Modules.Terminal.Tests/Fixtures/tab-drag-reorder/validate-fixtures.test.mjs
+git diff --check
+```
+
+fixture는 정상 앞/뒤/중간·2/8탭, 비활성 이동, 동일 위치, 취소/클릭/1탭, 순서 변경 경쟁·재전송,
+source/target 소실·자기 대상, source/다른 탭 generation 변경, renderer 교체/부재, malformed 입력을 포함한다.
+이 contract Task는 계획·fixture만 바꾸므로 solution build/test, WebView2 drag, persistence 실제 저장은
+수행하지 않는다. 제품 구현과 실제 UI 인수 결과는 후속 Task에서 별도로 기록한다.
 
 ## 범위와 영향 파일
 
@@ -76,6 +232,7 @@
 - `src/Modules/Starboard.Modules.Terminal/Presentation/Renderer/dist/**`
 - `tests/Starboard.Modules.Terminal.Tests/TerminalTabRegistryTests.cs`, `TerminalSessionCoordinatorTests.cs`,
   `RendererProtocolTests.cs`, `RendererDistributionTests.cs`, 필요한 workspace 저장·복원 테스트
+- `tests/Starboard.Modules.Terminal.Tests/Fixtures/tab-drag-reorder/**` (공통 계약 입력과 자료 검증)
 - 이 계획, `docs/plans/README.md`, `docs/test-plan.md`와 구현된 사용법을 설명하는 `README.md`
 
 제외: 분할 화면, 탭 분리/별도 창, 창 위치 이동, 다른 앱으로 drag, shell 상태 복제, 저장한 탭 목록의
@@ -97,7 +254,7 @@ contract 완료 후 runtime과 renderer는 확정된 메시지 fixture를 공유
 
 ## 구현 단계
 
-- [ ] `tab-drag-reorder-contract`: 최신 main/dirty 상태를 확인하고 내부 요청·취소 계약과 fixture를 고정한다.
+- [x] `tab-drag-reorder-contract`: 할당된 worktree/dirty 상태를 확인하고 내부 요청·취소 계약과 fixture를 고정한다.
 - [ ] `tab-drag-reorder-runtime`: 순서 변경 및 stale/no-op 처리, 저장·복원 연결과 C# 자동 검증을 구현한다.
 - [ ] `tab-drag-reorder-renderer`: drag UI·자동 스크롤·수명 정리, Node 정책 검증과 source/dist를 구현한다.
 - [ ] `tab-drag-reorder-integration`: 전체 자동 검증, 구현 상태·사용법·수동 검증 matrix를 갱신한다.
@@ -134,4 +291,16 @@ git diff --check
 ## 진행 기록
 
 - 2026-10-13: 현재 코드의 좌우 이동 경로와 드래그 미지원 상태를 확인하고 기획·Task·병렬 소유권을 작성했다.
-- 구현·자동 테스트·실제 WebView2 검증은 아직 착수하지 않았다. 완료 요약은 구현 후 추가한다.
+- 2026-10-13 contract: 할당된 clean worktree(`4ea3727`)에서 기존 parser/registry/coordinator/View/renderer와
+  persistence 경로를 조사했다. version 2 `reorder-session`, 전체 ID·generation startOrder 비교,
+  취소·거절의 현재 상태 동기화 및 공통 fixture 소비 방법을 확정했다. 제품 구현·실제 WebView2 검증은 미착수다.
+- 계약 자료 검증: Node v24.18.0에서 fixture 검사를 직접 실행했다. 기본 `node --test`는 이 sandbox의
+  child process `spawn EPERM`으로 시작하지 못해, child process를 만들지 않는 위 직접 실행 명령을 사용한다.
+  이는 자료 정합성 검증이며 C# parser/coordinator, renderer 정책 또는 실제 WebView2의 통과 결과가 아니다.
+
+## 계약 Task 완료 요약
+
+- 메시지 필드·검증 우선순위·원자적 이동·취소/거절 resync와 기존 좌우 이동/opt-in 저장 보존 규칙을 확정했다.
+- `cases.json`에 공통 사례 50건과 좌우 이동 회귀 4건을 추가하고 C#/Node의 같은 파일 소비 경로를 확인했다.
+- fixture 정합성 검사 **56 passed**, 문서 링크·renderer 상대 경로 확인과 `git diff --check` 통과.
+  지정된 계획·fixture 경로만 변경했다. 제품 구현·solution build/test·실제 WebView2 검증은 후속 Task 범위다.
