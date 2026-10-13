@@ -33,10 +33,28 @@ const bundle = await build({
 });
 
 export function createHarness() {
-  const frames = [];
+  const frames = new Map();
+  let nextFrame = 1;
+  const captures = new Map();
+  let now = 1000;
   const posted = [];
   let listener;
-  const document = { activeElement: null, hasFocus: () => true, addEventListener() {} };
+  function eventTarget(target) {
+    target.listeners = new Map();
+    target.addEventListener = (type, callback, capture = false) => {
+      const listeners = target.listeners.get(type) ?? [];
+      listeners.push({ callback, capture: capture === true });
+      target.listeners.set(type, listeners);
+      target.events?.set(type, callback);
+    };
+    target.removeEventListener = (type, callback, capture = false) => {
+      target.listeners.set(type, (target.listeners.get(type) ?? []).filter((item) =>
+        item.callback !== callback || item.capture !== (capture === true)));
+    };
+    return target;
+  }
+  const document = eventTarget({ activeElement: null, hidden: false, hasFocus: () => true });
+  const window = eventTarget({});
 
   class Element {
     children = [];
@@ -50,10 +68,24 @@ export function createHarness() {
     focusCount = 0;
     scrollCount = 0;
     events = new Map();
+    scrollLeft = 0;
+    scrollWidth = 800;
+
+    constructor() { eventTarget(this); }
 
     get isConnected() { return this === document.body || this.parentElement?.isConnected === true; }
     contains(node) { return node === this || this.children.some((child) => child.contains(node)); }
-    addEventListener(type, callback) { this.events.set(type, callback); }
+    setPointerCapture(id) { captures.set(id, this); }
+    hasPointerCapture(id) { return captures.get(id) === this; }
+    releasePointerCapture(id) { captures.delete(id); dispatch("lostpointercapture", this, { pointerId: id }); }
+    getBoundingClientRect() {
+      if (this.rect !== undefined) { return this.rect; }
+      const index = this.parentElement?.children.indexOf(this) ?? 0;
+      const left = this.parentElement === nodes.get("#session-tabs")
+        ? index * 100 - this.parentElement.scrollLeft : 0;
+      const width = this.parentElement === nodes.get("#session-tabs") ? 100 : this.clientWidth;
+      return { left, right: left + width, top: 0, bottom: 31, width, height: 31 };
+    }
     setAttribute(name, value) { this.attributes.set(name, value); }
     getAttribute(name) { return this.attributes.get(name); }
     append(...nodes) { for (const node of nodes) { this.insertBefore(node, null); } }
@@ -73,6 +105,9 @@ export function createHarness() {
     }
     focus(options) { this.focusCount++; this.lastFocusOptions = options; document.activeElement = this; }
     scrollIntoView() { this.scrollCount++; }
+    showModal() { this.open = true; }
+    close() { this.open = false; dispatch("close", this); }
+    select() { this.selected = true; }
   }
 
   document.body = new Element();
@@ -83,6 +118,35 @@ export function createHarness() {
   for (const node of nodes.values()) { document.body.append(node); }
   document.querySelector = (selector) => nodes.get(selector);
   document.activeElement = document.body;
+
+  function dispatch(type, target = document, properties = {}) {
+    const event = { type, target, button: 0, buttons: 1, pointerId: 1, pointerType: "mouse",
+      isPrimary: true, clientX: 20, clientY: 10, detail: 1, defaultPrevented: false,
+      preventDefault() { this.defaultPrevented = true; },
+      stopPropagation() { this.stopped = true; },
+      stopImmediatePropagation() { this.stopped = true; this.immediate = true; }, ...properties };
+    if (["pointermove", "pointerup", "pointercancel"].includes(type) && captures.has(event.pointerId)) {
+      target = captures.get(event.pointerId);
+      event.target = target;
+    }
+    const path = [];
+    for (let node = target; node != null && node !== document && node !== window; node = node.parentElement) {
+      path.push(node);
+    }
+    if (target !== window) { path.push(document); }
+    path.push(window);
+    function invoke(node, capture) {
+      for (const item of [...(node.listeners.get(type) ?? [])]) {
+        if (item.capture === capture && event.immediate !== true) { item.callback(event); }
+      }
+    }
+    for (const node of [...path].reverse()) { if (event.stopped !== true) { invoke(node, true); } }
+    for (const node of path) { if (event.stopped !== true) { invoke(node, false); } }
+    if (type === "pointerdown" && event.defaultPrevented === false && target !== document && target !== window) {
+      target.focus();
+    }
+    return event;
+  }
 
   class Terminal {
     options = {};
@@ -106,18 +170,19 @@ export function createHarness() {
   class SearchAddon { onDidChangeResults() {} dispose() {} clearDecorations() {} }
   const context = vm.createContext({
     document,
-    window: {
+    window: Object.assign(window, {
       matchMedia: () => ({ matches: false, addEventListener() {} }),
-      addEventListener() {},
       chrome: { webview: {
         addEventListener: (_type, callback) => { listener = callback; },
         postMessage: (message) => posted.push(message),
       } },
-    },
+    }),
     crypto: { randomUUID: () => "10000000-0000-0000-0000-000000000001" },
     HTMLElement: Element,
     ResizeObserver: class { observe() {} },
-    requestAnimationFrame: (callback) => frames.push(callback),
+    Date: class extends Date { static now() { return now; } },
+    requestAnimationFrame: (callback) => { const id = nextFrame++; frames.set(id, callback); return id; },
+    cancelAnimationFrame: (id) => frames.delete(id),
     getComputedStyle: () => document.documentElement.style,
     TestTerminal: Terminal,
     TestFitAddon: FitAddon,
@@ -128,9 +193,16 @@ export function createHarness() {
 
   return {
     api: context.rendererTest,
-    document, nodes, posted,
+    document, window, nodes, posted, dispatch, captures,
+    advanceTime: (milliseconds) => { now += milliseconds; },
     deliver: (message) => listener({ data: message }),
-    flushFrames: () => { while (frames.length > 0) { frames.shift()(); } },
+    frameCount: () => frames.size,
+    stepFrame: () => { const entry = frames.entries().next().value;
+      if (entry !== undefined) { frames.delete(entry[0]); entry[1](); } },
+    flushFrames: () => { let count = 0; while (frames.size > 0) {
+      if (++count > 1000) { throw new Error("Animation did not settle"); }
+      const [id, callback] = frames.entries().next().value; frames.delete(id); callback();
+    } },
     startOrder: () => {
       const order = context.rendererTest.workspaceSync.getDragStartOrder();
       return order === undefined ? undefined : JSON.parse(JSON.stringify(order));

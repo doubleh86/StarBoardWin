@@ -2,9 +2,10 @@
 
 ## 현재 상태
 
-**계약·공통 fixture 확정, workspace 동기화 보충 구현 완료.** 2026-10-13 사용자 요청으로 추가한 독립 실행 계획이다.
-이번 Task는 `bd6e89f`의 runtime 구현 위에 동기화 경계와 포커스 보존만 보완한다. 마우스 drag UI와
-전체 기능 인수는 별도 renderer/integration Task 범위다.
+**계약·공통 fixture, runtime·workspace 동기화 보충 및 renderer 구현 완료.**
+2026-10-13 사용자 요청으로 추가한 독립 실행 계획이다. `bd6e89f`의 runtime 구현 위에
+동기화 경계와 포커스 보존을 보완했고, renderer Task에서 마우스 drag UI를 구현했다.
+전체 기능 인수와 실제 WebView2 검증은 후속 integration Task 범위다.
 계약 Task에서는 이 계획과 테스트 fixture만 변경하며 제품 코드, renderer 배포 asset, 앱 버전과 바탕화면 배포를 변경하지 않는다.
 오케스트레이터는 아래 Task를 새 구현 대상으로 계획하되 기존 완료 기능을 다시 구현하지 않는다.
 
@@ -278,7 +279,7 @@ contract 완료 후 runtime과 renderer는 확정된 메시지 fixture를 공유
 
 - [x] `tab-drag-reorder-contract`: 할당된 worktree/dirty 상태를 확인하고 내부 요청·취소 계약과 fixture를 고정한다.
 - [x] `tab-drag-reorder-runtime`: 기존 순서 변경 및 stale/no-op·저장 경로를 보존하고 동기화·세션 보존 회귀 검증을 보완했다.
-- [ ] `tab-drag-reorder-renderer`: drag UI·자동 스크롤·수명 정리, Node 정책 검증과 source/dist를 구현한다.
+- [x] `tab-drag-reorder-renderer`: drag UI·자동 스크롤·수명 정리, Node 이벤트 검증과 source/dist를 구현한다.
 - [ ] `tab-drag-reorder-integration`: 전체 자동 검증, 구현 상태·사용법·수동 검증 matrix를 갱신한다.
 
 ## 검증 방법
@@ -311,6 +312,12 @@ git diff --check
 실제 drag 화면을 수행하지 못했다면 자동 검증 완료와 제품 수동 인수 미완료를 분리해 보고한다.
 
 ## 진행 기록
+
+- 2026-10-13 renderer 착수: 선행 `WorkspaceSync.getDragStartOrder()`와 기존 Node renderer harness를
+  재사용한다. tab button의 왼쪽 mouse pointer만 후보로 받고 6 CSS px 초과 시 삽입 표시를 켠다.
+  capture·document listener·제한된 tab-list RAF scroll을 controller가 소유하고 종료 시 정리한다.
+  동기화 begin 목록과 개별 upsert/remove의 ID·순서·generation 변경에 취소를 연결한다.
+  기존 활성화·focus 보존·workspace 동기화는 재구현하지 않는다. 실제 WebView2/IME/DPI는 manual로 남긴다.
 
 - 2026-10-13: 현재 코드의 좌우 이동 경로와 드래그 미지원 상태를 확인하고 기획·Task·병렬 소유권을 작성했다.
 - 2026-10-13 contract: 할당된 clean worktree(`4ea3727`)에서 기존 parser/registry/coordinator/View/renderer와
@@ -385,3 +392,41 @@ git diff --check
 - 이번 검증은 C# coordinator·protocol 및 fake shell/store 회귀 검증이다. 실제 TerminalView/WebView2
   메시지 dispatch, mouse drag·focus·IME·DPI와 실제 shell PID/scrollback 인수는 **Not run (manual)**로
   유지한다. renderer/integration Task 완료 상태는 변경하지 않으며 commit/push/배포는 수행하지 않았다.
+
+## renderer Task 완료 요약 — 2026-10-13
+
+- 기존 클릭·좌우 이동 메뉴만 있던 renderer에 `src/tabDragReorder.ts` controller를 추가했다.
+  2~8개 탭의 왼쪽 primary mouse button에서 완전한 시작 순서를 받아 움직임이 **6 CSS px 초과**일
+  때 정렬을 시작한다. 탭 전체 영역의 중점을 기준으로 앞/뒤 삽입 표시를 하고 유효한 release에서
+  기존 version 2 `reorder-session`을 한 번 보낸다. 자체 순서·active ID·terminal 객체를 변경하지 않는다.
+- pointerdown의 기본 focus 이동을 막아 비활성 탭을 끌어도 keyboard focus가 유지된다.
+  실제 drag 뒤 tab button의 mouse click/dblclick은 500 ms 동안 억제한다. keyboard click(detail 0),
+  close/new/saved menu/높이 손잡이는 이 억제 범위 밖이다. 임계값 전 클릭과 일반 더블클릭·이름 편집
+  IME composition 경로는 유지한다. 터미널 본문 pointer/selection, 외부 경로 drop handler는 변경하지 않았다.
+- tab-list의 안쪽 양끝 최대 24 CSS px에서 list.scrollLeft만 RAF당 최대 8 CSS px 이동한다.
+  스크롤 범위를 clamp하고 target/표시 좌표를 다시 계산한다. list 밖에서는 자동 스크롤하지 않는다.
+- Escape, pointercancel/lost capture, 밖 release, 왼쪽 button 해제, blur/hidden/pagehide와 ID·순서·
+  generation 변경은 요청 없이 capture·임시 listener·marker·RAF를 정리한다. pagehide는 controller의
+  상시 listener와 marker도 해제한다. 같은 목록의 sync begin/complete, 이름·상태·배경 출력은 유지한다.
+  선행 WorkspaceSync와 focus 보존을 그대로 재사용하고 구조 변경 관찰만 연결했다.
+- 기존 npm test 실행 경로와 rendererHarness를 확장했다. 공통 `cases.json`에서 renderer gesture가
+  있는 **32개 사례**를 읽어 production listener의 pointer/keyboard/click 이벤트와 실제 전송 payload를
+  검증한다. malformed host-only 입력은 기존 계약/runtime suite가 소유한다. 추가 회귀는 모든 2~8개
+  탭 수, 임계값, keyboard/terminal focus, 일반 doubleclick·IME, 클릭 억제 만료와 close 보존,
+  양방향 overflow, 취소·수명 listener/capture/RAF 정리를 검증한다. layout/xterm/clock만 simulation이다.
+  fixture, package.json 및 dependency는 수정하지 않았다.
+- 검증 **PASS**: 지정 `npm ci`, `npm test` **59 passed / 0 skipped**, `npm run build`;
+  재생성한 app.js/app.css와 동일 esbuild 옵션의 메모리 출력을 바이트 단위로 비교해 source/dist 일치를 확인했다.
+  지정 .NET SDK(`C:\Users\round1studio_14\.dotnet\dotnet.exe`)의 solution restore/Debug build
+  **경고 0 / 오류 0**, RendererDistributionTests **24 passed**, 전체 Debug solution test
+  **566 passed / 0 skipped**(Terminal 336, DesktopIntegration 112, Preferences 37, Architecture 13,
+  Integration 68), C# WorkingTree 정렬 검사와 `git diff --check`를 완료했다.
+- 검증 중 기본 sandbox의 esbuild spawn EPERM과 출력 없는 SDK restore 실패는 같은 명령을 허용된
+  환경에서 실행해 통과했다. 첫 전체 suite의 WPF foreground 보존 테스트 한 건은 renderer를 로드하지
+  않는 test에서 foreground HWND 불일치로 실패했고, 코드 변경 없이 단독 및 전체 재실행은 통과했다.
+  데스크톱 focus 변동 가능성은 남기며 첫 실패를 성공 횟수로 계산하지 않는다.
+- 실제 WebView2의 native pointer capture·mouse click 타이밍·overflow 시각 결과, 외부 파일 drop,
+  본문 selection·한글 IME와 mixed DPI/잠금 해제는 **Not run (manual)**이다.
+  후속 integration에서 비활성 탭을 양방향으로 끌고 Escape/밖 release/재시작·탭 추가로 취소한 뒤,
+  close/+/▾/손잡이, 이름 편집 및 본문 IME/selection/파일 drop을 함께 확인한다.
+  이 Task는 앱 실행·설치·배포·commit을 수행하지 않았다.

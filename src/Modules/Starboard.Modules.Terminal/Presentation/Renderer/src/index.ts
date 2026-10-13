@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
 import { shouldApplyCurrentDirectory } from "./savedTabDirectoryPolicy";
 import { WorkspaceSync, parseWorkspaceSyncMessage, type WorkspaceSyncMessage, type SessionOrder } from "./workspaceSync";
+import { TabDragReorder } from "./tabDragReorder";
 
 const ProtocolVersion = 2;
 const MaximumTabs = 8;
@@ -41,6 +42,7 @@ type SessionRendererMessageType =
   | "restart-session"
   | "rename-session"
   | "move-session"
+  | "reorder-session"
   | "set-starting-directory"
   | "confirmation-response"
   | "session-error"
@@ -318,6 +320,16 @@ const workspace = getRequiredElement<HTMLElement>("#terminal-workspace");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const sessions = new Map<string, SessionEntry>();
 const workspaceSync = new WorkspaceSync();
+const tabDragReorder = new TabDragReorder(tabList,
+  () => orderedSessions().map((entry) => ({ id: entry.id, button: entry.tabButton, item: entry.tabItem })),
+  () => workspaceSync.getDragStartOrder(),
+  (source, target, startOrder) => postSession("reorder-session", source.sessionId, {
+    rendererInstanceId: RendererInstanceId,
+    sessionGeneration: source.sessionGeneration,
+    targetSessionId: target.targetSessionId,
+    position: target.position,
+    startOrder,
+  }));
 let activeSessionId: string | undefined;
 let currentAppearance: AppearancePayload | undefined;
 let canAddSession = true;
@@ -2086,6 +2098,7 @@ function upsertSession(sessionId: string, payload: SessionPayload): void {
   entry.closeButton.setAttribute("aria-label", `${payload.name} 탭 닫기`);
   updateSessionStatus(entry);
   workspaceSync.observe(currentWorkspaceOrder());
+  tabDragReorder.observeOrder(currentWorkspaceOrder());
   renderTabs();
 }
 
@@ -2315,6 +2328,7 @@ function removeSession(sessionId: string): void {
   }
 
   workspaceSync.observe(currentWorkspaceOrder());
+  tabDragReorder.observeOrder(currentWorkspaceOrder());
   renderTabs();
 }
 
@@ -2528,6 +2542,7 @@ function handleHostMessage(value: unknown): void {
   }
 
   if (message.type === "workspace-sync-begin") {
+    tabDragReorder.observeOrder(message.payload.order);
     workspaceSync.begin(message.payload);
     return;
   }

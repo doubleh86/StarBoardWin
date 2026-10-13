@@ -408,6 +408,23 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(webLinksLicense, "Permission is hereby granted, free of charge");
     }
 
+    [TestMethod]
+    public void BundledRendererContainsTabDragReorderAndInsertionMarker()
+    {
+        var script = ReadRendererAsset("app.js");
+        var styles = ReadRendererAsset("app.css");
+
+        StringAssert.Contains(script, "reorder-session");
+        StringAssert.Contains(script, "startOrder");
+        StringAssert.Contains(script, "setPointerCapture");
+        StringAssert.Contains(script, "lostpointercapture");
+        StringAssert.Contains(script, "cancelAnimationFrame");
+        StringAssert.Contains(script, "pagehide");
+        StringAssert.Contains(styles, ".tab-insertion-marker");
+        StringAssert.Contains(styles, "pointer-events:none");
+        StringAssert.Contains(styles, ".tab-list[data-reordering=true] .tab-button");
+    }
+
     private static string ReadRendererAsset(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Renderer", fileName);

@@ -64,6 +64,19 @@ button:focus-visible {
   height: 31px;
 }
 
+.tab-insertion-marker {
+  position: fixed;
+  z-index: 20;
+  width: 2px;
+  background: var(--color-accent);
+  pointer-events: none;
+}
+
+.tab-list[data-reordering="true"] .tab-button {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .tab-strip-spacer::after {
   position: absolute;
   top: 50%;
