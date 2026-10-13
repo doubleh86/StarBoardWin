@@ -9,6 +9,8 @@ internal static class RendererProtocol
     private static readonly HashSet<string> _globalHostMessageTypes =
     [
         "initialize",
+        "workspace-sync-begin",
+        "workspace-sync-complete",
         "apply-appearance",
         "workspace-save-status",
         "saved-tabs-snapshot",
@@ -70,6 +72,29 @@ internal static class RendererProtocol
                                             payload,
                                         },
                                         JsonSerializerOptions.Web);
+    }
+
+    internal static string SerializeWorkspaceSyncMessage(string type, TerminalRendererWorkspaceSnapshot snapshot)
+    {
+        if (type != "workspace-sync-begin" && type != "workspace-sync-complete")
+        {
+            throw new ArgumentException("The message must delimit a workspace synchronization.", nameof(type));
+        }
+
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var order = snapshot.Order.Select(session => new
+        {
+            sessionId = session.SessionId.ToString("N"),
+            sessionGeneration = session.Generation,
+        }).ToArray();
+
+        var payload = new
+        {
+            order,
+            activeSessionId = snapshot.Workspace.ActiveSessionId?.ToString(),
+        };
+
+        return SerializeGlobalMessage(type, payload);
     }
 
     internal static string SerializeSavedTabsSnapshot(TerminalSavedTabsSnapshot snapshot, int runningTabCount)

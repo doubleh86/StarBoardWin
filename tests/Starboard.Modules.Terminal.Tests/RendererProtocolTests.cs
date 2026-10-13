@@ -11,6 +11,69 @@ public sealed class RendererProtocolTests
     private static readonly TerminalSessionId SessionId = new(Guid.Parse("10000000-0000-0000-0000-000000000001"));
 
     [TestMethod]
+    [DataRow("workspace-sync-begin")]
+    [DataRow("workspace-sync-complete")]
+    public void SerializeWorkspaceSyncMessagePreservesCompleteSnapshotOrderAndGenerations(string type)
+    {
+        var registry = new TerminalTabRegistry();
+        var first = registry.Add("C:\\Work");
+        var second = registry.Add("C:\\Other");
+        var snapshot = new TerminalRendererWorkspaceSnapshot(registry.CreateSnapshot(),
+                                                             [new TerminalSessionReference(first.SessionId.Value, 3),
+                                                              new TerminalSessionReference(second.SessionId.Value, 7)]);
+
+        var json = RendererProtocol.SerializeWorkspaceSyncMessage(type, snapshot);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var payload = root.GetProperty("payload");
+        var order = payload.GetProperty("order");
+
+        Assert.AreEqual(2, root.GetProperty("version").GetInt32());
+        Assert.AreEqual(type, root.GetProperty("type").GetString());
+        Assert.IsFalse(root.TryGetProperty("sessionId", out _));
+        Assert.AreEqual(second.SessionId.ToString(), payload.GetProperty("activeSessionId").GetString());
+        Assert.AreEqual(2, order.GetArrayLength());
+        Assert.AreEqual(first.SessionId.ToString(), order[0].GetProperty("sessionId").GetString());
+        Assert.AreEqual(3, order[0].GetProperty("sessionGeneration").GetInt64());
+        Assert.AreEqual(second.SessionId.ToString(), order[1].GetProperty("sessionId").GetString());
+        Assert.AreEqual(7, order[1].GetProperty("sessionGeneration").GetInt64());
+    }
+
+    [TestMethod]
+    public void SerializeWorkspaceSyncMessageEmptyWorkspacePreservesEmptyOrderAndNullActiveSession()
+    {
+        var snapshot = new TerminalRendererWorkspaceSnapshot(new TerminalWorkspaceSnapshot([], null), []);
+        var begin = RendererProtocol.SerializeWorkspaceSyncMessage("workspace-sync-begin", snapshot);
+        var complete = RendererProtocol.SerializeWorkspaceSyncMessage("workspace-sync-complete", snapshot);
+        using var beginDocument = JsonDocument.Parse(begin);
+        using var completeDocument = JsonDocument.Parse(complete);
+        var payload = completeDocument.RootElement.GetProperty("payload");
+
+        Assert.AreEqual(0, payload.GetProperty("order").GetArrayLength());
+        Assert.AreEqual(JsonValueKind.Null, payload.GetProperty("activeSessionId").ValueKind);
+        Assert.AreEqual(beginDocument.RootElement.GetProperty("payload").GetRawText(), payload.GetRawText());
+    }
+
+    [TestMethod]
+    [DataRow("workspace-sync-begin")]
+    [DataRow("workspace-sync-complete")]
+    public void SerializeWorkspaceSyncMessageRejectsSessionScopeAndRendererDirection(string type)
+    {
+        Assert.ThrowsExactly<ArgumentException>(() => RendererProtocol.SerializeSessionMessage(type, SessionId, new { }));
+        var json = RendererProtocol.SerializeGlobalMessage(type, new { order = Array.Empty<object>(), activeSessionId = (string?)null });
+
+        Assert.IsFalse(RendererProtocol.TryParse(json, out _));
+    }
+
+    [TestMethod]
+    public void SerializeWorkspaceSyncMessageRejectsUnrelatedType()
+    {
+        var snapshot = new TerminalRendererWorkspaceSnapshot(new TerminalWorkspaceSnapshot([], null), []);
+
+        Assert.ThrowsExactly<ArgumentException>(() => RendererProtocol.SerializeWorkspaceSyncMessage("initialize", snapshot));
+    }
+
+    [TestMethod]
     public void SavedTabDirectoryRequestRequiresRendererSessionAndRequestIdentity()
     {
         const string Valid = """

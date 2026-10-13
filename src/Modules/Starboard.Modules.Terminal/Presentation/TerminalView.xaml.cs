@@ -1722,6 +1722,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         var rendererWorkspace = sessionCoordinator.RendererWorkspace;
         // The supplied snapshot can predate a restart; refresh order and generations under one coordinator lock.
         snapshot = rendererWorkspace.Workspace;
+        // WebView messages are ordered, but each upsert is observable before the full snapshot arrives.
+        PostRendererMessage(RendererProtocol.SerializeWorkspaceSyncMessage("workspace-sync-begin", rendererWorkspace));
         var currentSessionIds = snapshot.Tabs
             .Select(tab => tab.SessionId)
             .ToHashSet();
@@ -1776,6 +1778,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         if (rendererFailed == false)
         {
+            PostRendererMessage(RendererProtocol.SerializeWorkspaceSyncMessage("workspace-sync-complete", rendererWorkspace));
             rendererSessionIds.Clear();
             rendererSessionIds.UnionWith(currentSessionIds);
             SyncNewOutputState(sessionCoordinator.NewOutputState);

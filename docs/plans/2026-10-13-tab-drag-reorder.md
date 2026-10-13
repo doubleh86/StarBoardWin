@@ -2,7 +2,9 @@
 
 ## 현재 상태
 
-**계약·공통 fixture 확정, 제품 구현 미착수.** 2026-10-13 사용자 요청으로 추가한 독립 실행 계획이다.
+**계약·공통 fixture 확정, workspace 동기화 보충 구현 완료.** 2026-10-13 사용자 요청으로 추가한 독립 실행 계획이다.
+이번 Task는 `bd6e89f`의 runtime 구현 위에 동기화 경계와 포커스 보존만 보완한다. 마우스 drag UI와
+전체 기능 인수는 별도 renderer/integration Task 범위다.
 계약 Task에서는 이 계획과 테스트 fixture만 변경하며 제품 코드, renderer 배포 asset, 앱 버전과 바탕화면 배포를 변경하지 않는다.
 오케스트레이터는 아래 Task를 새 구현 대상으로 계획하되 기존 완료 기능을 다시 구현하지 않는다.
 
@@ -167,9 +169,9 @@ renderer는 유효한 drop당 한 번만 전송하고 자동 재시도하지 않
 - 기존 parser가 모든 malformed 요청을 버리는 경로는 유지한다. 다만 정상 version/type envelope로
   식별되는 `reorder-session`의 payload 파싱 실패는 ready인 현재 renderer를 동기화한다.
   틀린 version/type/root 형태는 기존처럼 무시한다(`none`). command/output 내용을 log에 넣지 않는다.
-- `session-upsert`가 차례로 들어오는 중간 상태는 drag를 보수적으로 취소할 수 있다. batch 끝의 기존
-  `activate-session`까지 최신 order로 맞추며 이전 목록을 재전송하지 않는다. 별도 ack/request ID나
-  host order message는 추가하지 않는다. 드래그는 요청 후 재전송 없이 host 갱신을 따른다.
+- `session-upsert`의 중간 상태는 drag 시작 목록으로 사용하지 않는다. 기존 `activate-session`과
+  최신 order를 batch 완료 시 함께 적용한다. 아래 workspace-sync 보충 계약에 따라 host의 완전한
+  목록을 검증하며, 별도 ack/request ID나 자동 재시도는 추가하지 않는다.
 - 같은 active ID의 순서 동기화는 탭/terminal에 focus를 요청하지 않으며 ConPTY resize/reset을 유발하지
   않아야 한다. 현재 renderer `activateSession`의 `fitSession(nextEntry, true)` 경로에 그대로 연결하면
   이 조건을 깨뜨릴 수 있으므로 renderer 담당자가 같은 ID의 정렬 갱신 경로를 구분한다.
@@ -177,6 +179,26 @@ renderer는 유효한 drop당 한 번만 전송하고 자동 재시도하지 않
   현재 active/focus 대상을 따른다; 이미 사라진 ID로 focus를 복원하지 않는다.
 
 ## 공통 검증 자료와 소비 방법
+
+### workspace-sync 보충 계약 — 2026-10-13
+
+- `tab-drag-reorder-workspace-sync`는 기존 coordinator의 `RendererWorkspace` snapshot과
+  `SyncWorkspace`를 재사용한다. version 2 global `workspace-sync-begin` / `workspace-sync-complete`를
+  기존 remove/upsert/activate 메시지 앞뒤에 보낸다. 두 payload는 같은 snapshot의 전체
+  `order: [{sessionId, sessionGeneration}]`와 `activeSessionId`(빈 workspace는 null)를 가진다.
+- renderer는 begin부터 complete까지 드래그 시작 목록을 제공하지 않는다. complete의 목록·활성 ID가
+  begin과 같고 live entry의 ID·generation·순서가 정확히 일치해야 방어 복사한 전체 시작 목록을 제공한다.
+  중간 DOM 재배치는 보류한다. batch 밖의 추가·삭제·generation·순서 변경도 확정 목록을 무효화하지만
+  출력·이름·상태만 바뀐 메시지는 무효화하지 않는다. 불완전하거나 잘못된 완료는 사용 가능한 목록을 만들지 않는다.
+- 같은 active ID의 정렬·거절 재동기화는 fit/resize/focus를 요청하지 않는다. 재배치로 browser가 탭
+  내부의 기존 키보드 focus를 잃으면 살아 있는 같은 element만 복원한다. terminal pane은 이동하지 않는다.
+  명시적인 사용자 선택·키보드 선택·새 탭·닫기 후 활성화에 대한 기존 focus/fit 정책은 유지한다.
+- 영향 범위는 RendererProtocol, TerminalView, renderer src/test/package.json/dist,
+  RendererProtocolTests/RendererDistributionTests와 이 계획으로 한정한다. 새 public API·설정 schema·의존성은
+  추가하지 않고 완료된 계약 Task와 공통 fixture는 보존한다. Node 동작 테스트로 실제 메시지 처리 및
+  DOM/terminal 모형의 focus·resize를 검증하고, 실제 WebView2 focus/IME는 미검증으로 구분한다.
+- 검증: 지정 npm ci/test/build, solution restore/build/test, C# 정렬 검사와 diff check.
+  이 보충 구현의 완료 근거는 아래 workspace-sync 완료 요약에 기록한다.
 
 정본은 [cases.json](../../tests/Starboard.Modules.Terminal.Tests/Fixtures/tab-drag-reorder/cases.json)이다.
 `states`의 각 상태는 전체 ordered `sessions`(ID/generation), active ID, renderer ready/instance를 가진다.
@@ -304,3 +326,26 @@ git diff --check
 - `cases.json`에 공통 사례 50건과 좌우 이동 회귀 4건을 추가하고 C#/Node의 같은 파일 소비 경로를 확인했다.
 - fixture 정합성 검사 **56 passed**, 문서 링크·renderer 상대 경로 확인과 `git diff --check` 통과.
   지정된 계획·fixture 경로만 변경했다. 제품 구현·solution build/test·실제 WebView2 검증은 후속 Task 범위다.
+
+## workspace-sync Task 완료 요약 — 2026-10-13
+
+- 기존에는 개별 upsert마다 탭을 이동하고 같은 active ID에도 강제 resize를 전송했다. 이제 같은
+  coordinator snapshot의 begin/complete로 전체 ID·generation·order와 active ID를 검증한 뒤
+  탭 DOM과 활성 상태를 확정한다. 초기·부분·잘못된 완료·batch 밖의 구조 변경에서는
+  `WorkspaceSync.getDragStartOrder()`가 undefined를 반환하고, 완료된 목록은 방어 복사한다.
+- 이름·상태·일반 출력 갱신은 구조 변경과 구분한다. 같은 active ID의 정렬/거절 재동기화는
+  terminal 객체·pane·키보드 focus를 유지하며 fit/resize/reset을 요청하지 않는다. 탭 DOM 이동 시
+  기존의 살아 있는 focused element만 복원한다. 사용자 선택·닫기 뒤의 활성화는 기존 정책을 유지한다.
+- source에서 dist를 재생성했다. 새 global 메시지의 C# 직렬화·방향/범위 검증과 host batch 연결을
+  검사하고, production renderer의 WebView message listener를 실제 실행하는 Node 테스트를 추가했다.
+  browser DOM·layout·xterm만 모형이며, 공통 fixture의 상태를 그대로 사용하고 fixture는 변경하지 않았다.
+- 검증 PASS: npm ci (추가 dependency 없음), npm test **18 passed**, npm run build,
+  지정 .NET 10 SDK의 solution restore, Debug build (**0 warnings / 0 errors**),
+  solution test **561 passed / 0 skipped** (Terminal 331, DesktopIntegration 112, Preferences 37,
+  Architecture 13, Integration 68), C# WorkingTree 정렬 검사와 `git diff --check`.
+  먼저 영향받은 Terminal project도 331 passed로 검증했다. 초기 sandbox .NET 실행 및 esbuild spawn
+  EPERM은 승인된 같은 로컬 검증을 권한 확보 후 재실행해 해결했다. analyzer의 테스트 이름 제한과
+  C# continuation 정렬 실패는 기존 규약에 맞게 수정한 뒤 검증했다.
+- 실제 WebView2 mouse drag·focus·IME·DPI는 **Not run (manual)**이다. 이번 결과는 자동 메시지·정책과
+  simulated DOM 검증이며 실제 화면 인수를 대신하지 않는다. 새 public API·설정 schema·shell 생성/재시작
+  경로와 다른 Task의 완료 상태는 변경하지 않았다.

@@ -5,6 +5,7 @@ import { Terminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
 import { shouldApplyCurrentDirectory } from "./savedTabDirectoryPolicy";
+import { WorkspaceSync, parseWorkspaceSyncMessage, type WorkspaceSyncMessage, type SessionOrder } from "./workspaceSync";
 
 const ProtocolVersion = 2;
 const MaximumTabs = 8;
@@ -63,6 +64,8 @@ type GlobalHostMessageType =
   | "initialize"
   | "apply-appearance"
   | "workspace-save-status"
+  | "workspace-sync-begin"
+  | "workspace-sync-complete"
   | "launch-profiles-result"
   | "saved-tabs-snapshot"
   | "saved-tab-operation-result"
@@ -84,6 +87,7 @@ type SessionHostMessageType =
   | "saved-tab-directory-result";
 
 type HostMessage =
+  | WorkspaceSyncMessage
   | {
       version: number;
       type: "initialize" | "apply-appearance";
@@ -313,6 +317,7 @@ const workspace = getRequiredElement<HTMLElement>("#terminal-workspace");
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const sessions = new Map<string, SessionEntry>();
+const workspaceSync = new WorkspaceSync();
 let activeSessionId: string | undefined;
 let currentAppearance: AppearancePayload | undefined;
 let canAddSession = true;
@@ -404,6 +409,10 @@ function parseHostMessage(value: unknown): HostMessage | undefined {
   const payload = getPayload(value);
   if (payload === undefined) {
     return undefined;
+  }
+
+  if (value.type === "workspace-sync-begin" || value.type === "workspace-sync-complete") {
+    return parseWorkspaceSyncMessage(value);
   }
 
   if (value.type === "workspace-save-status") {
@@ -1977,9 +1986,24 @@ function renderTab(entry: SessionEntry): void {
 }
 
 function renderTabs(): void {
-  for (const entry of orderedSessions()) {
+  if (workspaceSync.isPending === true) {
+    return;
+  }
+
+  const focusedElement = document.activeElement;
+  const preserveTabFocus = focusedElement instanceof HTMLElement && tabList.contains(focusedElement);
+  const entries = orderedSessions();
+  for (const [index, entry] of entries.entries()) {
     renderTab(entry);
-    tabList.append(entry.tabItem);
+    if (tabList.children[index] !== entry.tabItem) {
+      tabList.insertBefore(entry.tabItem, tabList.children[index] ?? null);
+    }
+  }
+
+  // Moving an existing tab node may blur its button in WebView2; panes and xterm are never moved.
+  if (preserveTabFocus === true && focusedElement.isConnected === true &&
+      document.activeElement !== focusedElement && document.hasFocus() === true) {
+    focusedElement.focus({ preventScroll: true });
   }
 
   const tabLimitReached = canAddSession === false || sessions.size >= MaximumTabs;
@@ -1987,6 +2011,15 @@ function renderTabs(): void {
   newTabButton.setAttribute("aria-label", tabLimitReached === true
     ? `새 terminal 탭 (실행 탭 한도 ${MaximumTabs}개에 도달하여 사용할 수 없음)`
     : "새 terminal 탭");
+}
+
+function currentWorkspaceOrder(): SessionOrder[] | undefined {
+  const entries = orderedSessions();
+  if (entries.some((entry, index) => entry.order !== index) === true) {
+    return undefined;
+  }
+
+  return entries.map((entry) => ({ sessionId: entry.id, sessionGeneration: entry.sessionGeneration }));
 }
 
 function updateSessionStatus(entry: SessionEntry): void {
@@ -2052,6 +2085,7 @@ function upsertSession(sessionId: string, payload: SessionPayload): void {
   entry.mount.setAttribute("aria-label", `${payload.name} terminal`);
   entry.closeButton.setAttribute("aria-label", `${payload.name} 탭 닫기`);
   updateSessionStatus(entry);
+  workspaceSync.observe(currentWorkspaceOrder());
   renderTabs();
 }
 
@@ -2211,6 +2245,13 @@ function activateSession(sessionId: string): void {
     return;
   }
 
+  const shouldFocusTab = requestedTabFocusSessionId === sessionId;
+  const shouldFocusTerminal =
+    requestedTerminalFocusSessionId === sessionId || focusTerminalOnNextActivation === true;
+  if (activeSessionId === sessionId && shouldFocusTab === false && shouldFocusTerminal === false) {
+    return;
+  }
+
   if (pendingConfirmation !== undefined && pendingConfirmation.sessionId !== sessionId) {
     completeConfirmation("cancelled");
   }
@@ -2229,9 +2270,6 @@ function activateSession(sessionId: string): void {
   }
 
   nextEntry.tabItem.scrollIntoView({ block: "nearest", inline: "nearest" });
-  const shouldFocusTab = requestedTabFocusSessionId === sessionId;
-  const shouldFocusTerminal =
-    requestedTerminalFocusSessionId === sessionId || focusTerminalOnNextActivation === true;
   if (shouldFocusTab === true) {
     requestedTabFocusSessionId = undefined;
   }
@@ -2276,6 +2314,7 @@ function removeSession(sessionId: string): void {
     activeSessionId = undefined;
   }
 
+  workspaceSync.observe(currentWorkspaceOrder());
   renderTabs();
 }
 
@@ -2488,6 +2527,21 @@ function handleHostMessage(value: unknown): void {
     return;
   }
 
+  if (message.type === "workspace-sync-begin") {
+    workspaceSync.begin(message.payload);
+    return;
+  }
+
+  if (message.type === "workspace-sync-complete") {
+    if (workspaceSync.complete(message.payload, currentWorkspaceOrder()) === true) {
+      renderTabs();
+      if (message.payload.activeSessionId !== null) {
+        activateSession(message.payload.activeSessionId);
+      }
+    }
+    return;
+  }
+
   if (message.type === "initialize" || message.type === "apply-appearance") {
     applyAppearance(message.payload);
     return;
@@ -2575,7 +2629,9 @@ function handleHostMessage(value: unknown): void {
   }
 
   if (message.type === "activate-session") {
-    activateSession(sessionId);
+    if (workspaceSync.isPending === false) {
+      activateSession(sessionId);
+    }
     return;
   }
 

@@ -4,6 +4,33 @@ namespace Starboard.Modules.Terminal.Tests;
 public sealed class RendererDistributionTests
 {
     [TestMethod]
+    public void BundledRendererIncludesWorkspaceSyncBoundaryAndHostUsesOneSnapshot()
+    {
+        var script = ReadRendererAsset("app.js");
+        var source = ReadRendererSource("index.ts");
+        var syncSource = ReadRendererSource("workspaceSync.ts");
+        var hostSource = ReadTerminalSource("Presentation", "TerminalView.xaml.cs");
+        var syncStart = hostSource.IndexOf("private void SyncWorkspace(", StringComparison.Ordinal);
+        var syncEnd = hostSource.IndexOf("private void Session_NewOutputStateChanged(", syncStart, StringComparison.Ordinal);
+        var workspaceSource = hostSource[syncStart..syncEnd];
+        var begin = workspaceSource.IndexOf("\"workspace-sync-begin\", rendererWorkspace", StringComparison.Ordinal);
+        var upsert = workspaceSource.IndexOf("\"session-upsert\"", StringComparison.Ordinal);
+        var activate = workspaceSource.IndexOf("\"activate-session\"", StringComparison.Ordinal);
+        var complete = workspaceSource.IndexOf("\"workspace-sync-complete\", rendererWorkspace", StringComparison.Ordinal);
+
+        Assert.IsTrue(begin >= 0 && begin < upsert && upsert < activate && activate < complete);
+        StringAssert.Contains(workspaceSource, "snapshot = rendererWorkspace.Workspace;");
+        StringAssert.Contains(workspaceSource, "sessionGeneration = rendererWorkspace.Order[index].Generation");
+        Assert.IsFalse(workspaceSource.Contains("ResizeSession", StringComparison.Ordinal));
+        StringAssert.Contains(script, "workspace-sync-begin");
+        StringAssert.Contains(script, "workspace-sync-complete");
+        StringAssert.Contains(script, "getDragStartOrder");
+        StringAssert.Contains(source, "workspaceSync.complete(message.payload, currentWorkspaceOrder())");
+        StringAssert.Contains(source, "focusedElement.focus({ preventScroll: true });");
+        StringAssert.Contains(syncSource, "sameOrder(payload.order, liveOrder)");
+    }
+
+    [TestMethod]
     [DataRow("xterm-LICENSE.txt")]
     [DataRow("xterm-addon-fit-LICENSE.txt")]
     [DataRow("xterm-addon-search-LICENSE.txt")]
