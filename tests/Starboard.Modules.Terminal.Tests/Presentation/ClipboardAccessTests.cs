@@ -108,6 +108,49 @@ public sealed class ClipboardAccessTests
     }
 
     [TestMethod]
+    [DataRow(1, false)]
+    [DataRow(3, false)]
+    [DataRow(1, true)]
+    [DataRow(3, true)]
+    public async Task ExecuteAsyncFailedOleCallInvalidatesRequestReturnsStaleWithoutFailureFeedback(int invalidateAttempt,
+                                                                                                    bool shutdown)
+    {
+        var attempts = 0;
+        var delays = 0;
+        var observations = 0;
+        var current = true;
+        using var cancellation = new CancellationTokenSource();
+        var access = new ClipboardAccess(() => { }, _ =>
+        {
+            delays++;
+            return Task.CompletedTask;
+        });
+        var result = await access.ExecuteAsync<string>(() =>
+        {
+            attempts++;
+            if (attempts == invalidateAttempt)
+            {
+                if (shutdown == true)
+                {
+                    cancellation.Cancel();
+                }
+                else
+                {
+                    current = false;
+                }
+            }
+
+            throw BusyException(false);
+        }, () => current, _ => observations++, cancellation.Token);
+
+        Assert.AreEqual(ClipboardAccessStatus.Stale, result.Status);
+        Assert.IsNull(result.Value);
+        Assert.AreEqual(invalidateAttempt, attempts);
+        Assert.AreEqual(invalidateAttempt, observations);
+        Assert.AreEqual(invalidateAttempt - 1, delays);
+    }
+
+    [TestMethod]
     public async Task ExecuteAsyncUnrelatedExceptionsPropagatesWithoutRetry()
     {
         var access = new ClipboardAccess(() => { }, _ => throw new AssertFailedException("Unexpected retry."));

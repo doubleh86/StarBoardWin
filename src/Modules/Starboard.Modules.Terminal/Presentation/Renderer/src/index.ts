@@ -1020,15 +1020,24 @@ function startRename(sessionId: string): void {
 
     if (event.key === "Enter") {
       event.preventDefault();
+      event.stopImmediatePropagation();
+      suppressedConfirmationKeys.add(event.code);
       save();
     } else if (event.key === "Escape") {
       event.preventDefault();
+      event.stopImmediatePropagation();
+      suppressedConfirmationKeys.add(event.code);
       dialog.close();
     }
   });
 
   actions.append(cancelButton, saveButton);
   dialog.append(title, label, actions);
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    suppressedConfirmationKeys.add("Escape");
+    dialog.close();
+  });
   dialog.addEventListener("close", () => {
     dialog.remove();
     sessions.get(sessionId)?.tabButton.focus();
@@ -1630,6 +1639,7 @@ function showSavedTabsDialog(createDefault?: SavedTabDraft, focusReturnSessionId
   dialog.className = "saved-tabs-dialog";
   dialog.addEventListener("cancel", (event) => {
     event.preventDefault();
+    suppressedConfirmationKeys.add("Escape");
     dialog.close();
   });
   dialog.addEventListener("close", () => {
@@ -2225,9 +2235,13 @@ function showSearch(sessionId: string): void {
   closeButton.addEventListener("click", () => closeSearch(true));
   input.addEventListener("input", () => findSearchResult(true, true));
   input.addEventListener("keydown", (event) => {
+    if (event.isComposing === true) {
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
+      suppressedConfirmationKeys.add(event.code);
       closeSearch(true);
       return;
     }
@@ -2863,7 +2877,7 @@ function handleApplicationShortcut(event: KeyboardEvent): void {
     (event.code === "KeyC" || event.code === "KeyV") && activeSessionId !== undefined && event.repeat !== true) {
     reportInputState(0, activeSessionId);
   }
-  if (pendingConfirmation !== undefined || savedTabsDialog !== undefined ||
+  if (event.isComposing === true || pendingConfirmation !== undefined || savedTabsDialog !== undefined ||
     document.querySelector("dialog[open]") !== null || hasEditingFocus() === true) {
     return;
   }
@@ -2973,9 +2987,10 @@ document.addEventListener("pointerdown", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && searchOverlay !== undefined) {
+  if (event.isComposing === false && event.key === "Escape" && searchOverlay !== undefined) {
     event.preventDefault();
     event.stopImmediatePropagation();
+    suppressedConfirmationKeys.add(event.code);
     closeSearch(true);
     return;
   }

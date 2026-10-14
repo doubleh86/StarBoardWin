@@ -127,3 +127,77 @@ test("editor focus protects rename/saved/search editing and rejects late or stal
   h.deliver({ version: 2, type: "paste", sessionId: id, payload: { data: "late", sessionGeneration: 7 } });
   assert.equal(h.posted.some(m => m.type === "input" || m.type === "paste-request"), false);
 });
+
+for (const role of ["rename", "saved", "search"]) {
+  for (const reset of ["fresh-press", "keyup", "blur"]) {
+    test(`${role} Escape cannot leak held keys after focus returns and recovers on ${reset}`, () => {
+      const { h, entry, key } = setup();
+      if (role === "rename") { h.api.startRename(id); }
+      if (role === "saved") { h.api.showSavedTabsDialog({ name: "fixture", startingDirectory: "", shellKind: "pwsh" }); }
+      if (role === "search") { h.api.showSearch(id); }
+      const dialog = h.document.body.querySelector("dialog[open]");
+      const editor = role === "search" ? entry.pane.querySelector("input") : dialog.querySelector("input");
+      editor.focus();
+      if (role === "saved") { h.dispatch("cancel", dialog); }
+      else { h.dispatch("keydown", editor, { code: "Escape", key: "Escape" }); }
+      entry.terminal.focus();
+      assert.equal(key("Escape", { ctrlKey: false, repeat: true }).defaultPrevented, true);
+      assert.equal(h.dispatch("keypress", entry.terminal.textarea, { code: "Escape" }).defaultPrevented, true);
+      if (reset === "keyup") { h.dispatch("keyup", h.document, { code: "Escape" }); }
+      if (reset === "blur") { h.dispatch("blur", h.window); }
+      assert.equal(key("Escape", { ctrlKey: false }).defaultPrevented, false);
+      entry.terminal.selection = "selected";
+      key("KeyC");
+      key("KeyV");
+      assert.equal(h.posted.filter(m => m.type === "copy").length, 1);
+      assert.equal(h.posted.filter(m => m.type === "paste-request").length, 1);
+      assert.equal(h.posted.some(m => m.type === "input"), false);
+    });
+  }
+}
+
+test("IME application shortcuts and search Escape preserve composition and editor focus", () => {
+  const { h, entry, key } = setup();
+  for (const code of ["KeyF", "KeyT", "KeyW", "Tab"]) {
+    assert.equal(key(code, { shiftKey: true, isComposing: true }).defaultPrevented, false);
+  }
+  assert.equal(h.posted.some(m => ["new-tab", "close-session", "select-next", "select-previous"].includes(m.type)), false);
+  h.api.showSearch(id);
+  const input = entry.pane.querySelector("input");
+  const event = h.dispatch("keydown", input, { key: "Escape", code: "Escape", isComposing: true });
+  assert.equal(event.defaultPrevented, false);
+  assert.equal(h.document.activeElement, input);
+  assert.equal(input.isConnected, true);
+});
+
+for (const exit of ["Enter", "native-cancel"]) {
+  for (const reset of ["fresh-press", "keyup", "blur"]) {
+    test(`rename ${exit} consumes the closing key and recovers on ${reset}`, () => {
+      const { h, entry, key } = setup();
+      h.api.startRename(id);
+      const dialog = h.document.body.querySelector("dialog[open]");
+      const code = exit === "Enter" ? "Enter" : "Escape";
+      if (exit === "Enter") {
+        const event = h.dispatch("keydown", dialog.querySelector("input"), { code, key: code });
+        assert.equal(event.defaultPrevented, true);
+      } else {
+        dialog.querySelector("button").focus();
+        assert.equal(h.dispatch("cancel", dialog).defaultPrevented, true);
+      }
+      assert.equal(h.document.body.querySelector("dialog[open]"), null);
+      assert.equal(h.posted.filter(m => m.type === "rename-session").length, exit === "Enter" ? 1 : 0);
+      entry.terminal.focus();
+      assert.equal(key(code, { ctrlKey: false, repeat: true }).defaultPrevented, true);
+      assert.equal(h.dispatch("keypress", entry.terminal.textarea, { code }).defaultPrevented, true);
+      if (reset === "keyup") { h.dispatch("keyup", h.document, { code }); }
+      if (reset === "blur") { h.dispatch("blur", h.window); }
+      assert.equal(key(code, { ctrlKey: false }).defaultPrevented, false);
+      entry.terminal.selection = "selected";
+      key("KeyC");
+      key("KeyV");
+      assert.equal(h.posted.filter(m => m.type === "copy").length, 1);
+      assert.equal(h.posted.filter(m => m.type === "paste-request").length, 1);
+      assert.equal(h.posted.some(m => m.type === "input"), false);
+    });
+  }
+}

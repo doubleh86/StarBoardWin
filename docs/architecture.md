@@ -245,6 +245,10 @@ command completion 판단이나 activation 요청이 아니며, tab 선택·rest
 Ctrl+Shift+V와 native paste는 host 경계를 사용한다. 모든 open dialog와 이름·저장 탭·검색
 editor에서는 local 편집을 허용하고 xterm input은 차단한다. 확인 후 Enter/Escape의 반복
 keydown과 뒤따르는 keypress만 억제하며 fresh keydown·keyup·blur·hidden에서 상태를 해제한다.
+재개 수정은 이름 저장 Enter·입력칸 Escape·버튼 focus의 native dialog cancel, 저장 탭 cancel과
+검색 Escape에도 같은 종료 키 보호를 적용한다. IME composition 중 application shortcut이나
+검색 Escape로 편집 focus를 바꾸지 않는다. 이 동작은 production handler의 모의 검증 결과이며
+실제 Windows IME/WebView2 인수는 별도다.
 
 ClipboardAccess는 WPF Dispatcher의 STA context에서만 clipboard API를 실행한다. 문서화된
 [Clipboard의 ExternalException](https://learn.microsoft.com/en-us/dotnet/api/system.windows.clipboard.setdataobject)
@@ -255,6 +259,9 @@ ClipboardAccess는 WPF Dispatcher의 STA context에서만 clipboard API를 실�
 활성 session과 실제 session generation, 확인창을 재검사한다. 탭을 바꿨다가 돌아온 경우도
 epoch 변경으로 취소한다. single-line paste 응답에도 generation을 싣고 renderer에서 확인한다.
 CR/LF snapshot 승인·취소 및 단일 전달의 기존 coordinator 계약은 유지한다.
+OLE 호출 실패의 catch에서도 수명을 재검사한다. 마지막 시도에 탭·세대·확인창·renderer가
+바뀌거나 취소되면 Unavailable 대신 Stale을 반환해 교체된 화면에 실패 안내를 보내지 않는다.
+중간 시도에 무효화되면 추가 지연·재시도를 하지 않는다.
 
 WebView callback의 COM/disposed 오류는 해당 경계에서 진단하며 현재 renderer에 한해 복구
 상태로 전환한다. 실패 renderer의 drop 설정 해제 오류를 별도로 관측하고, 종료 시 clipboard와

@@ -361,7 +361,47 @@ FileDiagnosticLog.cs 및 지정 문서로 제한한다. 실제 Windows 장기 �
   [테스트 계획](../test-plan.md)의 MAN-029/029a와 RDP matrix에 장기 실행·재시작 회복·자발 종료 관찰을
   추가하며, 수행하지 못한 실제 항목은 미수행으로 남긴다. 이 읽기 전용 조사에서는 제품 수정·충돌 재현·배포를 수행하지 않았다.
 
-### 2026-10-14 Task 완료 기록
+### 2026-10-14 재개 범위 — terminal-clipboard-shortcut-regression
+
+기존 완료 기록과 구현은 보존한다. 이번 할당 작업 폴더에서는 마지막 clipboard 실패가 OLE
+재진입으로 탭·세대·확인창 수명을 바꾼 뒤에도 Unavailable을 반환하는 경계와, 검색 Escape로
+focus가 terminal에 돌아온 뒤 held key가 전달되는 경계를 보강한다. 이름/저장 탭 편집 종료 키와
+IME 중 application shortcut도 같은 production 입력 경계에서 확인한다. 영향 파일은 지정
+Presentation, Terminal 테스트와 문서로 제한하며 dependency/transport/settings를 바꾸지 않는다.
+최종 실패 후 수명 재검사, 편집 종료 키 억제와 fresh keydown/blur/keyup 복구를 동작 테스트한다.
+이름 편집의 버튼 focus에서 발생하는 native dialog cancel도 입력칸 Escape와 같은 억제 경계로
+연결한다. 이름 저장 Enter와 native cancel 뒤 held key/keypress 차단 및 다음 복사·paste 복구를
+production renderer 모의 테스트로 추가한다. 기존 입력칸·확인창 계약과 원문 없는 진단은 유지한다.
+
+검증 전에 생성 파일의 독점 ReadWrite 열기는 모두 성공했다. WPF MarkupCompile.cache와
+sourcelink.json은 Archive이며 ReadOnly가 아니다. 실행 계정과 소유자가 일치하고 ACL은
+Authenticated Users Modify를 허용한다. sandbox CIM 조회는 access denied였고 허용된 읽기 전용
+조회에서는 nodeReuse MSBuild worker와 다른 도구의 프로세스가 보였다. worker 명령줄에 작업
+폴더가 없어 이 폴더의 동시 빌드 충돌을 확정하지 않는다. 프로세스 종료·ACL/속성 변경·캐시
+삭제는 하지 않는다. 지정 명령을 그대로 순차 실행하고, 실패 시 실제 파일/프로세스 근거를
+추가한다. 이전 검증 수치는 이번 변경의 성공 근거로 재사용하지 않는다.
+
+### 2026-10-14 재개 완료 기록 — Run 20261014-072003-981783-1949fb3a
+
+- 기존 수정과 SAFE-02 계약을 보존했고, OLE 실패 catch 뒤 수명 재검사, 이름 저장/취소·저장 탭
+  cancel·검색 Escape의 종료 키 억제 및 IME flag 보호를 완료했다. held key/keypress와
+  keyup 유실 뒤 fresh press·blur 복구도 production handler로 검증했다. 새 전역 catch나
+  terminal transport/settings/dependency 변경은 없다. renderer asset은 source로 재생성했다.
+- 현재 변경의 npm ci/test/build **Passed**, Node **103/103**, Terminal **368/368**,
+  최종 solution restore → Debug build → 전체 tests **610/610** (skip 0, build 경고·오류 0),
+  C# 정렬 및 diff check **Passed**다. 과거 실행 수치를 이번 성공 근거로 재사용하지 않았다.
+- 최초 기본 옵션 Debug build는 MarkupCompile.cache 삭제·sourcelink.json 쓰기 등 접근 거부로
+  경고 2·오류 5였다. 실패 전후 직접 독점 열기/속성/소유자/ACL 검사는 정상이며,
+  해당 폴더의 동시 build나 잠금은 미확인이다. 허용된 계정의 별도 handshake worker pool에서
+  동일 검증 argv를 다시 실행해 통과했다. worker 재사용/실행 환경 문제는 추정이며,
+  파일 권한 해결로 보고하지 않는다. `-m:1`·`-nr:false`, 다른 프로세스 종료, ACL/속성 변경과
+  수동 캐시 삭제는 하지 않았다. sandbox esbuild EPERM과 focused .NET 정체도 보존한다.
+- 상세 실패·조치·실행 환경과 결과는 [재개 검증 기록](../test-plan.md#할당-worktree-재개-검증--run-20261014-072003-981783-1949fb3a)에
+  남겼다. 실제 자발 종료 throw 지점/사용자 증상 공통 원인은 미확정이고,
+  Windows/WebView2 장기 실행·실제 clipboard·IME·RDP의 CLIP-MAN-01~05는 Not run (manual)이다.
+  commit/push·앱 배포는 수행하지 않았다.
+
+### 2026-10-14 Task 완료 기록 (이전 실행)
 
 - 확인된 코드 문제: dialog의 전역 Ctrl 차단이 local 편집을 막음, 확인 키 억제가 keyup 유실 시
   남음, 선택 copy가 browser 기본 동작을 명시적으로 취소하지 않음, clipboard의 COMException

@@ -43,6 +43,37 @@ FileDiagnosticLog integration은 허용된 예외 분류/숫자 코드만 저장
 첫 전체 병렬 suite의 실제 foreground HWND 보존 검사 한 건은 실패했고, 해당 테스트 변경/skip 없이
 최종 단일 노드 전체 실행에서 통과했다. 원인은 미확정이며 실제 환경의 focus 경합 가능성만 남긴다.
 
+### 할당 worktree 재개 검증 — Run 20261014-072003-981783-1949fb3a
+
+- 이번 변경: 실패한 OLE 호출의 첫/마지막 시도에서 대상 변경·종료 취소 시 Stale 및 추가 시도
+  차단을 C# 4개 case로 보강했다. 이름 저장 Enter·입력칸 Escape·native cancel, 저장 탭 cancel과
+  검색 Escape 뒤 held key/keypress 억제와 fresh keydown·keyup·blur 복구, IME flag 보호를
+  production renderer 모의 테스트 16개로 보강했다. 실제 clipboard/IME 조작은 하지 않았다.
+- `npm ci` 성공(0 vulnerabilities, esbuild install script 차단 안내). sandbox의 test/build는
+  esbuild spawn EPERM으로 실패했고, 허용된 실행에서 같은 명령으로 **Node 103/103** 및 build를
+  통과했다. source로 dist/app.js를 재생성했으며 CSS·license의 유효 내용은 보존했다.
+- 지정 SDK `C:\Users\round1studio_14\.dotnet\dotnet.exe`의 Terminal test는 sandbox에서 restore 뒤
+  정체되어 통과로 계산하지 않는다. 허용된 실행의 같은 명령은 **368/368**, skip 0으로 통과했다.
+- 기본 옵션 solution restore는 통과했으나 Debug build는 **경고 2·오류 5**로 실패했다.
+  Preferences의 SettingsEditorView.g.cs 접근·MarkupCompile.cache 삭제, Terminal의
+  MarkupCompile.cache 접근·삭제와 DesktopIntegration의 sourcelink.json 쓰기가 거부됐다.
+  실패 전후 독점 ReadWrite 열기는 성공했고 Archive/ReadOnly=false, 계정=소유자,
+  Authenticated Users Modify ACL을 확인했다. 직접 열기 성공은 worker token의 권한이나
+  실패 순간의 삭제 가능성을 증명하지 않는다. 별도 동시 실행의 파일 잠금은 확인하지 못했다.
+- sandbox CIM 조회는 거부되어 허용된 읽기 전용 조회로 worker 명령·계정을 확인했다.
+  오래된 nodeReuse worker와 다른 프로젝트 실행이 존재했으나 이 폴더를 동시 build하는
+  명령은 확인되지 않았다. 해당 worker의 restricted token과 실패 I/O의 직접 연결은 미확정이다.
+- MSBuild의 [별도 handshake salt](https://github.com/dotnet/msbuild/issues/13594)를 이번 명령의
+  process 환경에만 `MSBUILDNODEHANDSHAKESALT=Starboard-20261014-072003-981783-1949fb3a-clipboard`로
+  설정했다. 동일 argv의 restore → Debug build → 전체 test가 순서대로 통과했다. build 경고·오류 0,
+  전체 **610/610** (Architecture 13 / Terminal 368 / DesktopIntegration 120 / Preferences 37 /
+  Integration 72), skip 0이다. 다른 worker 재사용과 실행 환경의 상호작용이 의심되지만 이 결과로
+  최초 실패의 원인이나 파일 권한 수정 완료를 단정하지 않는다. `-m:1`·`-nr:false`는 쓰지 않았다.
+  다른 프로세스 종료, ACL/속성 변경, 수동 캐시 정리는 하지 않았다.
+- C# 정렬 검사에서 기존 추가 테스트의 continuation 2열 불일치를 수정한 뒤 통과했다.
+  `git diff --check`도 통과했다. CLIP-MAN-01~05는 **Not run (manual)**이며 자발 종료의
+  실제 throw 지점과 복사·paste 불능의 공통 원인은 여전히 미재현·미확정이다.
+
 ## 상태 표기
 
 | 상태 | 의미 |

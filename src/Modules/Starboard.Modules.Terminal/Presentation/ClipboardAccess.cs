@@ -40,6 +40,13 @@ internal sealed class ClipboardAccess(Action verifyAccess, Func<CancellationToke
                                                        exception.HResult <= unchecked((int)0x800401D4))
             {
                 observeFailure(exception);
+                // Failed OLE calls can also pump messages. Do not publish a final failure
+                // to a replacement tab/renderer or wait again for an invalidated request.
+                if (cancellationToken.IsCancellationRequested == true || isCurrent() == false)
+                {
+                    return new ClipboardAccessResult<T>(ClipboardAccessStatus.Stale, default!);
+                }
+
                 if (attempt == 2)
                 {
                     return new ClipboardAccessResult<T>(ClipboardAccessStatus.Unavailable, default!);
