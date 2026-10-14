@@ -260,3 +260,94 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
 - renderer source 계약은 gesture당 `paste-request` 호출부가 하나뿐인지, keyboard와
   native paste 진입점 모두 기본 동작을 차단하는지 자동 검증한다. 실제 WebView2의
   `Ctrl+V`, `Ctrl+Shift+V`, context-menu와 한글 IME 조작은 수동 확인 대상으로 남긴다.
+
+## 2026-10-14 복사·붙여넣기 불능과 앱 자동 종료
+
+### 현재 상태와 사용자 확인
+
+**긴급 회귀 제보·진단 기획, 구현 미착수.** 기존 SAFE-02 중복 전달 수정과 완료 테스트는 보존한다.
+사용자는 처음 `Ctrl+S`·`Ctrl+V`로 제보했으나 추가 확인으로 **`Ctrl+C` 복사·`Ctrl+V` 붙여넣기**라고
+정정했다. 단순 `Ctrl+S` 또는 전역 `Ctrl+Alt+S` 문제로 잘못 계획하지 않는다.
+
+- 본문을 다시 클릭해도 복사·붙여넣기가 모두 되지 않았다.
+- 앱 재시작 뒤에는 정상 동작으로 돌아왔다. 일시 회복을 수정 완료로 해석하지 않는다.
+- 앱이 한 번 저절로 종료됐다고 확인했다. 사용자 수동 종료나 정상 tray 종료가 아니다.
+- 제보 시 바탕화면 metadata의 버전은 `0.2.2`, 빌드는 `2dbb6c9`였다.
+  실패한 순간의 선택 상태·focused element·대화상자·clipboard API 결과와 재현 순서는 아직 미확인이다.
+
+### 읽기 전용 조사 근거와 한계
+
+- Windows Application Error **1000**에서 2026-10-14 **15:46:41 / 15:47:19 KST**에
+  바탕화면 `Starboard.exe`의 오류 기록을 확인했다. version `0.2.2.0`, 같은 PID `53316` (`0xd044`),
+  exception code `e0434352` / `c000041d`, fault module `KERNELBASE.dll`이다.
+  대응하는 Windows Error Reporting **1001** APPCRASH 기록도 있다. 동일 process의 여러 기록을
+  여러 번의 앱 종료로 계산하지 않으며, fault module 이름을 root cause로 단정하지 않는다.
+- 같은 시각 주변(15:43~15:50 KST)의 .NET Runtime **1026** 조회에는 이벤트가 없었다.
+  따라서 예외 stack·throw 지점은 현재 확보하지 못했다. 덤프를 열거나 외부로 전송하지 않았다.
+- `starboard.log`의 읽은 tail 100행에는 12:00:46~12:00:50 KST의 `RecoverRendererLayout` 및
+  `ObserveRendererLayout` 경고와 후속 session recovery 기록이 있지만 Copy/Paste 실패 기록은 없었다.
+  로그는 성공한 clipboard 요청을 기록하지 않으므로, 이 부재로 요청 미수신·clipboard 정상 또는
+  layout 경고와 오후 충돌의 인과관계를 증명하지 않는다.
+- `FileDiagnosticLog`는 message 문자열을 저장하지 않고 operation/native Win32 code만 남긴다.
+  숫자 bounds나 HRESULT를 message에 넣어 호출해도 현재 파일에는 남지 않는다. 이 개인정보 보호
+  정책을 유지하면서 필요한 **허용된 숫자·상태 메타데이터**를 실제로 관측할 경로를 마련해야 한다.
+- renderer의 xterm key handler는 selection이 있는 `Ctrl+C`를 host `copy`로, `Ctrl+V`를
+  `paste-request`로 보낸다. selection 없는 `Ctrl+C`는 기존 shell interrupt다. 이 handler와 host
+  clipboard 함수는 `431deed` 이후의 두 기능 커밋에서 직접 수정되지 않았다.
+- 전역 capture handler는 확인창/저장 탭 dialog가 있을 때 Ctrl 조합을 막는다. 최근 드래그의
+  focus 보존·capture 해제, renderer 복구·layout 관측과 pending UI 상태를 함께 조사하되
+  특정 기능을 원인으로 단정하지 않는다. 재시작이 복구한다는 이유로 clipboard 실패를 배제하지 않는다.
+- 사용 중인 WebView2 SDK 문서상 `AreBrowserAcceleratorKeysEnabled=false`는 `Ctrl+C`·`Ctrl+V` 같은
+  텍스트 편집 accelerator를 비활성화하지 않는다. browser accelerator를 무조건 켜는 처방을 사용하지 않는다.
+- 현재 Node renderer harness는 custom key callback을 보관하지만 selection 모형과 실제 Windows
+  clipboard 왕복을 검증하지 않는다. 기존 76개 renderer/585개 .NET 통과는 이번 사용자 증상의
+  실제 재현이나 clipboard·native keyboard·앱 장기 실행 통과를 대신하지 않는다.
+
+### 독립 Task: `terminal-clipboard-shortcut-regression`
+
+- 제목: 복사·붙여넣기 간헐 불능과 자동 종료 회귀 진단·복구
+- 우선순위: **긴급(P0)**. 화면 미관 보강보다 입력 기본 기능과 앱 수명 안정화를 우선한다.
+- 상태: **진단 근거 기록·제품 수정 미착수**. 원인 확정과 실제 재현은 아직 완료되지 않았다.
+- 선행: 기존 paste 단일 전달·여러 줄 확인·selection 없는 interrupt·세션 보존 정책을 유지한다.
+- 조사 순서: renderer key 도착 → xterm selection/focus·capture/pending UI 상태 → host message 수신 →
+  clipboard API 성공/실패 → 대상 session 전달을 분리한다. 자동 종료의 예외 경로는 별도로 좁히고
+  같은 원인인지 여부를 증거로 판정한다. clipboard 원문을 진단에 포함하지 않는다.
+- 실제 영향 경로: Terminal `Presentation/TerminalView.xaml.cs`, `TerminalView.LayoutRecovery.cs`,
+  renderer `src/index.ts`, 필요한 경우에만 `src/tabDragReorder.ts`·`workspaceSync.ts`, source로 재생성한
+  `dist/**`, renderer `test/rendererHarness.mjs` 및 clipboard/key 회귀 테스트, 관련 Terminal C# 테스트.
+  예외/diagnostic 경계의 근거가 있을 때만 host **`src/Starboard.Windows/App.xaml.cs`**, 실제
+  **`src/Starboard.Windows/Shell/MainWindow.xaml.cs`**, **`Composition/AppCoordinator.cs`** 및
+  **`Infrastructure/FileDiagnosticLog.cs`**와 해당 테스트를 포함한다. 잘못된 host 상대 경로 때문에
+  연결 조사 자체를 생략하지 않는다. architecture/test-plan/이 계획·index를 실제 결과와 맞춘다.
+- 제외: 의존성/설정 schema 추가, 저장 탭 삭제, 사용자 clipboard 내용 수집·저장·전송,
+  사용자 앱 강제 종료·자동 재실행, 원격 서비스/Windows 설정 변경, 다른 기능 재구현, commit/push·배포.
+- 파일 소유권: clipboard·focus·UI 수명 조사는 하나의 runtime/renderer 경계로 먼저 고정한다.
+  같은 TerminalView·controller를 여러 worker가 동시에 수정하지 않는다. 분리 가능한 순수 검증만
+  계약 확정 후 병렬로 진행하고, 실제 입력·예외 통합 검증은 합류 뒤 수행한다.
+- [ ] 간헐 불능 직전 상태와 자동 종료의 throw/callback 경계를 원문 없는 관측으로 좁히고,
+  실제 재현과 코드/모의 증거를 구분한다.
+- [ ] 확인된 원인의 수명·focus·pending 상태 또는 clipboard 오류 경로를 최소 범위로 수정한다.
+  복구 가능한 clipboard 접근 실패는 제한된 비동기 재시도와 사용자 상태 안내로 처리하되
+  clipboard STA/UI thread 요구를 지킨다. 재시작을 기본 복구 수단으로 사용하지 않는다.
+- [ ] production custom key handler/host clipboard 경계의 동작 테스트와 전체 검증을 실행하고,
+  실제 Windows/WebView2 장기 실행·RDP 전환/복구 검증의 인수 상태를 갱신한다.
+
+### 완료 기준과 안전 경계
+
+- synthetic selection으로 `Ctrl+C`·`Ctrl+Shift+C`가 정확히 한 번 copy 요청을 만들고,
+  selection 없는 `Ctrl+C`는 shell interrupt를 유지한다. 반복 입력·IME/AltGr 조합도 구분한다.
+- `Ctrl+V`·`Ctrl+Shift+V`·native paste는 gesture당 한 번만 전달된다. 단일 줄·CR/LF 확인,
+  취소·탭 변경·session generation 변경·clipboard busy/empty/비텍스트·renderer recovery를 검증한다.
+  지난 중복 붙여넣기 수정을 되돌리거나 확인 없이 줄바꿈을 전달하지 않는다.
+- 확인/이름 편집/저장 탭/search의 input에서는 해당 입력칸의 편집 동작을 허용하고 shell로
+  전송하지 않는다. dialog 닫힘·Escape·blur·keyup 유실 뒤 억제 상태가 영구적으로 남지 않는다.
+- 탭 선택·드래그/취소·레이아웃 복구/RDP 로컬 복귀 뒤 다시 terminal을 클릭하면 입력과
+  복사·붙여넣기가 정상이어야 한다. 복구가 active ID/PID·cwd·입력·output·scrollback을 바꾸지 않는다.
+- 모든 callback exception을 무조건 `Handled=true`로 삼키거나 clipboard 정상 실패를 앱 전체 종료로
+  확대하지 않는다. throw 지점과 native/managed 수명을 판정한 뒤 회복 가능한 오류만 경계에서 처리한다.
+  진단은 route 종류·선택 유무·일반 focus 역할·generation 유효성·예외 type/숫자 HRESULT 등
+  허용된 최소 metadata로 제한하고 exception message/clipboard/terminal text를 저장하지 않는다.
+- **Not run (manual):** 이번 조사에서는 현재 앱에 키를 보내거나 clipboard를 읽고 쓰지 않았고,
+  충돌을 의도적으로 재현하거나 덤프를 수집하지 않았다. 구현 시
+  [테스트 계획](../test-plan.md)의 MAN-029/029a와 RDP matrix에 장기 실행·재시작 회복·자발 종료 관찰을
+  추가하며, 수행하지 못한 실제 항목은 미수행으로 남긴다. 이 읽기 전용 조사에서는 제품 수정·충돌 재현·배포를 수행하지 않았다.
