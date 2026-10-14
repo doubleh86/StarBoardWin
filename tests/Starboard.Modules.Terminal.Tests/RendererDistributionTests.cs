@@ -423,6 +423,14 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(styles, ".tab-insertion-marker");
         StringAssert.Contains(styles, "pointer-events:none");
         StringAssert.Contains(styles, ".tab-list[data-reordering=true] .tab-button");
+        StringAssert.Contains(script, "tab-drag-preview");
+        StringAssert.Contains(script, "dragSource");
+        StringAssert.Contains(styles, ".tab-insertion-marker:before");
+        StringAssert.Contains(styles, ".tab-insertion-marker:after");
+        StringAssert.Contains(styles, "width:3px");
+        StringAssert.Contains(styles, ".tab-item[data-drag-source=true]");
+        StringAssert.Contains(styles, ".tab-drag-preview");
+        StringAssert.Contains(styles, "text-overflow:ellipsis");
     }
 
     private static string ReadRendererAsset(string fileName)

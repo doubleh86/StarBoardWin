@@ -43,6 +43,7 @@ function initialized(state = base) {
 }
 const reorderRequests = (harness) => harness.posted.filter((item) => item.type === "reorder-session");
 const marker = (harness) => harness.document.body.children.find((node) => node.className === "tab-insertion-marker");
+const preview = (harness) => harness.document.body.children.find((node) => node.className === "tab-drag-preview");
 function down(harness, sessionId = base.sessions[0].sessionId, properties = {}) {
   const entry = harness.api.sessions.get(sessionId);
   const x = entry.tabItem.getBoundingClientRect().left + 20;
@@ -58,6 +59,11 @@ function assertClean(harness) {
   assert.equal(harness.captures.size, 0);
   assert.equal(harness.frameCount(), 0);
   assert.equal(marker(harness)?.hidden ?? true, true);
+  assert.equal(preview(harness)?.hidden ?? true, true);
+  assert.equal(preview(harness)?.textContent ?? "", "");
+  for (const entry of harness.api.sessions.values()) {
+    assert.equal(entry.tabItem.dataset.dragSource, undefined);
+  }
   assert.equal(harness.nodes.get("#session-tabs").dataset.reordering, undefined);
   for (const type of ["pointermove", "pointerup", "pointercancel"]) {
     assert.equal((harness.document.listeners.get(type) ?? []).length, 0);
@@ -176,7 +182,7 @@ test("actual drag displays insertion, preserves tab keyboard focus and suppresse
   assert.equal(harness.document.activeElement, focus);
   move(harness, 250);
   assert.equal(marker(harness).hidden, false);
-  assert.equal(marker(harness).style.left, "299px");
+  assert.equal(marker(harness).style.left, "298.5px");
   assert.deepEqual(harness.startOrder(), base.sessions);
   release(harness, 250);
   for (const type of ["click", "dblclick"]) {
@@ -297,7 +303,7 @@ test("overflow scrolls only the list at bounded steps, updates insertion and can
   harness.stepFrame();
   assert.equal(list.scrollLeft, 8);
   assert.equal(harness.nodes.get("#terminal-workspace").scrollLeft, 0);
-  assert.equal(marker(harness).style.left, "191px");
+  assert.equal(marker(harness).style.left, "190.5px");
   for (let count = 0; count < 15; count++) { harness.stepFrame(); }
   assert.equal(list.scrollLeft, 128);
   move(harness, 1);
@@ -346,4 +352,87 @@ test("pending/incomplete workspace cannot begin a candidate and Escape cancellat
   assert.equal(event.immediate, true);
   assert.equal(harness.posted.filter((item) => item.type === "input").length, 0);
   assertClean(harness);
+});
+
+test("visual feedback starts strictly after threshold, uses safe names and preserves source geometry/focus", () => {
+  const harness = initialized();
+  const entry = harness.api.sessions.get(base.sessions[0].sessionId);
+  const name = "<img src=x onerror=alert(1)> 긴 한글 이름 & 작업공간";
+  upsert(harness, base.sessions[0], 0, { name });
+  const focus = harness.api.sessions.get(base.activeSessionId).terminal.textarea;
+  focus.focus();
+  const bounds = entry.tabItem.getBoundingClientRect();
+  down(harness);
+  move(harness, 26);
+  assert.equal(entry.tabItem.dataset.dragSource, undefined);
+  assert.equal(preview(harness).hidden, true);
+  move(harness, 27);
+  assert.equal(entry.tabItem.dataset.dragSource, "true");
+  assert.equal(marker(harness).hidden, true);
+  assert.equal(preview(harness).hidden, true);
+  move(harness, 250);
+  assert.equal(preview(harness).hidden, false);
+  assert.equal(preview(harness).textContent, name);
+  assert.equal(preview(harness).children.length, 0);
+  assert.equal(preview(harness).getAttribute("aria-hidden"), "true");
+  assert.equal(marker(harness).getAttribute("aria-hidden"), "true");
+  assert.equal(harness.document.activeElement, focus);
+  assert.equal(harness.api.getActiveSessionId(), base.activeSessionId);
+  assert.deepEqual(entry.tabItem.getBoundingClientRect(), bounds);
+  assert.equal(harness.dispatch("click", entry.closeButton).defaultPrevented, false);
+  move(harness, -1);
+  assert.equal(preview(harness).hidden, true);
+  assert.equal(marker(harness).hidden, true);
+  assert.equal(entry.tabItem.dataset.dragSource, "true");
+  release(harness, -1);
+  assert.equal(reorderRequests(harness).length, 0);
+  assertClean(harness);
+});
+
+test("preview clamps to resized viewport and follows names without changing order", () => {
+  const harness = initialized();
+  const viewport = harness.document.documentElement;
+  const list = harness.nodes.get("#session-tabs");
+  viewport.clientWidth = 180;
+  viewport.clientHeight = 60;
+  list.clientWidth = 180;
+  down(harness);
+  move(harness, 175);
+  assert.equal(preview(harness).style.maxWidth, "172px");
+  assert.equal(preview(harness).style.left, "4px");
+  assert.equal(preview(harness).style.top, "31px");
+  upsert(harness, base.sessions[0], 0, { name: "새 이름 한글" });
+  assert.equal(preview(harness).textContent, "새 이름 한글");
+  viewport.clientWidth = 120;
+  viewport.clientHeight = 40;
+  harness.dispatch("resize", harness.window);
+  assert.equal(preview(harness).style.maxWidth, "112px");
+  assert.equal(preview(harness).style.left, "4px");
+  assert.equal(preview(harness).style.top, "11px");
+  assert.deepEqual(harness.startOrder(), base.sessions);
+  harness.dispatch("keydown", harness.document, { key: "Escape" });
+  assertClean(harness);
+});
+
+test("source removal and renderer recreation leave no visual state behind", () => {
+  const harness = initialized();
+  const source = harness.api.sessions.get(base.sessions[0].sessionId);
+  down(harness);
+  move(harness, 250);
+  harness.deliver(message("remove-session", {}, source.id));
+  assert.equal(source.tabItem.dataset.dragSource, undefined);
+  assertClean(harness);
+  down(harness, base.sessions[1].sessionId);
+  move(harness, 350);
+  harness.dispatch("pagehide", harness.window);
+  assert.equal(preview(harness), undefined);
+  assert.equal(marker(harness), undefined);
+  assertClean(harness);
+  const recovered = initialized();
+  assertClean(recovered);
+  down(recovered);
+  move(recovered, 250);
+  release(recovered, 250);
+  assert.equal(reorderRequests(recovered).length, 1);
+  assertClean(recovered);
 });

@@ -14,7 +14,7 @@
 | 구분 | 현재 상태와 정본 |
 |---|---|
 | 탭 드래그 정렬 | [계획과 인수 기록](2026-10-13-tab-drag-reorder.md): contract/runtime/workspace-sync/renderer 구현 및 integration 자동 검증 완료. 실제 WebView2·IME·focus·DPI 화면 인수는 수동 검증 대기다. |
-| 다음 UI 보강 | [탭 드래그 시각 피드백](2026-10-13-tab-drag-reorder.md#후속--탭-드래그-시각-피드백-보강-2026-10-13): `tab-drag-visual-feedback` 기획 완료·구현 미착수. 이동 탭 강조, 굵은 삽입선과 이름 미리보기를 보강한다. 기존 정렬 Task를 다시 구현하지 않는다. |
+| 탭 드래그 시각 피드백 | [계획과 완료 기록](2026-10-13-tab-drag-reorder.md#후속--탭-드래그-시각-피드백-보강-2026-10-13): `tab-drag-visual-feedback` 구현·자동 검증 완료 (2026-10-14). 이동 탭 강조, 3px 삽입선·끝 표시와 이름 미리보기 및 source/dist 동기화를 완료했다. 실제 WebView2·네 theme·DPI 화면 인수는 수동 검증 대기다. |
 | 다음 복구 보강 (2026-10-14) | [RDP 해제·로컬 복귀 후 내부 너비 복구](2026-09-29-unlock-panel-width-recovery.md#후속--rdp-전환-후-창과-내부-viewport-너비-불일치-2026-10-14): `panel-rdp-width-recovery` 기획 완료·구현 미착수. 사용자 확인 조건인 로컬 복귀를 우선 재현하고 HWND/WPF/WebView2/DOM 크기 전달을 조사한다. 기존 잠금 해제 geometry 보정은 완료 상태를 유지한다. |
 | 탭 UI | 이름 변경 창, 좌우 이동 메뉴와 `+` 위치는 구현·자동 검증 완료. 현재 `+`는 profile 선택, 오른쪽 끝 `▾`는 저장한 탭 메뉴다. [탭 UI 기록](2026-09-03-renderer-and-tab-ui.md), [현재 메뉴 정본](2026-09-16-tab-strip-menu-correction.md)을 따른다. |
 | 기존 편의 기능 | 작업공간 복원, 저장한 탭·현재 디렉터리 prefill, 출력 검색, 경로 드롭, URL 열기, 완료 알림, 셸/WSL 선택, 높이 조절과 탭 구성 복제는 구현·자동 검증 완료. [경량 기능 목록](2026-09-10-lightweight-terminal-roadmap.md), [편의 기능 구현 기록](2026-09-14-next-terminal-convenience.md)을 따른다. |

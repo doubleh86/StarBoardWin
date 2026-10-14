@@ -80,6 +80,11 @@ export function createHarness() {
     releasePointerCapture(id) { captures.delete(id); dispatch("lostpointercapture", this, { pointerId: id }); }
     getBoundingClientRect() {
       if (this.rect !== undefined) { return this.rect; }
+      if (this.className === "tab-drag-preview") {
+        const width = Math.min(220, Number.parseFloat(this.style.maxWidth));
+        const height = Math.min(25, Number.parseFloat(this.style.maxHeight));
+        return { left: 0, right: width, top: 0, bottom: height, width, height };
+      }
       const index = this.parentElement?.children.indexOf(this) ?? 0;
       const left = this.parentElement === nodes.get("#session-tabs")
         ? index * 100 - this.parentElement.scrollLeft : 0;
@@ -112,6 +117,7 @@ export function createHarness() {
 
   document.body = new Element();
   document.documentElement = new Element();
+  document.documentElement.clientHeight = 600;
   document.createElement = () => new Element();
   const nodes = new Map(["#session-tabs", "#new-tab", "#panel-resize-zone", "#saved-tabs", "#terminal-workspace"]
     .map((id) => [id, new Element()]));

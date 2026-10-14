@@ -67,9 +67,39 @@ button:focus-visible {
 .tab-insertion-marker {
   position: fixed;
   z-index: 20;
-  width: 2px;
+  width: 3px;
   background: var(--color-accent);
   pointer-events: none;
+}
+
+.tab-insertion-marker::before,
+.tab-insertion-marker::after {
+  position: absolute;
+  left: -2px;
+  width: 7px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--color-accent);
+  content: "";
+}
+
+.tab-insertion-marker::before { top: 0; }
+.tab-insertion-marker::after { bottom: 0; }
+
+.tab-drag-preview {
+  position: fixed;
+  z-index: 20;
+  padding: 4px 8px;
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  background: var(--color-canvas-raised);
+  color: var(--color-ink);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  user-select: none;
 }
 
 .tab-list[data-reordering="true"] .tab-button {
@@ -178,6 +208,14 @@ button:focus-visible {
 .tab-item[data-selected="true"] .tab-button,
 .tab-item[data-selected="true"] .tab-close {
   color: var(--color-ink);
+}
+
+.tab-item[data-drag-source="true"] {
+  background: color-mix(in srgb, var(--color-accent) 24%, var(--color-canvas-raised));
+}
+
+.tab-item[data-drag-source="true"] .tab-button {
+  box-shadow: inset 0 -3px var(--color-accent);
 }
 
 .tab-button:hover,

@@ -1038,3 +1038,35 @@ renderer build·C# 정렬 검사·diff check도 통과했으며 배포 asset의 
 | DRAG-MAN-04 | terminal 한글 IME 조합, 이름 편집 IME, tab keyboard focus·search focus, 일반 click/doubleclick 및 Shift+F10 좌우 이동을 확인한다. 비활성 탭 drag가 활성 terminal을 바꾸지 않는지, drag 직후 click/doubleclick이 선택·편집을 일으키지 않는지, Ctrl+C/붙여넣기·본문 selection·외부 경로 drop이 그대로인지 관찰한다. | Not run — 실제 IME/focus 미수행 |
 | DRAG-MAN-05 | Escape·목록 밖 release·pointer capture 취소·panel hide로 정렬을 취소한다. drag 중 다른 탭 추가·종료 탭 닫기·restart·renderer recovery를 발생시켜 marker/scroll/capture가 정리되고 최신 host 순서로 돌아오는지 확인한다. 취소 Escape가 shell에 전달되지 않고 workspace에 preview 순서가 저장되지 않는지 확인한다. | Not run — native capture/recovery 미수행 |
 | DRAG-MAN-06 | 복원 ON에서 유효 drop 후 저장 완료를 기다리고 정상 종료·재실행하여 순서·이름·활성 configuration을 확인한다. OFF에서는 runtime 정렬만 적용되고 기존 저장 옵션과 파일을 바꾸지 않는지 확인한다. 취소·stale 요청·저장 실패 뒤 runtime과 저장 상태를 구분해 기록하고 검증 후 설정/백업을 복원한다. | Not run — 실제 앱 재실행/사용자 저장소 검증 미수행 |
+
+## 탭 드래그 시각 피드백 검증 — 2026-10-14
+
+Run `20261014-015606-350910-39ef208f`, Task `tab-drag-visual-feedback`.
+
+자동 검증은 production renderer listener와 모의 layout/xterm에서 임계값, source 강조,
+DOM text 이름, viewport clamp/resize, 무효 target, drop/cancel/source 제거/pagehide 뒤 정리,
+기존 전송·focus·scroll·순서 계약을 확인한다. CSS/배포 검사는 실제 대비나 말줄임의 화면 증거가 아니다.
+
+DRAG-MAN-01/02/04/05의 후속 절차:
+
+- 6 CSS px 이하에서는 강조/미리보기가 없고 초과 후 source 배경과 아래 accent가 보이는지 확인한다.
+  활성 탭의 위쪽 표시, tab 크기, × 클릭 영역, keyboard/terminal focus가 유지되는지 비교한다.
+- 유효 target에서는 3 CSS px 선과 위/아래 작은 끝 표시가 보이고, 자기 탭/목록 밖에서는
+  삽입선과 미리보기가 숨는지 확인한다. ×/+/▾/손잡이에 overlay가 입력을 가로채지 않아야 한다.
+- 허용 길이의 긴 한글 이름과 `<b>이름</b>`를 사용해 preview가 literal text이며 말줄임되는지 확인한다.
+  viewport 좌우 끝, 짧은 panel과 overflow scroll/resize에서도 화면 밖으로 나가지 않아야 한다.
+- drop, Escape, pointercancel/lost capture, blur, source 제거, renderer recovery 후 source 강조·선·
+  이름 잔상이 없는지 확인한다. 복구 후 새 drag 한 번으로 정렬되는지 확인한다.
+
+실제 화면 결과 (탭 수마다 짧은 이름/긴 한글 이름과 좁은 폭/overflow를 함께 확인):
+
+| theme | 탭 수 | 100% | 125% | 150% | 200% |
+|---|---|---|---|---|---|
+| Dark | 1 / 3 / 8 각각 | Not run | Not run | Not run | Not run |
+| Light | 1 / 3 / 8 각각 | Not run | Not run | Not run | Not run |
+| One Dark | 1 / 3 / 8 각각 | Not run | Not run | Not run | Not run |
+| Tokyo Night | 1 / 3 / 8 각각 | Not run | Not run | Not run | Not run |
+
+48조합 모두 실제 화면 미수행: 이 세션의 native 앱 제어가 비활성화되어 실제 WPF/WebView2
+화면 캡처·pointer 입력을 수행하지 않았다. Windows 배율 변경도 수행하지 않았다.
+기존 DRAG-MAN-01~06의 Not run 상태를 유지하며 위 절차로 실행한 조합만 증거와 함께 갱신한다.

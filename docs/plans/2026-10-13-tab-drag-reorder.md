@@ -499,7 +499,7 @@ git diff --check
 ### 독립 Task: `tab-drag-visual-feedback`
 
 - 제목: 탭 드래그의 이동 대상과 삽입 위치 표시 강화
-- 상태: **기획 완료·구현 미착수**. 이번 제보 기록에서는 제품 코드·dist·버전·배포물을 변경하지 않는다.
+- 상태: **구현·자동 검증 완료 (2026-10-14), 실제 화면 검증 대기**. renderer source/dist와 관련 테스트·문서를 변경했다.
 - capabilities: `frontend`, `qa`; 위험도: 낮음.
 - dependencies: 완료된 `tab-drag-reorder-renderer`와 `tab-drag-reorder-integration`.
 - 영향 파일: renderer `src/tabDragReorder.ts`, `src/styles.css`, 필요한 최소 `src/index.ts`,
@@ -509,11 +509,41 @@ git diff --check
   새 단축키·순서 정책, session 재시작, commit/push·release·배포.
 - 파일 소유권: 위 renderer source/dist와 UI 테스트는 한 담당자가 함께 수정한다.
   동일 controller/CSS를 여러 Task로 나눠 병렬 편집하지 않는다.
-- [ ] source 강조·삽입선·이름 미리보기와 취소/수명 정리를 구현하고 source/dist를 동기화한다.
-- [ ] Node 동작 검증·renderer build·관련 C# 테스트와 전체 restore/build/test를 실행하고 완료 상태를 갱신한다.
+- [x] source 강조·삽입선·이름 미리보기와 취소/수명 정리를 구현하고 source/dist를 동기화한다.
+- [x] Node 동작 검증·renderer build·관련 C# 테스트와 전체 restore/build/test를 실행하고 완료 상태를 갱신한다.
 - 자동 검증: 임계값 전 표시 없음, 비활성 source 강조와 active/focus 보존, 미리보기 이름의
   안전한 text 처리·viewport 제한, 무효 target, overflow, drop/모든 취소의 표시 정리와 기존 전송 횟수를 확인한다.
   CSS 문자열 검사나 모의 DOM만으로 실제 시각 대비·clipping을 통과로 처리하지 않는다.
 - **Not run (manual):** 현재 실제 WebView2 화면 확인은 미수행이다. 구현 후
   [기존 수동 matrix](../test-plan.md#실제-webview2-수동-인수-절차-모두-대기)의 DRAG-MAN-01/02/04/05에
   source 표시·삽입선·이름 미리보기 관찰을 보강하고, 수행하지 못한 항목은 그대로 미수행으로 남긴다.
+
+### 구현 판단 — 2026-10-14
+
+- 기존 controller의 6 CSS px 초과 시작과 cancel/dispose 수명을 재사용한다. source의 dataset으로
+  배경·안쪽 accent 표시만 바꿔 layout/닫기 hit target과 active 표시를 보존한다.
+- 삽입선은 3 CSS px와 7 CSS px 끝 표시를 tab-list 내부에 제한한다. 이름은 entry.name을
+  textContent로 설정하는 고정 위치 preview로 표시하고, viewport 크기와 측정된 preview 크기로 clamp한다.
+  무효 target에서는 preview와 marker를 숨긴다. 모든 overlay는 pointer-events:none/aria-hidden이다.
+- 자동 DOM 검증은 임계값, 안전한 이름, viewport clamp와 취소 수명을 확인한다. 실제 WebView2 native
+  화면/Windows DPI 조작은 이 환경에서 지원되지 않아 48조합 모두 Not run으로 기록한다.
+
+### 완료 요약 — 2026-10-14
+
+- 6 CSS px 초과 후 source 배경과 아래쪽 3px 안쪽 accent를 표시한다. 활성 탭의 위쪽 표시,
+  크기·닫기 영역과 focus는 유지한다. 유효 target에 3px 삽입선과 7px 끝 표시 및 이름 preview를
+  제공한다. 이름은 textContent로 설정하며 최대 220px/viewport 제한과 말줄임을 적용한다.
+- 무효 target에서는 선·preview를 숨긴다. 기존 cancel/dispose에서 source dataset과 이름을 정리하고
+  pagehide에서는 overlay와 resize listener를 제거한다. 이름 변경과 viewport resize에 표시를 갱신한다.
+  정렬 메시지, host 저장/셸 수명, active ID와 자동 스크롤 판정은 유지한다.
+- PASS: npm ci, npm test **74 passed / 0 skipped**, npm run build, 동일 esbuild 설정으로
+  source/dist JS·CSS 바이트 일치, RendererDistributionTests **24 passed / 0 skipped**.
+  지정 SDK의 solution restore/Debug build **0 warnings / 0 errors**, 전체 Debug test
+  **568 passed / 0 skipped** (Terminal 337, DesktopIntegration 112, Preferences 37, Architecture 13,
+  Integration 69), C# WorkingTree 정렬 검사와 `git diff --check`.
+- 첫 sandbox npm test는 esbuild spawn EPERM, focused .NET test는 NuGet audit 접근 NU1900으로 실패했다.
+  같은 명령을 허용된 실행 환경에서 통과했다. 선 두께 변경 후 기존 좌표 기대값 2건을 갱신했다.
+  dependency·analyzer·audit 설정을 변경하지 않았다.
+- 실제 WebView2 화면, native pointer/focus/IME, 실제 shell PID와 1/3/8 탭×네 theme×100/125/150/200%
+  48조합은 **Not run (manual)**이다. [후속 수동 절차와 결과 표](../test-plan.md#탭-드래그-시각-피드백-검증--2026-10-14)를
+  갱신했다. 실제 화면 인수/release 완료를 의미하지 않는다. commit/push/배포는 수행하지 않았다.

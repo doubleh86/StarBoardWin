@@ -321,7 +321,7 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const sessions = new Map<string, SessionEntry>();
 const workspaceSync = new WorkspaceSync();
 const tabDragReorder = new TabDragReorder(tabList,
-  () => orderedSessions().map((entry) => ({ id: entry.id, button: entry.tabButton, item: entry.tabItem })),
+  () => orderedSessions().map((entry) => ({ id: entry.id, name: entry.name, button: entry.tabButton, item: entry.tabItem })),
   () => workspaceSync.getDragStartOrder(),
   (source, target, startOrder) => postSession("reorder-session", source.sessionId, {
     rendererInstanceId: RendererInstanceId,

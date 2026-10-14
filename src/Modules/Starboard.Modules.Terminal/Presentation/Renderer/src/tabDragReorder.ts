@@ -1,6 +1,6 @@
 import type { SessionOrder } from "./workspaceSync";
 
-type DragTab = { id: string; button: HTMLElement; item: HTMLElement };
+type DragTab = { id: string; name: string; button: HTMLElement; item: HTMLElement };
 type Insertion = { targetSessionId: string; position: "before" | "after"; x: number };
 type Drag = {
   pointerId: number;
@@ -20,6 +20,7 @@ export class TabDragReorder {
   private suppressUntil = 0;
   private disposed = false;
   private readonly marker = document.createElement("div");
+  private readonly preview = document.createElement("div");
 
   constructor(private readonly list: HTMLElement,
               private readonly tabs: () => DragTab[],
@@ -29,10 +30,15 @@ export class TabDragReorder {
     this.marker.hidden = true;
     this.marker.setAttribute("aria-hidden", "true");
     document.body.append(this.marker);
+    this.preview.className = "tab-drag-preview";
+    this.preview.hidden = true;
+    this.preview.setAttribute("aria-hidden", "true");
+    document.body.append(this.preview);
     list.addEventListener("pointerdown", this.pointerDown);
     document.addEventListener("click", this.suppressClick, true);
     document.addEventListener("dblclick", this.suppressClick, true);
     window.addEventListener("blur", this.cancel);
+    window.addEventListener("resize", this.refresh);
     window.addEventListener("pagehide", this.dispose);
     document.addEventListener("visibilitychange", this.visibilityChanged);
   }
@@ -43,6 +49,9 @@ export class TabDragReorder {
         this.drag.startOrder.some((session, index) => session.sessionId !== order[index].sessionId ||
           session.sessionGeneration !== order[index].sessionGeneration) === true)) {
       this.cancel();
+    }
+    if (this.drag?.started === true) {
+      this.refresh();
     }
   }
 
@@ -84,6 +93,7 @@ export class TabDragReorder {
     if (drag.started === false && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) > 6) {
       drag.started = true;
       this.list.dataset.reordering = "true";
+      drag.source.item.dataset.dragSource = "true";
     }
     if (drag.started === true) {
       event.preventDefault();
@@ -109,17 +119,28 @@ export class TabDragReorder {
     const rect = target.item.getBoundingClientRect();
     const position = drag.x < (rect.left + rect.right) / 2 ? "before" : "after";
     return { targetSessionId: target.id, position,
-      x: Math.max(bounds.left + 1, Math.min(bounds.right - 1, position === "before" ? rect.left : rect.right)) };
+      x: Math.max(bounds.left + 3.5, Math.min(bounds.right - 3.5, position === "before" ? rect.left : rect.right)) };
   }
 
   private readonly refresh = (): void => {
     const target = this.insertion();
     this.marker.hidden = target === undefined;
+    this.preview.hidden = target === undefined;
     if (target !== undefined) {
       const bounds = this.list.getBoundingClientRect();
-      this.marker.style.left = `${target.x - 1}px`;
+      this.marker.style.left = `${target.x - 1.5}px`;
       this.marker.style.top = `${bounds.top}px`;
       this.marker.style.height = `${this.list.clientHeight}px`;
+      const drag = this.drag!;
+      this.preview.textContent = this.tabs().find((tab) => tab.id === drag.source.id)?.name ?? drag.source.name;
+      // Fixed-position overlay coordinates and viewport dimensions are all CSS pixels.
+      const width = document.documentElement.clientWidth;
+      const height = document.documentElement.clientHeight;
+      this.preview.style.maxWidth = `${Math.max(0, Math.min(220, width - 8))}px`;
+      this.preview.style.maxHeight = `${Math.max(0, height - 8)}px`;
+      const rect = this.preview.getBoundingClientRect();
+      this.preview.style.left = `${Math.max(4, Math.min(width - rect.width - 4, drag.x + 12))}px`;
+      this.preview.style.top = `${Math.max(4, Math.min(height - rect.height - 4, bounds.bottom + 6))}px`;
     }
   };
 
@@ -209,6 +230,8 @@ export class TabDragReorder {
       this.frame = undefined;
     }
     this.marker.hidden = true;
+    this.preview.hidden = true;
+    this.preview.textContent = "";
     delete this.list.dataset.reordering;
     document.removeEventListener("pointermove", this.pointerMove, true);
     document.removeEventListener("pointerup", this.pointerUp, true);
@@ -216,6 +239,7 @@ export class TabDragReorder {
     document.removeEventListener("keydown", this.keyDown, true);
     this.list.removeEventListener("scroll", this.refresh);
     if (drag !== undefined) {
+      delete drag.source.item.dataset.dragSource;
       if (drag.started === true) {
         // Chromium emits click/dblclick after a captured drag, including a cancelled one.
         this.suppressUntil = Date.now() + 500;
@@ -235,7 +259,9 @@ export class TabDragReorder {
     document.removeEventListener("dblclick", this.suppressClick, true);
     document.removeEventListener("visibilitychange", this.visibilityChanged);
     window.removeEventListener("blur", this.cancel);
+    window.removeEventListener("resize", this.refresh);
     window.removeEventListener("pagehide", this.dispose);
     this.marker.remove();
+    this.preview.remove();
   };
 }
