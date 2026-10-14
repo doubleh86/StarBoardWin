@@ -7,8 +7,10 @@
 동기화 경계와 포커스 보존을 보완했고, renderer Task에서 마우스 drag UI를 구현했다.
 integration에서 메시지 왕복·저장/복원 회귀와 사용 문서를 보완했다. 실제 WebView2·IME·focus·DPI
 화면 인수는 수동 검증 대기이며 자동·모의 결과로 통과 처리하지 않는다.
+드래그 표시가 약하다는 후속 사용자 제보에 따라 `tab-drag-visual-feedback`을 아래에 추가했다.
+이 후속 Task는 **기획 완료·구현 미착수**이며 기존 정렬 구현·자동 검증 완료와 구분한다.
 계약 Task에서는 이 계획과 테스트 fixture만 변경하며 제품 코드, renderer 배포 asset, 앱 버전과 바탕화면 배포를 변경하지 않는다.
-오케스트레이터는 아래 Task를 새 구현 대상으로 계획하되 기존 완료 기능을 다시 구현하지 않는다.
+오케스트레이터는 미완료 후속 Task만 새 구현 대상으로 계획하고 기존 완료 기능을 다시 구현하지 않는다.
 
 초기 기획의 기준선은 `main`의 `1505ccb`였다. 당시 탭 우클릭/`Shift+F10`의 `왼쪽으로 이동`·`오른쪽으로 이동`은
 구현돼 있지만 마우스 드래그 정렬은 없다. `TerminalTabRegistry`의 순서와
@@ -38,6 +40,7 @@ integration에서 메시지 왕복·저장/복원 회귀와 사용 문서를 보
   섞지 않는다. 100/125/150/200%에서 이중 배율 계산 없이 동작해야 한다.
 - 탭 바 높이와 현재 theme를 유지하고 삽입 위치를 얇은 표시로 안내한다. 노란 테두리, 상시 버튼,
   별도 창이나 panel 자동 확장은 추가하지 않는다. pointer preview는 shell 입력을 전달하지 않는다.
+  얇은 표시는 초기 구현 기준이며, 후속 시각 보강은 아래 `tab-drag-visual-feedback`을 따른다.
 - 정렬 중에는 삽입 위치만 미리 보여주고 pointer release의 유효한 drop에서 한 번 확정한다.
   움직일 때마다 host에 이동 메시지를 보내거나 workspace 파일을 저장하지 않는다.
 - 탭 목록의 좌우 가장자리에 머무르면 목록만 제한된 속도로 가로 스크롤한다. `+`와 오른쪽 끝 `▾`는
@@ -459,3 +462,58 @@ git diff --check
   [수동 matrix와 재현 절차](../test-plan.md#탭-드래그-정렬-통합-회귀--2026-10-13)의 DRAG-MAN-01~06을
   대기로 남겼다. 자동 Task 완료는 실제 제품 화면 인수 또는 release 완료를 의미하지 않는다.
   사용자 앱 재시작·설치·commit·push·배포는 수행하지 않았다.
+
+## 후속 — 탭 드래그 시각 피드백 보강 (2026-10-13)
+
+### 제보·코드 근거와 목표
+
+- 사용자 제보: 탭을 마우스로 옮길 때 표시가 약해 이동 중인 탭과 놓을 위치를 파악하기 어렵다.
+  실제 화면의 원인 재현·대비 측정은 아직 수행하지 않았다.
+- 현재 `.tab-insertion-marker`는 theme accent 색의 폭 **2 CSS px** 선이다. 정렬 중
+  `data-reordering`은 탭 커서를 `grabbing`으로 바꾸지만 source 탭을 별도로 강조하거나
+  마우스 옆 이름 미리보기를 표시하지 않는다. 자기 탭 위/목록 밖에서는 삽입선도 숨긴다.
+  이는 코드에서 확인한 피드백 구성이지 renderer 실패나 실제 화면 검증 결과가 아니다.
+- 목표: 정렬 임계값을 넘으면 **무엇을 옮기는지·어디에 놓이는지**가 동시에 보여야 한다.
+  shell 수명, 순서 메시지·판정 계약, focus와 저장 옵션은 변경하지 않는다.
+
+### UX와 인수 기준
+
+1. 6 CSS px 임계값을 넘은 뒤에만 source 탭의 배경과 테마 accent 표시를 강화한다.
+   활성 탭 표시와 drag 상태를 분리하며 비활성 탭을 끌어도 활성 ID는 바뀌지 않는다.
+   padding·폭·높이·닫기 버튼 hit target은 유지하고 노란 테두리는 추가하지 않는다.
+2. 유효한 삽입 위치는 **3~4 CSS px 선과 위/아래 작은 끝 표시**로 강조한다.
+   밝고 어두운 테마에서 배경에 묻히지 않게 기존 theme token을 사용한다. 표시가
+   `×`·`+`·`▾`·높이 손잡이와 탭 글자를 가리거나 hit testing을 가로채면 안 된다.
+3. 마우스 옆에는 탭 이름만 담은 작은 비상호작용 미리보기를 표시한다. viewport 안으로
+   제한하고 긴 이름은 말줄임한다. 실제 탭/xterm을 복제하지 않으며 닫기 버튼·terminal 내용은
+   포함하지 않는다. `pointer-events: none`, `aria-hidden`으로 중복 접근성·focus를 만들지 않는다.
+   DOM text로 이름을 설정해 HTML로 해석하지 않고, 목록 밖에서는 잘못된 drop 가능 표시를 하지 않는다.
+4. 목록 안의 유효 target이 없으면 source 표시만 유지하고 삽입 표시는 숨긴다.
+   목록 밖이면 미리보기를 숨기거나 비활성 형태로 명확히 구분한다. 무효 release는 기존대로 취소한다.
+5. preview는 host 순서·DOM 정본을 낙관적으로 변경하지 않는다. 기존 drop당 한 번 전송,
+   자동 스크롤, click/doubleclick 억제, Escape·pointercancel·blur·수명 종료·경쟁 취소를 보존한다.
+   drop·취소·source 제거·renderer 복구 뒤 표시 class/element가 남지 않아야 한다.
+6. 지속 애니메이션·깜빡임·새 상시 control은 추가하지 않는다. 1/3/8개 탭, 좁은 폭/overflow,
+   긴 한글 이름, 네 theme와 100/125/150/200%에서 표시와 클릭 영역을 구분해 검증한다.
+
+### 독립 Task: `tab-drag-visual-feedback`
+
+- 제목: 탭 드래그의 이동 대상과 삽입 위치 표시 강화
+- 상태: **기획 완료·구현 미착수**. 이번 제보 기록에서는 제품 코드·dist·버전·배포물을 변경하지 않는다.
+- capabilities: `frontend`, `qa`; 위험도: 낮음.
+- dependencies: 완료된 `tab-drag-reorder-renderer`와 `tab-drag-reorder-integration`.
+- 영향 파일: renderer `src/tabDragReorder.ts`, `src/styles.css`, 필요한 최소 `src/index.ts`,
+  재생성 `dist/**`, `test/tabDragReorder.test.mjs`와 필요하면 기존 `test/rendererHarness.mjs`,
+  `RendererDistributionTests.cs`, 이 계획·계획 index·`docs/test-plan.md`.
+- 제외: Terminal runtime/protocol/fixture 재설계, 다른 module, 새 dependency/schema,
+  새 단축키·순서 정책, session 재시작, commit/push·release·배포.
+- 파일 소유권: 위 renderer source/dist와 UI 테스트는 한 담당자가 함께 수정한다.
+  동일 controller/CSS를 여러 Task로 나눠 병렬 편집하지 않는다.
+- [ ] source 강조·삽입선·이름 미리보기와 취소/수명 정리를 구현하고 source/dist를 동기화한다.
+- [ ] Node 동작 검증·renderer build·관련 C# 테스트와 전체 restore/build/test를 실행하고 완료 상태를 갱신한다.
+- 자동 검증: 임계값 전 표시 없음, 비활성 source 강조와 active/focus 보존, 미리보기 이름의
+  안전한 text 처리·viewport 제한, 무효 target, overflow, drop/모든 취소의 표시 정리와 기존 전송 횟수를 확인한다.
+  CSS 문자열 검사나 모의 DOM만으로 실제 시각 대비·clipping을 통과로 처리하지 않는다.
+- **Not run (manual):** 현재 실제 WebView2 화면 확인은 미수행이다. 구현 후
+  [기존 수동 matrix](../test-plan.md#실제-webview2-수동-인수-절차-모두-대기)의 DRAG-MAN-01/02/04/05에
+  source 표시·삽입선·이름 미리보기 관찰을 보강하고, 수행하지 못한 항목은 그대로 미수행으로 남긴다.
