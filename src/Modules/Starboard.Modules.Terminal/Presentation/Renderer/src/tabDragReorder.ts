@@ -55,6 +55,10 @@ export class TabDragReorder {
     }
   }
 
+  get hasPointerCapture(): boolean {
+    return this.drag !== undefined && this.drag.source.button.hasPointerCapture(this.drag.pointerId) === true;
+  }
+
   private readonly pointerDown = (event: PointerEvent): void => {
     if (this.disposed === true || this.drag !== undefined || event.button !== 0 ||
         event.pointerType !== "mouse" || event.isPrimary === false) {

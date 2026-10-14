@@ -265,7 +265,7 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
 
 ### 현재 상태와 사용자 확인
 
-**긴급 회귀 제보·진단 기획, 구현 미착수.** 기존 SAFE-02 중복 전달 수정과 완료 테스트는 보존한다.
+**코드 경계 수정·자동 검증 완료 (2026-10-14), 실제 제보 재현·장기 실행 인수는 미수행.** 기존 SAFE-02 중복 전달 수정과 완료 테스트는 보존한다.
 사용자는 처음 `Ctrl+S`·`Ctrl+V`로 제보했으나 추가 확인으로 **`Ctrl+C` 복사·`Ctrl+V` 붙여넣기**라고
 정정했다. 단순 `Ctrl+S` 또는 전역 `Ctrl+Alt+S` 문제로 잘못 계획하지 않는다.
 
@@ -275,7 +275,7 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
 - 제보 시 바탕화면 metadata의 버전은 `0.2.2`, 빌드는 `2dbb6c9`였다.
   실패한 순간의 선택 상태·focused element·대화상자·clipboard API 결과와 재현 순서는 아직 미확인이다.
 
-### 읽기 전용 조사 근거와 한계
+### 수정 전 읽기 전용 조사 근거와 한계
 
 - Windows Application Error **1000**에서 2026-10-14 **15:46:41 / 15:47:19 KST**에
   바탕화면 `Starboard.exe`의 오류 기록을 확인했다. version `0.2.2.0`, 같은 PID `53316` (`0xd044`),
@@ -307,7 +307,7 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
 
 - 제목: 복사·붙여넣기 간헐 불능과 자동 종료 회귀 진단·복구
 - 우선순위: **긴급(P0)**. 화면 미관 보강보다 입력 기본 기능과 앱 수명 안정화를 우선한다.
-- 상태: **진단 근거 기록·제품 수정 미착수**. 원인 확정과 실제 재현은 아직 완료되지 않았다.
+- 상태: **지정 worktree에서 구현·자동 검증 완료**. 실제 사용자 증상과 충돌의 공통 원인은 미확정이다.
 - 선행: 기존 paste 단일 전달·여러 줄 확인·selection 없는 interrupt·세션 보존 정책을 유지한다.
 - 조사 순서: renderer key 도착 → xterm selection/focus·capture/pending UI 상태 → host message 수신 →
   clipboard API 성공/실패 → 대상 session 전달을 분리한다. 자동 종료의 예외 경로는 별도로 좁히고
@@ -324,15 +324,24 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
 - 파일 소유권: clipboard·focus·UI 수명 조사는 하나의 runtime/renderer 경계로 먼저 고정한다.
   같은 TerminalView·controller를 여러 worker가 동시에 수정하지 않는다. 분리 가능한 순수 검증만
   계약 확정 후 병렬로 진행하고, 실제 입력·예외 통합 검증은 합류 뒤 수행한다.
-- [ ] 간헐 불능 직전 상태와 자동 종료의 throw/callback 경계를 원문 없는 관측으로 좁히고,
-  실제 재현과 코드/모의 증거를 구분한다.
-- [ ] 확인된 원인의 수명·focus·pending 상태 또는 clipboard 오류 경로를 최소 범위로 수정한다.
+- [x] key 도착·selection/focus/capture/modal·host clipboard·renderer 전달과 예외 경계를
+  원문 없는 상태 관측으로 분리했다. 실제 사용자 실패 직전 상태와 종료 throw 지점은 미확정이다.
+- [x] 확인된 코드 경로의 수명·focus·pending 상태와 clipboard 오류 처리를 수정했다.
   복구 가능한 clipboard 접근 실패는 제한된 비동기 재시도와 사용자 상태 안내로 처리하되
   clipboard STA/UI thread 요구를 지킨다. 재시작을 기본 복구 수단으로 사용하지 않는다.
-- [ ] production custom key handler/host clipboard 경계의 동작 테스트와 전체 검증을 실행하고,
+- [x] production custom key handler/host clipboard 경계의 동작 테스트와 전체 검증을 실행하고,
   실제 Windows/WebView2 장기 실행·RDP 전환/복구 검증의 인수 상태를 갱신한다.
 
 ### 완료 기준과 안전 경계
+
+이번 구현 범위는 renderer production 키/DOM 입력 경계, Terminal Presentation의 STA clipboard
+재시도·요청 수명 경계, WebView callback 예외 관측과 host 파일 진단이다. Clipboard는 최대
+3회 시도하며 await 이후 활성 탭·세대·renderer 수명과 확인창을 다시 검사한다. Clipboard
+원문·입력·출력·예외 message/stack을 기록하지 않는다. 전역 예외는 진단만 추가하고
+무조건 Handled 처리하지 않는다. 위험은 지연된 paste의 잘못된 대상 전달과 확인창 우회이며,
+production handler를 실행하는 Node 모의 테스트와 C# 주입 경계 테스트로 검사한다.
+영향 파일은 지정 Presentation/source/dist, Terminal/IntegrationTests와 App.xaml.cs,
+FileDiagnosticLog.cs 및 지정 문서로 제한한다. 실제 Windows 장기 실행·IME·RDP는 별도 미수행으로 남긴다.
 
 - synthetic selection으로 `Ctrl+C`·`Ctrl+Shift+C`가 정확히 한 번 copy 요청을 만들고,
   selection 없는 `Ctrl+C`는 shell interrupt를 유지한다. 반복 입력·IME/AltGr 조합도 구분한다.
@@ -351,3 +360,30 @@ worker 인수인계에는 기준 커밋, 변경 파일, 계약 변경, 검증 �
   충돌을 의도적으로 재현하거나 덤프를 수집하지 않았다. 구현 시
   [테스트 계획](../test-plan.md)의 MAN-029/029a와 RDP matrix에 장기 실행·재시작 회복·자발 종료 관찰을
   추가하며, 수행하지 못한 실제 항목은 미수행으로 남긴다. 이 읽기 전용 조사에서는 제품 수정·충돌 재현·배포를 수행하지 않았다.
+
+### 2026-10-14 Task 완료 기록
+
+- 확인된 코드 문제: dialog의 전역 Ctrl 차단이 local 편집을 막음, 확인 키 억제가 keyup 유실 시
+  남음, 선택 copy가 browser 기본 동작을 명시적으로 취소하지 않음, clipboard의 COMException
+  catch가 WPF ExternalException을 놓침, renderer 세대 map이 지워진 뒤 늦은 요청이 generation 0
+  session reference를 만들 수 있음. 실제 사용자 증상과 동일 원인임은 확인하지 못했다.
+- production renderer의 copy/paste와 editor/dialog input 보호·fresh keydown/blur 복구를 수정했다.
+  host clipboard는 3회 adapter 시도, 80ms 비동기 지연, STA 유지와 OLE 재진입/await 뒤 수명
+  검사를 사용한다. 탭 왕복·세대/renderer 변경은 snapshot을 폐기하고 CR/LF 확인과 단일 전달을
+  유지한다. 실패 안내는 theme 색상으로 표시하며 다음 성공 요청에서 지운다.
+- WebView callback의 알려진 COM/disposed 오류, 실패 renderer drop 해제와 layout 조회의
+  예상 오류를 해당 경계에서 관측했다. CTS 해제 전에 clipboard/layout 작업을 취소·관찰한다.
+  App 전역 관측은 고정 예외 분류/HRESULT만 기록하며 Handled로 모든 예외를 삼키지 않는다.
+- `npm ci`, production Node tests **87/87**, renderer offline build, Terminal tests **364/364**,
+  solution restore/Debug build **경고·오류 0개**, 최종 전체 tests **606/606** (Architecture 13,
+  Terminal 364, DesktopIntegration 120, Preferences 37, Integration 72), C# 정렬 검사와
+  `git diff --check`를 통과했다. build/test는 초기 sandbox 하위 프로세스 EPERM·기존 병렬
+  MSBuild worker 접근 오류 뒤 build-server 비활성·단일 노드로 실행했다. package manifest/lock과
+  금지된 source 경로는 수정하지 않았다.
+- 첫 전체 병렬 suite에서 `LocalWpfPanelPlacementPreservesForegroundAndRestoresCollapsedBounds`의
+  실제 OS foreground HWND 비교가 한 번 실패했다. 해당 테스트를 수정하거나 skip하지 않았으며
+  최종 단일 노드 전체 실행에서 통과했다. 외부 focus 경합 여부와 원인은 미확정이고 단순 통과로
+  첫 실패 기록을 지우지 않는다.
+- source에서 dist/app.js·app.css를 재생성했으며 license 내용은 보존했다. commit/push·앱 버전·
+  바탕화면 배포는 수행하지 않았다. 실제 Windows clipboard, 장기 실행·자발 종료 재현·한글 IME·
+  RDP는 CLIP-MAN-01~05 **Not run (manual)**이다.

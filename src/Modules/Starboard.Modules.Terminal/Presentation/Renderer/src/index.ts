@@ -16,6 +16,7 @@ const MaximumUrlLength = 2_048;
 const RendererInstanceId = crypto.randomUUID().replaceAll("-", "").toLowerCase();
 
 type GlobalRendererMessageType =
+  | "input-diagnostic"
   | "ready"
   | "select-next"
   | "select-previous"
@@ -79,6 +80,7 @@ type SessionHostMessageType =
   | "activate-session"
   | "output"
   | "paste"
+  | "clipboard-status"
   | "reset"
   | "remove-session"
   | "session-error"
@@ -399,6 +401,7 @@ function isSessionHostMessageType(value: string): value is SessionHostMessageTyp
     value === "activate-session" ||
     value === "output" ||
     value === "paste" ||
+    value === "clipboard-status" ||
     value === "reset" ||
     value === "remove-session" ||
     value === "session-error" ||
@@ -566,7 +569,42 @@ function requestClipboardPaste(event: Event, sessionId: string): void {
   // boundary remains the only source and each user gesture is delivered exactly once.
   event.preventDefault();
   event.stopImmediatePropagation();
+  if (canSendTerminalInput(sessionId) === false) {
+    reportInputState(3, sessionId);
+    return;
+  }
+  if (event.type === "keydown" && ((event as KeyboardEvent).repeat === true ||
+    (event as KeyboardEvent).isComposing === true)) {
+    return;
+  }
+  reportInputState(2, sessionId);
   postSession("paste-request", sessionId);
+}
+
+function hasEditingFocus(): boolean {
+  const element = document.activeElement as HTMLElement | null;
+  return element !== null &&
+    (element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.isContentEditable === true) &&
+    element.classList.contains("xterm-helper-textarea") === false;
+}
+
+function canSendTerminalInput(sessionId: string): boolean {
+  return activeSessionId === sessionId && pendingConfirmation === undefined &&
+    savedTabsDialog === undefined && document.querySelector("dialog[open]") === null && hasEditingFocus() === false;
+}
+
+function reportInputState(route: number, sessionId: string): void {
+  // This separate diagnostic envelope carries bounded state only, never user text or IDs.
+  window.chrome?.webview?.postMessage({
+    version: ProtocolVersion, type: "input-diagnostic",
+    payload: {
+      route, selection: sessions.get(sessionId)?.terminal.hasSelection() === true ? 1 : 0,
+      focus: hasEditingFocus() === true ? 1 : document.hasFocus() === true ? 2 : 0,
+      modal: pendingConfirmation !== undefined || savedTabsDialog !== undefined ? 1 : 0,
+      suppressed: suppressedConfirmationKeys.size > 0 ? 1 : 0,
+      capture: tabDragReorder.hasPointerCapture === true ? 1 : 0,
+    },
+  });
 }
 
 function postPathDrop(entry: SessionEntry, files: File[]): boolean {
@@ -750,9 +788,19 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
   terminal.loadAddon(searchAddon);
   terminal.loadAddon(webLinksAddon);
   terminal.open(mount);
-  terminal.onData((data) => postSession("input", sessionId, { data }));
+  terminal.onData((data) => {
+    if (canSendTerminalInput(sessionId) === true) {
+      postSession("input", sessionId, { data });
+    }
+  });
   terminal.attachCustomKeyEventHandler((event) => {
+    if (canSendTerminalInput(sessionId) === false) {
+      return false;
+    }
     if (event.type !== "keydown") {
+      return true;
+    }
+    if (event.isComposing === true) {
       return true;
     }
 
@@ -773,7 +821,12 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
       event.code === "KeyC" &&
       terminal.hasSelection() === true
     ) {
-      postSession("copy", sessionId, { data: terminal.getSelection() });
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      reportInputState(1, sessionId);
+      if (event.repeat !== true) {
+        postSession("copy", sessionId, { data: terminal.getSelection() });
+      }
       return false;
     }
 
@@ -787,6 +840,9 @@ function createSession(sessionId: string, payload: SessionPayload): SessionEntry
       return false;
     }
 
+    if (event.code === "KeyC" && event.ctrlKey === true && event.altKey === false && event.metaKey === false) {
+      reportInputState(4, sessionId);
+    }
     return true;
   });
   mount.addEventListener(
@@ -2745,7 +2801,25 @@ function handleHostMessage(value: unknown): void {
   }
 
   if (message.type === "paste" && typeof payload.data === "string") {
-    entry.terminal.paste(payload.data);
+    if (payload.sessionGeneration === entry.sessionGeneration && canSendTerminalInput(sessionId) === true) {
+      entry.terminal.paste(payload.data);
+      reportInputState(5, sessionId);
+    } else {
+      reportInputState(3, sessionId);
+    }
+    return;
+  }
+
+  if (message.type === "clipboard-status" && typeof payload.succeeded === "boolean" &&
+    payload.sessionGeneration === entry.sessionGeneration && activeSessionId === sessionId) {
+    entry.pane.querySelector(".clipboard-feedback")?.remove();
+    if (payload.succeeded === false) {
+      const feedback = document.createElement("div");
+      feedback.className = "clipboard-feedback";
+      feedback.setAttribute("role", "status");
+      feedback.textContent = "클립보드를 사용할 수 없습니다. 잠시 후 복사·붙여넣기를 다시 시도해 주세요.";
+      entry.pane.append(feedback);
+    }
     return;
   }
 
@@ -2785,9 +2859,12 @@ function handleHostMessage(value: unknown): void {
 }
 
 function handleApplicationShortcut(event: KeyboardEvent): void {
-  if ((pendingConfirmation !== undefined || savedTabsDialog !== undefined) && event.ctrlKey === true) {
-    event.preventDefault();
-    event.stopPropagation();
+  if (event.ctrlKey === true && event.altKey === false && event.metaKey === false &&
+    (event.code === "KeyC" || event.code === "KeyV") && activeSessionId !== undefined && event.repeat !== true) {
+    reportInputState(0, activeSessionId);
+  }
+  if (pendingConfirmation !== undefined || savedTabsDialog !== undefined ||
+    document.querySelector("dialog[open]") !== null || hasEditingFocus() === true) {
     return;
   }
 
@@ -2858,12 +2935,31 @@ reducedMotion.addEventListener("change", (event) => {
 document.addEventListener("keydown", handleApplicationShortcut, true);
 document.addEventListener("keydown", (event) => {
   if (suppressedConfirmationKeys.has(event.code) === true) {
+    // A fresh press proves the previous key was released even when WebView2 lost keyup.
+    if (event.repeat === true) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    } else {
+      suppressedConfirmationKeys.delete(event.code);
+    }
+  }
+}, true);
+
+window.addEventListener("blur", () => suppressedConfirmationKeys.clear());
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden === true) {
+    suppressedConfirmationKeys.clear();
+  }
+});
+document.addEventListener("keyup", (event) => {
+  suppressedConfirmationKeys.delete(event.code);
+}, true);
+
+document.addEventListener("keypress", (event) => {
+  if (suppressedConfirmationKeys.has(event.code) === true) {
     event.preventDefault();
     event.stopImmediatePropagation();
   }
-}, true);
-document.addEventListener("keyup", (event) => {
-  suppressedConfirmationKeys.delete(event.code);
 }, true);
 document.addEventListener("pointerdown", (event) => {
   if (contextMenu !== undefined && contextMenu.contains(event.target as Node) === false) {

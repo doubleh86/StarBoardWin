@@ -235,10 +235,33 @@ generation을 포함한 확인 요청으로 바꾼다. renderer가 같은 세대
 제거·restart와 늦은 응답은 취소로 처리하므로 다른 tab 또는 새 session을 닫을 수 없다.
 
 clipboard text에 CR 또는 LF가 있으면 host는 한 번 읽은 snapshot만 같은 확인 경계에
-넣는다. 승인 후 clipboard를 다시 읽지 않고 기존 xterm paste path로 한 번 전달하며,
+넣는다. 승인 후 clipboard를 다시 읽지 않고 coordinator가 snapshot을 transport에 한 번 전달하며,
 preview와 token은 log, settings, workspace 또는 package에 쓰지 않는다. 비활성 tab의
 non-empty output은 session generation별 in-memory `new output` state로 표시한다. 이는
 command completion 판단이나 activation 요청이 아니며, tab 선택·restart·remove에서 지운다.
+
+2026-10-14 입력 회귀 수정: selection이 있는 Ctrl+C/Ctrl+Shift+C는 browser 기본 copy를
+취소하고 host에 한 번 요청한다. selection 없는 Ctrl+C interrupt는 유지한다. Ctrl+V,
+Ctrl+Shift+V와 native paste는 host 경계를 사용한다. 모든 open dialog와 이름·저장 탭·검색
+editor에서는 local 편집을 허용하고 xterm input은 차단한다. 확인 후 Enter/Escape의 반복
+keydown과 뒤따르는 keypress만 억제하며 fresh keydown·keyup·blur·hidden에서 상태를 해제한다.
+
+ClipboardAccess는 WPF Dispatcher의 STA context에서만 clipboard API를 실행한다. 문서화된
+[Clipboard의 ExternalException](https://learn.microsoft.com/en-us/dotnet/api/system.windows.clipboard.setdataobject)
+중 clipboard HRESULT 0x800401D0~0x800401D4만 최대 3회 adapter 시도와 시도 사이 80ms의
+취소 가능한 비동기 지연으로 처리한다. WPF API 자체의 내부 OLE 대기는 이 지연과 별개다.
+빈/비텍스트는 입력하지 않고 접근 실패는 renderer 상태 안내와 다음 요청으로 복구한다.
+요청 전·clipboard OLE 재진입 후·await 후에 renderer instance/generation, workspace epoch,
+활성 session과 실제 session generation, 확인창을 재검사한다. 탭을 바꿨다가 돌아온 경우도
+epoch 변경으로 취소한다. single-line paste 응답에도 generation을 싣고 renderer에서 확인한다.
+CR/LF snapshot 승인·취소 및 단일 전달의 기존 coordinator 계약은 유지한다.
+
+WebView callback의 COM/disposed 오류는 해당 경계에서 진단하며 현재 renderer에 한해 복구
+상태로 전환한다. 실패 renderer의 drop 설정 해제 오류를 별도로 관측하고, 종료 시 clipboard와
+layout 작업을 취소·관찰한 뒤 CTS를 해제한다. 알 수 없는 clipboard 오류는 진단 후 owned
+task에 fault를 보존한다. App의 dispatcher/domain 예외 관측은 metadata만 기록하며
+전역 Handled 처리로 예외를 숨기지 않는다. 사용자 자발 종료의 실제 throw 지점과 두 증상의
+동일 원인은 아직 확인되지 않았다.
 
 ### 명령 수명과 완료 알림 계약
 
@@ -736,7 +759,8 @@ WebView2 transparent composition 위험 때문에 glassmorphism과 blur를 쓰�
 ## Diagnostics와 privacy
 
 - local diagnostic log는 `%LOCALAPPDATA%/Starboard/Logs/starboard.log`와 `.1`~`.4` 보관본만 사용한다. 각 파일은 512 KiB를 넘기기 전에 회전하므로 총 보관 상한은 2.5 MiB다.
-- subsystem, operation, level, native error code의 제한된 metadata만 기록한다. message와 exception 본문은 file sink에서 의도적으로 폐기하며 허용 문자/길이를 벗어난 metadata는 `redacted`로 대체한다.
+- subsystem, operation, level, native error code, 고정 예외 분류와 숫자 HRESULT의 제한된 metadata만 기록한다. message와 exception 본문/stack/Data는 file sink에서 의도적으로 폐기하며 허용 문자/길이를 벗어난 metadata는 `redacted`로 대체한다.
+- 입력 진단은 Presentation 전용 `input-diagnostic` envelope를 엄격하게 검사한다. route(0 key 도착, 1 copy, 2 paste 요청, 3 차단/폐기, 4 interrupt 경로, 5 xterm paste 적용), selection(0/1), focus(0 문서 비활성, 1 editor, 2 문서 활성), modal/suppressed/pointer capture(0/1)만 허용한다. session ID와 원문은 이 envelope에 없으며, extra field·범위 초과·512자 초과는 폐기한다. host는 Copy/Paste.Completed·Unavailable·Stale·Retry, 확인 전달/폐기와 예외 코드를 별도로 남긴다. Clipboard.Completed는 실제 shell 전달 성공을 뜻하지 않는다.
 - 파일 잠금, I/O, 손상된 기존 파일과 회전 실패는 best-effort로 격리한다. 진단 기록 실패는 startup, recovery 또는 shutdown을 중단하지 않는다.
 - command, terminal output, clipboard, environment value와 full custom arguments는
   기록하지 않는다.

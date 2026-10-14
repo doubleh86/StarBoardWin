@@ -827,7 +827,8 @@ button:focus-visible {
 }
 
 .path-drop-feedback,
-.url-open-feedback {
+.url-open-feedback,
+.clipboard-feedback {
   position: absolute;
   z-index: 2;
   right: var(--space-xs);

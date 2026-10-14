@@ -9,6 +9,24 @@ namespace Starboard.IntegrationTests;
 public sealed class FileDiagnosticLogTests
 {
     [TestMethod]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2201", Justification = "Inject the exact WPF clipboard exception for privacy verification.")]
+    public void WriteClipboardAndCallbackFailuresPersistsCodesWithoutExceptionContent()
+    {
+        using var fixture = new LogFixture();
+        var log = new FileDiagnosticLog(fixture.DirectoryPath);
+        var clipboard = new System.Runtime.InteropServices.ExternalException("private clipboard content", unchecked((int)0x800401D0));
+        clipboard.Data["private-data"] = "secret";
+        log.Write(DiagnosticLevel.Warning, "Terminal", "Copy.Retry", "private message", clipboard);
+        log.Write(DiagnosticLevel.Error, "Host", "DispatcherUnhandled", "ignored", new ObjectDisposedException("private-object"));
+
+        var content = File.ReadAllText(fixture.LogPath);
+        StringAssert.Contains(content, "ExternalException\t-2147221040");
+        StringAssert.Contains(content, "ObjectDisposedException\t");
+        Assert.IsFalse(content.Contains("private", StringComparison.Ordinal));
+        Assert.IsFalse(content.Contains("secret", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void WriteDoesNotPersistMessagesOrUnsafeMetadata()
     {
         using var fixture = new LogFixture();

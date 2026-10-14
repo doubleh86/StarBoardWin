@@ -12,6 +12,37 @@ persistent terminal, taskbar geometry와 focus 정책을 반복 가능한 방식
 복구 결과는 셸 선택·지속 세션과 renderer·셸·ConPTY 실패 후 host/session 유지 및
 재시작 관찰로 제한한다.
 
+## 2026-10-14 clipboard·입력·수명 회귀
+
+production renderer handler와 UI 생성 함수는 Node VM에서 실행하고 DOM/xterm만 모의한다.
+`clipboardShortcuts.test.mjs`는 선택 복사·interrupt, browser default 취소와 native paste capture,
+repeat/AltGr/IME flag, 실제 이름·저장 탭·검색 UI 편집, CR/LF 확인 취소, Escape/keyup 유실·blur·hidden,
+비활성/옛 세대 paste 및 원문 없는 전달 진단을 검사한다. 실제 IME/WebView2 동작으로 해석하지 않는다.
+C# ClipboardAccess/Lifetime 테스트는 ExternalException·COMException busy, 3회 상한, 다음 요청 복구,
+빈 값, OLE 재진입, 취소, 탭 왕복·세대/renderer/확인 상태 변경과 세대 정보 누락을 검사한다.
+실제 STA Dispatcher + 비동기 delay 테스트도 clipboard adapter를 주입하며 OS clipboard는 읽거나 쓰지 않는다.
+기존 SAFE-02 coordinator 테스트가 CR/LF 승인·취소·snapshot·중복 응답의 단일 전달을 검증한다.
+FileDiagnosticLog integration은 허용된 예외 분류/숫자 코드만 저장하고 message/Data를 폐기하는지 검사한다.
+
+| 추가 실제 검증 | 재현 절차와 기대 결과 | 상태 |
+|---|---|---|
+| CLIP-MAN-01 (MAN-029/029a 보완) | 테스트 소유 탭에서 selection Ctrl+C/Shift+C, no-selection interrupt, Ctrl+V/Shift+V/native paste를 반복; CR/LF는 승인 시 한 번·취소 시 0회 전달 | Not run (manual) |
+| CLIP-MAN-02 | clipboard contention/빈/비텍스트 뒤 잠금 해제하고 재시작 없이 재요청; 안내와 제한된 Retry 상태 확인, 사용자 원문은 기록하지 않음 | Not run (manual) |
+| CLIP-MAN-03 | 확인·이름·저장 탭·검색에서 편집, Escape/Enter 직후 focus 변경·keyup 유실·blur·다시 클릭; editor 입력은 shell에 0회, 이후 단축키 정상 | Not run (manual) |
+| CLIP-MAN-04 | Windows/WebView2 수 시간 실행, 한글 IME/AltGr, 드래그 capture 취소·renderer 복구 중 복사/paste; 세션/PID/cwd 유지와 자발 종료 여부 관찰 | Not run (manual) |
+| CLIP-MAN-05 (RDP-MAN-01~07 보완) | RDP 연결·해제·로컬 복귀와 배율 변경 뒤 입력·selection·clipboard·확인 취소 반복, renderer 복구 뒤 세션 유지 확인 | Not run (manual) |
+
+실제 clipboard 왕복, 장기 실행, 충돌 재현, 덤프 수집, IME·RDP는 이번 Task에서 수행하지 않았다.
+사용자 자발 종료의 throw 지점과 복사·붙여넣기 불능의 공통 원인은 미재현/미확정이다.
+새 clipboard 예외·세대 누락 보호와 입력 억제 수정은 코드/모의 증거이며 실제 제보 해결의 증거는 아니다.
+
+실행 결과: npm ci/test/build, Terminal 364, 최종 Debug solution restore/build와 전체 606개
+(Architecture 13 / Terminal 364 / DesktopIntegration 120 / Preferences 37 / Integration 72),
+정렬 검사와 diff check **Passed**, test skip 0·build warning/error 0이다. Node 87개도 Passed다.
+초기 sandbox esbuild EPERM과 병렬 MSBuild 접근 오류 뒤 권한이 허용된 단일 노드 실행을 사용했다.
+첫 전체 병렬 suite의 실제 foreground HWND 보존 검사 한 건은 실패했고, 해당 테스트 변경/skip 없이
+최종 단일 노드 전체 실행에서 통과했다. 원인은 미확정이며 실제 환경의 focus 경합 가능성만 남긴다.
+
 ## 상태 표기
 
 | 상태 | 의미 |

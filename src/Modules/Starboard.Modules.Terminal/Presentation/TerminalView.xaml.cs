@@ -61,6 +61,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private long collapsedHeightChangeSequence;
     private int columns = 80;
     private int rows = 24;
+    private Task copyTask = Task.CompletedTask;
+    private Task pasteTask = Task.CompletedTask;
+    private bool copyInProgress;
+    private bool pasteInProgress;
+    private long clipboardRequestEpoch;
 
     internal TerminalView(IDiagnosticLog diagnosticLog, TerminalSessionCoordinator sessionCoordinator,
                           TerminalWorkspacePersistence workspacePersistence,
@@ -236,11 +241,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         return restoreIncomplete;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (isDisposed == true)
         {
-            return ValueTask.CompletedTask;
+            return;
         }
 
         CancelPendingSafetyConfirmation(sendRendererCancellation: false);
@@ -259,10 +264,15 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         DetachRendererEvents(renderer.CoreWebView2);
         renderer.Dispose();
         rendererSessionGenerations.Clear();
-        rendererOperationCancellation.Dispose();
-        lifetimeCancellation.Dispose();
-
-        return ValueTask.CompletedTask;
+        try
+        {
+            await Task.WhenAll(copyTask, pasteTask, _layoutCheckTask);
+        }
+        finally
+        {
+            rendererOperationCancellation.Dispose();
+            lifetimeCancellation.Dispose();
+        }
     }
 
     internal void NotifyPanelVisibilityChanged(bool isVisible)
@@ -625,7 +635,36 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             return;
         }
 
+        try
+        {
+            HandleWebMessage(sender, eventArgs);
+        }
+        catch (Exception exception) when (exception is COMException or ObjectDisposedException)
+        {
+            // WebView callbacks can arrive during native teardown. Recover at this boundary,
+            // rather than suppressing unrelated dispatcher exceptions throughout the app.
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererCallback", "Renderer callback unavailable.", exception);
+            if (ReferenceEquals(sender, renderer.CoreWebView2) == true)
+            {
+                MarkRendererFailed("renderer 연결이 끊겼습니다. shell은 유지되며 다시 연결할 수 있습니다.");
+            }
+        }
+    }
+
+    private void HandleWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
+    {
+        if (isDisposed == true)
+        {
+            return;
+        }
+
         var json = eventArgs.WebMessageAsJson;
+        if (ReferenceEquals(sender, renderer.CoreWebView2) == true &&
+            RendererInputDiagnostics.TryParse(json, out var diagnosticOperation) == true)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Information, "Terminal", diagnosticOperation, "Input state only.");
+            return;
+        }
         if (RendererProtocol.TryParse(json, out var message, out var isReorderEnvelope) == false || message is null)
         {
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererMessage",
@@ -707,13 +746,21 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             case RendererMessageType.Copy:
                 if (message.SessionId is { } copySessionId && ContainsSession(copySessionId) == true)
                 {
-                    CopyToClipboard(message.Data ?? string.Empty);
+                    if (copyInProgress == false)
+                    {
+                        copyInProgress = true;
+                        copyTask = CopyToClipboardAsync(copySessionId, message.Data ?? string.Empty);
+                    }
                 }
                 break;
             case RendererMessageType.PasteRequest:
                 if (message.SessionId is { } pasteSessionId && ContainsSession(pasteSessionId) == true)
                 {
-                    RequestPasteFromClipboard(pasteSessionId);
+                    if (pasteInProgress == false)
+                    {
+                        pasteInProgress = true;
+                        pasteTask = RequestPasteFromClipboardAsync(pasteSessionId);
+                    }
                 }
                 break;
             case RendererMessageType.DropPaths:
@@ -1207,7 +1254,15 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         rendererFailed = true;
         rendererRequiresRecreation = true;
         rendererInstanceId = Guid.Empty;
-        renderer.AllowExternalDrop = false;
+        try
+        {
+            renderer.AllowExternalDrop = false;
+        }
+        catch (Exception exception) when (exception is COMException or InvalidOperationException)
+        {
+            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "RendererFailureCleanup",
+                                "The failed renderer could not disable external drop.", exception);
+        }
         rendererSessionGenerations.Clear();
         appearanceState?.MarkRendererUnavailable();
         ShowError(message, showExit: false);
@@ -1475,7 +1530,10 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
             if (pending.Kind == ConfirmationKind.Paste)
             {
-                _ = await sessionCoordinator.ApplyPasteConfirmationAsync(response, lifetimeCancellation.Token);
+                var applied = await sessionCoordinator.ApplyPasteConfirmationAsync(response, lifetimeCancellation.Token);
+                diagnosticLog.Write(DiagnosticLevel.Information, "Terminal",
+                                    applied == true ? "Paste.ConfirmedDelivered" : "Paste.ConfirmationDiscarded",
+                                    "Paste confirmation state only.");
                 return;
             }
 
@@ -1695,6 +1753,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void Session_WorkspaceChanged(TerminalWorkspaceSnapshot snapshot)
     {
+        Interlocked.Increment(ref clipboardRequestEpoch);
         _ = snapshot;
         if (isDisposed == true)
         {
@@ -2051,6 +2110,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void PostRendererMessage(string json)
     {
+        if (isDisposed == true || rendererFailed == true)
+        {
+            return;
+        }
+
         var core = renderer.CoreWebView2;
         if (core is null)
         {
@@ -2070,36 +2134,61 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
-    private void CopyToClipboard(string data)
+    private async Task CopyToClipboardAsync(TerminalSessionId sessionId, string data)
     {
-        if (string.IsNullOrEmpty(data) == true)
-        {
-            return;
-        }
-
         try
         {
-            Clipboard.SetText(data);
+            if (string.IsNullOrEmpty(data) == true)
+            {
+                return;
+            }
+
+            var request = CreateClipboardRequest(sessionId);
+            if (request is null)
+            {
+                PublishClipboardStatus(sessionId, "Copy", ClipboardAccessStatus.Stale);
+                return;
+            }
+
+            var result = await AccessClipboardAsync(request, "Copy", () =>
+            {
+                Clipboard.SetText(data);
+                return true;
+            });
+            PublishClipboardStatus(sessionId, "Copy", result.Status);
         }
-        catch (COMException exception)
+        finally
         {
-            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Copy",
-                                "The clipboard was temporarily unavailable.", exception);
+            copyInProgress = false;
         }
     }
 
-    private void RequestPasteFromClipboard(TerminalSessionId sessionId)
+    private async Task RequestPasteFromClipboardAsync(TerminalSessionId sessionId)
     {
-        if (pendingSafetyConfirmation is not null)
-        {
-            return;
-        }
-
         try
         {
-            if (Clipboard.ContainsText() == true)
+            if (pendingSafetyConfirmation is not null)
             {
-                var data = Clipboard.GetText();
+                return;
+            }
+
+            var request = CreateClipboardRequest(sessionId);
+            if (request is null)
+            {
+                PublishClipboardStatus(sessionId, "Paste", ClipboardAccessStatus.Stale);
+                return;
+            }
+
+            var result = await AccessClipboardAsync(request, "Paste", Clipboard.GetText);
+            if (result.Status == ClipboardAccessStatus.Completed && string.IsNullOrEmpty(result.Value) == false)
+            {
+                if (IsClipboardRequestCurrent(request) == false)
+                {
+                    PublishClipboardStatus(sessionId, "Paste", ClipboardAccessStatus.Stale);
+                    return;
+                }
+
+                var data = result.Value;
                 if (data.Length <= RendererProtocol.MaximumMessageLength)
                 {
                     var confirmation = sessionCoordinator.RequestPasteConfirmation(sessionId, data);
@@ -2107,9 +2196,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                     {
                         if (data.Contains('\r') == false && data.Contains('\n') == false)
                         {
-                            SendSessionMessage("paste", sessionId, new { data });
+                            SendSessionMessage("paste", sessionId,
+                                               new { data, sessionGeneration = request.Session.Generation });
                         }
 
+                        PublishClipboardStatus(sessionId, "Paste", result.Status);
                         return;
                     }
 
@@ -2119,19 +2210,79 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 {
                     diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Paste",
                                         "A clipboard payload larger than the renderer limit was rejected.");
+                    PublishClipboardStatus(sessionId, "Paste", ClipboardAccessStatus.Unavailable);
+                    return;
                 }
             }
-        }
-        catch (COMException exception)
-        {
-            diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Paste",
-                                "The clipboard was temporarily unavailable.", exception);
+            PublishClipboardStatus(sessionId, "Paste", result.Status);
         }
         catch (InvalidOperationException exception)
         {
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "Paste",
                                 "The clipboard paste request no longer targeted a live terminal session.", exception);
         }
+        finally
+        {
+            pasteInProgress = false;
+        }
+    }
+
+    private ClipboardRequestLifetime? CreateClipboardRequest(TerminalSessionId sessionId)
+    {
+        return ClipboardRequestLifetime.Capture(rendererGeneration, rendererInstanceId,
+                                                Interlocked.Read(ref clipboardRequestEpoch), sessionId,
+                                                rendererSessionGenerations.GetValueOrDefault(sessionId),
+                                                isDisposed == false && rendererFailed == false);
+    }
+
+    private bool IsClipboardRequestCurrent(ClipboardRequestLifetime request)
+    {
+        if (isDisposed == true)
+        {
+            return false;
+        }
+
+        return request.CanApply(rendererGeneration, rendererInstanceId, Interlocked.Read(ref clipboardRequestEpoch),
+                                sessionCoordinator.Snapshot.ActiveSessionId, sessionCoordinator.IsCurrentSession(request.Session),
+                                rendererFailed == false && renderer.CoreWebView2 is not null,
+                                pendingSafetyConfirmation is not null);
+    }
+
+    private async Task<ClipboardAccessResult<T>> AccessClipboardAsync<T>(ClipboardRequestLifetime request, string operation,
+                                                                         Func<T> action)
+    {
+        var token = rendererOperationCancellation.Token;
+        var access = new ClipboardAccess(Dispatcher.VerifyAccess,
+                                         cancellation => Task.Delay(TimeSpan.FromMilliseconds(80), cancellation));
+
+        try
+        {
+            return await access.ExecuteAsync(action, () => IsClipboardRequestCurrent(request),
+                                             exception => diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", operation + ".Retry",
+                                                                              "Clipboard access unavailable.", exception),
+                                             token);
+        }
+        catch (Exception exception)
+        {
+            // Observe immediately and preserve the fault on the owned task. Unknown failures
+            // must not be mislabeled as temporary clipboard contention or swallowed globally.
+            diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", operation + ".Unexpected", "Unexpected clipboard boundary failure.", exception);
+
+            throw;
+        }
+    }
+
+    private void PublishClipboardStatus(TerminalSessionId sessionId, string operation, ClipboardAccessStatus status)
+    {
+        diagnosticLog.Write(DiagnosticLevel.Information, "Terminal", operation + "." + status, "Clipboard state only.");
+        if (status == ClipboardAccessStatus.Stale || isDisposed == true)
+        {
+            return;
+        }
+
+        SendSessionMessage("clipboard-status", sessionId,
+                           new { succeeded = status == ClipboardAccessStatus.Completed,
+                                 sessionGeneration = rendererSessionGenerations.GetValueOrDefault(sessionId) });
     }
 
     private void ShowLoading(string message)

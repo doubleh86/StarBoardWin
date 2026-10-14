@@ -238,9 +238,11 @@ test("existing session messages retain output generation guards, paste, reset an
   harness.deliver(sessionMessage("output", entry.id, { sessionGeneration: 99, data: "stale" }));
   harness.deliver(sessionMessage("output", entry.id, { sessionGeneration: session.sessionGeneration, data: "current" }));
   assert.deepEqual(entry.terminal.writes, ["current"]);
-  harness.deliver(sessionMessage("paste", entry.id, { data: "붙여넣기" }));
-  assert.equal(harness.posted.at(-1).type, "input");
-  assert.equal(harness.posted.at(-1).payload.data, "붙여넣기");
+  harness.deliver(sessionMessage("activate-session", entry.id));
+  harness.deliver(sessionMessage("paste", entry.id, { data: "붙여넣기", sessionGeneration: session.sessionGeneration }));
+  const pastedInput = harness.posted.filter(message => message.type === "input");
+  assert.equal(pastedInput.length, 1);
+  assert.equal(pastedInput[0].payload.data, "붙여넣기");
   harness.deliver(sessionMessage("reset", entry.id));
   assert.equal(entry.terminal.resetCount, 1);
   harness.deliver(sessionMessage("session-error", entry.id, { message: "error" }));

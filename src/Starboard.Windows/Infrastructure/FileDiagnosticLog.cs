@@ -97,7 +97,26 @@ internal sealed class FileDiagnosticLog : IDiagnosticLog
             ? win32Exception.NativeErrorCode.ToString(CultureInfo.InvariantCulture)
             : "-";
         return string.Join('\t', DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture), level,
-                           SanitizeMetadata(subsystem), SanitizeMetadata(operation), nativeCode);
+                           SanitizeMetadata(subsystem), SanitizeMetadata(operation), nativeCode,
+                           GetExceptionKind(exception), exception?.HResult.ToString(CultureInfo.InvariantCulture) ?? "-");
+    }
+
+    private static string GetExceptionKind(Exception? exception)
+    {
+        // Use literal categories, never arbitrary type names, messages, stacks or Data entries.
+        return exception switch
+        {
+            null => "-",
+            System.Runtime.InteropServices.COMException => "COMException",
+            System.ComponentModel.Win32Exception => "Win32Exception",
+            System.Runtime.InteropServices.ExternalException => "ExternalException",
+            ObjectDisposedException => "ObjectDisposedException",
+            InvalidOperationException => "InvalidOperationException",
+            OperationCanceledException => "OperationCanceledException",
+            IOException => "IOException",
+            UnauthorizedAccessException => "UnauthorizedAccessException",
+            _ => "OtherException",
+        };
     }
 
     private static string SanitizeMetadata(string value)

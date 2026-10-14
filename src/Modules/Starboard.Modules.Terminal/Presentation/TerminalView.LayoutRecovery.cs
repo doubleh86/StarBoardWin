@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -61,12 +62,12 @@ internal partial class TerminalView
     {
         var observedRenderer = renderer;
         var generation = rendererGeneration;
-        var width = RendererHost.ActualWidth;
-        var height = RendererHost.ActualHeight;
-        var scale = VisualTreeHelper.GetDpi(renderer).DpiScaleX;
-        var zoom = renderer.ZoomFactor;
         try
         {
+            var width = RendererHost.ActualWidth;
+            var height = RendererHost.ActualHeight;
+            var scale = VisualTreeHelper.GetDpi(renderer).DpiScaleX;
+            var zoom = renderer.ZoomFactor;
             // A timeout does not cancel WebView2's underlying script. Keep that task so
             // the next tick cannot accumulate pending browser calls.
             _ = _layoutScriptTask?.Exception;
@@ -115,13 +116,14 @@ internal partial class TerminalView
             // Shutdown cancels observation before the WebView is disposed.
             return;
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is COMException or InvalidOperationException or
+                                           TimeoutException or JsonException or KeyNotFoundException or FormatException)
         {
             if (isDisposed == false && _layoutObservationFailureReported == false)
             {
                 _layoutObservationFailureReported = true;
                 diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "ObserveRendererLayout",
-                                    $"Layout observation unavailable; existing resize remains active. Error={exception.HResult}.");
+                                    "Layout observation unavailable; existing resize remains active.", exception);
             }
         }
     }

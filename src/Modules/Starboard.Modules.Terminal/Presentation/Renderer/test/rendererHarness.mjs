@@ -8,7 +8,8 @@ import { build } from "esbuild";
 const source = await readFile(new URL("../src/index.ts", import.meta.url), "utf8");
 const bundle = await build({
   stdin: {
-    contents: `${source}\nexport { sessions, workspaceSync, requestSelection, parseHostMessage };
+    contents: `${source}\nexport { sessions, workspaceSync, requestSelection, parseHostMessage,
+      startRename, showSavedTabsDialog, showSearch, closeSearch };
       export function getActiveSessionId() { return activeSessionId; }`,
     resolveDir: fileURLToPath(new URL("../src/", import.meta.url)),
     loader: "ts",
@@ -61,7 +62,7 @@ export function createHarness() {
     parentElement = null;
     dataset = {};
     attributes = new Map();
-    classList = { toggle() {} };
+    classList = { toggle() {}, contains: (name) => (this.className ?? "").split(" ").includes(name) };
     style = { setProperty() {}, getPropertyValue: () => "14" };
     clientWidth = 800;
     clientHeight = 200;
@@ -71,7 +72,19 @@ export function createHarness() {
     scrollLeft = 0;
     scrollWidth = 800;
 
-    constructor() { eventTarget(this); }
+    constructor(tag = "div") { this.tagName = tag.toUpperCase(); eventTarget(this); }
+
+    querySelector(selector) {
+      for (const child of this.children) {
+        if ((selector.startsWith(".") && child.classList.contains(selector.slice(1))) ||
+          (selector === "dialog[open]" && child.tagName === "DIALOG" && child.open === true) ||
+          selector.toUpperCase() === child.tagName) { return child; }
+        const found = child.querySelector(selector);
+        if (found !== null) { return found; }
+      }
+      return null;
+    }
+    replaceChildren(...nodes) { for (const child of [...this.children]) { child.remove(); } this.append(...nodes); }
 
     get isConnected() { return this === document.body || this.parentElement?.isConnected === true; }
     contains(node) { return node === this || this.children.some((child) => child.contains(node)); }
@@ -118,16 +131,17 @@ export function createHarness() {
   document.body = new Element();
   document.documentElement = new Element();
   document.documentElement.clientHeight = 600;
-  document.createElement = () => new Element();
+  document.createElement = (tag) => new Element(tag);
   const nodes = new Map(["#session-tabs", "#new-tab", "#panel-resize-zone", "#saved-tabs", "#terminal-workspace"]
     .map((id) => [id, new Element()]));
   for (const node of nodes.values()) { document.body.append(node); }
-  document.querySelector = (selector) => nodes.get(selector);
+  document.querySelector = (selector) => nodes.get(selector) ?? document.body.querySelector(selector);
   document.activeElement = document.body;
 
   function dispatch(type, target = document, properties = {}) {
     const event = { type, target, button: 0, buttons: 1, pointerId: 1, pointerType: "mouse",
       isPrimary: true, clientX: 20, clientY: 10, detail: 1, defaultPrevented: false,
+      ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, repeat: false, isComposing: false,
       preventDefault() { this.defaultPrevented = true; },
       stopPropagation() { this.stopped = true; },
       stopImmediatePropagation() { this.stopped = true; this.immediate = true; }, ...properties };
@@ -163,7 +177,22 @@ export function createHarness() {
     disposeCount = 0;
     resetCount = 0;
     loadAddon(addon) { addon.terminal = this; }
-    open(mount) { this.textarea = new Element(); mount.append(this.textarea); }
+    selection = "";
+    hasSelection() { return this.selection.length > 0; }
+    getSelection() { return this.selection; }
+    open(mount) {
+      this.textarea = new Element("textarea");
+      this.textarea.className = "xterm-helper-textarea";
+      mount.append(this.textarea);
+      this.textarea.addEventListener("keydown", (event) => {
+        const allowed = this.keyHandler(event);
+        if (allowed === true && event.ctrlKey === true && event.code === "KeyC" &&
+          event.altKey === false && event.metaKey === false && event.defaultPrevented === false) {
+          this.onInput("\u0003");
+        }
+      });
+      this.textarea.addEventListener("paste", () => this.onInput("unsafe-native-paste"));
+    }
     onData(callback) { this.onInput = callback; }
     attachCustomKeyEventHandler(callback) { this.keyHandler = callback; }
     focus() { this.focusCount++; this.textarea.focus(); }
