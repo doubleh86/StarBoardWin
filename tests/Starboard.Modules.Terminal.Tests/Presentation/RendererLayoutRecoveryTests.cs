@@ -1,0 +1,81 @@
+using Starboard.Modules.Terminal.Presentation;
+
+namespace Starboard.Modules.Terminal.Tests.Presentation;
+
+[TestClass]
+public sealed class RendererLayoutRecoveryTests
+{
+    private static RendererLayoutSample Normal => new(1920, 200, 1, 1920, 1920, 1, 1920, 1920, 1920, 1908, 1908);
+
+    [TestMethod]
+    public void TryRepairSameOuterSizeWithNarrowInternalBoundsDetectsEachBoundary()
+    {
+        var recovery = new RendererLayoutRecovery(new FakeTimeProvider());
+        Assert.IsFalse(recovery.TryRepair(Normal));
+        Assert.IsTrue(recovery.TryRepair(Normal with { ControlWidthDip = 1040 }));
+        Assert.IsTrue(recovery.TryRepair(Normal with { DomWidth = 1040 }));
+        Assert.IsTrue(recovery.TryRepair(Normal with { TabWidth = 1040, WorkspaceWidth = 1040 }));
+        Assert.IsTrue(recovery.TryRepair(Normal with { ScrollbarRight = 1028 }));
+        Assert.IsFalse(recovery.TryRepair(Normal));
+    }
+
+    [TestMethod]
+    [DataRow(1d)]
+    [DataRow(1.25d)]
+    [DataRow(1.5d)]
+    [DataRow(2d)]
+    public void TryRepairCurrentDpiUsesPhysicalPixelComparisonWithoutDoubleScaling(double scale)
+    {
+        var recovery = new RendererLayoutRecovery(new FakeTimeProvider());
+        var sample = Normal with { Scale = scale, DomScale = scale };
+        Assert.IsFalse(recovery.TryRepair(sample));
+        Assert.IsTrue(recovery.TryRepair(sample with { DomScale = 0.75 }));
+    }
+
+    [TestMethod]
+    public void TryRepairBrowserZoomKeepsPhysicalBoundsIndependentOfCssPixels()
+    {
+        var recovery = new RendererLayoutRecovery(new FakeTimeProvider());
+        var sample = Normal with
+        {
+            Scale = 1.5, ZoomFactor = 2, DomScale = 3, DomWidth = 960,
+            TabWidth = 960, WorkspaceWidth = 960, TerminalWidth = 960,
+            ScrollbarRight = 948, ExpectedScrollbarRight = 948,
+        };
+        Assert.IsFalse(recovery.TryRepair(sample));
+    }
+
+    [TestMethod]
+    public void TryRepairContinuousMismatchStopsAfterFiveAttemptsOrFiveSeconds()
+    {
+        var time = new FakeTimeProvider();
+        var recovery = new RendererLayoutRecovery(time);
+        var narrow = Normal with { DomWidth = 1040 };
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            time.Timestamp = attempt * 1_000;
+            Assert.IsTrue(recovery.TryRepair(narrow));
+        }
+
+        for (var attempt = 5; attempt < 20; attempt++)
+        {
+            time.Timestamp = attempt * 1_000;
+            Assert.IsFalse(recovery.TryRepair(narrow));
+        }
+
+        Assert.IsTrue(recovery.TryRepair(narrow with { WidthDip = 2560 }));
+        time.Timestamp += 5_001;
+        Assert.IsFalse(recovery.TryRepair(narrow with { WidthDip = 2560 }));
+        Assert.IsFalse(recovery.TryRepair(Normal with { WidthDip = 0 }));
+        Assert.IsFalse(recovery.TryRepair(Normal with { DomScale = double.NaN }));
+        Assert.IsFalse(recovery.TryRepair(Normal));
+        Assert.IsTrue(recovery.TryRepair(narrow));
+    }
+
+    private sealed class FakeTimeProvider : TimeProvider
+    {
+        internal long Timestamp { get; set; }
+        public override long TimestampFrequency => 1_000;
+        public override long GetTimestamp() => Timestamp;
+    }
+}

@@ -563,6 +563,46 @@ cached system DPI는 적용하지 않는다.
 
 ## Focus와 activation
 
+### RDP 로컬 복귀의 크기 경계 (2026-10-14, 호스트 연결 대기)
+
+실제 RDP 재현 및 전후 HWND/WPF/WebView2/DOM 측정은 미수행이다. 원인을 확정하지 않았다.
+코드에서 확인한 경계는 native placement → WPF root arrange → RendererHost/WebView2 →
+DOM viewport/workspace → xterm fit이다. 기존 1초 placement는 같은 외곽 크기의 내부
+불일치를 관측하지 않고 DOM ResizeObserver는 상위 크기 전달이 완료되어야 작동한다.
+
+DesktopIntegration runtime은 `WTSRegisterSessionNotification(NOTIFY_FOR_THIS_SESSION)`을
+사용하고 HWND/현재 process 세션을 다시 비교한다. remote/console 연결·해제, unlock,
+desktop-ready 알림을 순서와 무관하게 처리하며 5초 이내 알림의 recovery revision을 병합한다.
+WM_DESTROY와 runtime dispose에서 등록을 해제한다. 등록/해제 실패에는 코드만 진단에
+남기고 display/settings/DPI/Explorer 알림과 1초 재조정을 유지한다.
+[등록·해제 계약](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsregistersessionnotification),
+[세션 이벤트](https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change)를 따른다.
+
+`CapturePanelClientLayout`은 HWND window/client physical pixel과 해당 HWND의
+`GetDpiForWindow`를 반환한다. WPF DPI가 이 값과 다르면 DIP 변환을 거부한다.
+monitor/system의 이전 DPI를 다시 곱하지 않는다.
+[window DPI 계약](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getdpiforwindow)을
+사용하며 DPI 0/empty client는 복구 근거로 쓰지 않는다. 정상 tracked geometry와 visible
+policy에서만 `PanelLayoutCheckRequested`를 내보낸다. **실제 Shell/MainWindow 연결은
+Task의 지정 경로와 달라 범위 확인 대기이며 현재 이 이벤트의 제품 소비자는 없다.**
+따라서 native client→WPF root 불일치 복구는 아직 구현 완료가 아니다.
+
+Terminal presentation은 Loaded 동안 1초 간격으로 숫자 bounds만 관측한다. host/control DIP,
+WPF DPI, DOM innerWidth/DPR, tab strip/workspace/xterm 폭과 scrollbar right를 비교한다.
+DOM CSS pixel × DPR은 WPF DIP × 현재 DPI와 비교하고 browser zoom은 별도 값으로 다룬다.
+늦은 결과는 renderer identity/generation, visibility, host 크기/DPI/zoom을 재검사해 버린다.
+script 대기는 750ms로 제한하고 timeout 뒤에도 실제 task가 끝나기 전 새 script를 보내지 않는다.
+불일치인 크기/DPI에 대해서만 최대 5회/5초 measure와
+[HwndHost.UpdateWindowPos](https://learn.microsoft.com/en-us/dotnet/api/system.windows.interop.hwndhost.updatewindowpos?view=windowsdesktop-10.0)를
+적용하고 빈 global `recover-layout`으로 기존 활성 xterm만 fit한다. 동일 target의 지속 실패는
+다시 layout을 반복하지 않는다. 성공 관측 또는 새 target으로 새 budget을 시작한다.
+Unloaded/dispose에서 timer를 해제하고 shutdown cancellation과 disposed guard로 늦은 결과를 막는다.
+controller는 WPF WebView2의 내부 소유이므로 private controller 접근이나 scale 강제 변경은 하지 않는다.
+
+진단은 크기·scale·event 종류·고정 budget/error code만 남긴다. 명령/출력/탭 이름/경로/계정과
+exception text는 추가하지 않는다. fit은 shell resize 외에 selection/focus/reset/restart/order를
+호출하지 않는다. 실제 scrollbar/foreground/PID 보존 인수는 별도 RDP 수동 matrix에 남아 있다.
+
 핵심 원칙은 창을 영구적으로 nonactivatable하게 만드는 것이 아니다.
 
 - WPF initial show는 `ShowActivated=false`다.

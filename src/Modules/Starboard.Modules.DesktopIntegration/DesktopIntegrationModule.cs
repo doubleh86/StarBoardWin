@@ -17,6 +17,7 @@ public sealed class DesktopIntegrationModule : IDisposable
     public const int WindowMessageDisplayChange = 0x007E;
     public const int WindowMessageSettingChange = 0x001A;
     public const int WindowMessageDpiChanged = 0x02E0;
+    public const int WindowMessageSessionChange = 0x02B1;
 
     private const int ExpandHotKeyIdentifier = 0x5342;
     internal const int ActivationHotKeyIdentifier = 0x5343;
@@ -28,6 +29,9 @@ public sealed class DesktopIntegrationModule : IDisposable
     private readonly IStartupRegistration startupRegistration;
     private readonly IVirtualDesktopService virtualDesktopService;
     private readonly Lock stateLock = new();
+    private readonly SessionRecoveryTrigger sessionRecoveryTrigger = new(TimeProvider.System);
+    private long layoutRecoveryRevision;
+    private bool layoutCaptureFailureReported;
 
     private System.Threading.Timer? reconciliationTimer;
     private PanelWindowState state = new(PanelUserVisibility.Visible, PanelMode.Collapsed, PanelEngagement.Idle, null);
@@ -122,6 +126,50 @@ public sealed class DesktopIntegrationModule : IDisposable
     public event EventHandler<ShortcutGuideRequestEventArgs>? ShortcutGuideRequested;
 
     public event Action<bool>? PanelPresentationRequested;
+
+    /// <summary>Requests a coalesced UI check, including when the outer HWND size is unchanged.</summary>
+    public event EventHandler? PanelLayoutCheckRequested;
+
+    public long LayoutRecoveryRevision
+    {
+        get
+        {
+            lock (stateLock)
+            {
+                return layoutRecoveryRevision;
+            }
+        }
+    }
+
+    public PanelClientLayout? CapturePanelClientLayout()
+    {
+        lock (stateLock)
+        {
+            if (isDisposed == true || isAttached == false)
+            {
+                return null;
+            }
+
+            try
+            {
+                var layout = runtime.CapturePanelClientLayout(windowHandle);
+                layoutCaptureFailureReported = false;
+
+                return layout;
+            }
+            catch (Exception exception) when (IsRecoverablePlatformFailure(exception) == true)
+            {
+                if (layoutCaptureFailureReported == false)
+                {
+                    layoutCaptureFailureReported = true;
+                    diagnosticLog.Write(DiagnosticLevel.Warning, "DesktopIntegration", "CapturePanelClientLayout",
+                                        $"Panel layout observation unavailable. Error={exception.HResult}.");
+                }
+
+                return null;
+            }
+        }
+    }
 
     /// <summary>
     /// Raises live preview values during native sizing and one commit request when sizing ends.
@@ -348,6 +396,33 @@ public sealed class DesktopIntegrationModule : IDisposable
         }
 
         result = 0;
+
+        if (message.MessageId == 0x0002 && message.WindowHandle == windowHandle)
+        {
+            runtime.DetachSessionNotifications();
+            return false;
+        }
+
+        if (message.MessageId == WindowMessageSessionChange)
+        {
+            lock (stateLock)
+            {
+                if (isAttached == false || runtime.IsCurrentSessionNotification(message) == false)
+                {
+                    return false;
+                }
+
+                if (sessionRecoveryTrigger.TryRequest(message.WordParameter) == true)
+                {
+                    layoutRecoveryRevision++;
+                    diagnosticLog.Write(DiagnosticLevel.Information, "DesktopIntegration", "SessionLayoutRecovery",
+                                        $"Event={message.WordParameter}; coalescing window=5000ms.");
+                }
+            }
+
+            Reconcile();
+            return false;
+        }
 
         if (message.MessageId == WindowMessageHotKey && message.WordParameter == ActivationHotKeyIdentifier)
         {
@@ -920,6 +995,7 @@ public sealed class DesktopIntegrationModule : IDisposable
     private void Reconcile()
     {
         bool? requestedVisibility = null;
+        var checkLayout = false;
 
         lock (stateLock)
         {
@@ -953,6 +1029,9 @@ public sealed class DesktopIntegrationModule : IDisposable
                 lastDecision = decision;
 
                 var shouldBeVisible = decision.Presentation == PanelWindowPresentation.Visible;
+                checkLayout = shouldBeVisible == true && isResizeInProgress == false &&
+                    geometry.TrackingState != DisplayTrackingState.Fallback &&
+                    geometry.TaskbarPresence != TaskbarPresence.Unknown;
                 if (lastRequestedVisibility != shouldBeVisible)
                 {
                     lastRequestedVisibility = shouldBeVisible;
@@ -975,6 +1054,11 @@ public sealed class DesktopIntegrationModule : IDisposable
         if (requestedVisibility is bool isVisible)
         {
             PanelPresentationRequested?.Invoke(isVisible);
+        }
+
+        if (checkLayout == true)
+        {
+            PanelLayoutCheckRequested?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -1487,6 +1571,12 @@ internal readonly record struct ParsedHotkeys(GlobalHotkey Expand, GlobalHotkey 
 
 internal interface IDesktopIntegrationRuntime : IDisposable
 {
+    void DetachSessionNotifications() { }
+
+    PanelClientLayout? CapturePanelClientLayout(nint windowHandle) => null;
+
+    bool IsCurrentSessionNotification(WindowMessage message) => false;
+
     uint TaskbarCreatedMessage { get; }
 
     event EventHandler? EnvironmentChanged;
@@ -1558,6 +1648,7 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
     private DisplaySettingsObserver? _displaySettingsObserver;
     private ForegroundWindowObserver? _foregroundWindowObserver;
     private TrayIconService? _trayIconService;
+    private SessionNotificationRegistration? _sessionNotificationRegistration;
     private bool _isDisposed;
 
     internal WindowsDesktopIntegrationRuntime(IDiagnosticLog diagnosticLog, Action<double> applyPanelOpacity)
@@ -1597,6 +1688,7 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         WindowPlacementService.ConfigureToolWindow(windowHandle);
         CreateTrayIcon(true);
+        _sessionNotificationRegistration = new SessionNotificationRegistration(windowHandle, _diagnosticLog);
 
         try
         {
@@ -1643,6 +1735,31 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
     public DesktopGeometrySnapshot CaptureGeometry(nint panelWindowHandle)
     {
         return _taskbarService.CaptureLatest(panelWindowHandle);
+    }
+
+    public PanelClientLayout? CapturePanelClientLayout(nint windowHandle)
+    {
+        if (NativeMethods.GetWindowRect(windowHandle, out var windowRect) == false ||
+            NativeMethods.GetClientRect(windowHandle, out var clientRect) == false)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        var dpi = NativeMethods.GetDpiForWindow(windowHandle);
+        return new PanelClientLayout(new PixelRect(windowRect.Left, windowRect.Top, windowRect.Right, windowRect.Bottom),
+                                     clientRect.Right - clientRect.Left, clientRect.Bottom - clientRect.Top,
+                                     new DisplayDpi(dpi, dpi));
+    }
+
+    public bool IsCurrentSessionNotification(WindowMessage message)
+    {
+        return _sessionNotificationRegistration?.Matches(message.WindowHandle, message.LongParameter) == true;
+    }
+
+    public void DetachSessionNotifications()
+    {
+        _sessionNotificationRegistration?.Dispose();
+        _sessionNotificationRegistration = null;
     }
 
     public FullscreenObservation CaptureFullscreen(nint panelWindowHandle, MonitorSnapshot panelMonitor)
@@ -1710,6 +1827,8 @@ internal sealed class WindowsDesktopIntegrationRuntime : IDesktopIntegrationRunt
         }
 
         _isDisposed = true;
+
+        DetachSessionNotifications();
 
         if (_displaySettingsObserver is not null)
         {

@@ -13,6 +13,62 @@ namespace Starboard.IntegrationTests;
 public sealed class DesktopWindowIntegrationTests
 {
     [TestMethod]
+    public void SessionReturnDuplicateReverseNotificationsKeepGeometryModeVisibilityAndForegroundPolicy()
+    {
+        var runtime = new FakeDesktopIntegrationRuntime();
+        using var module = CreateModule(runtime);
+        var checks = 0;
+        module.PanelLayoutCheckRequested += (_, _) => checks++;
+        module.Attach(42, new PanelOptions(236));
+        module.SetPanelEngaged(true);
+        var before = runtime.Placements[runtime.Placements.Count - 1];
+        foreach (var kind in new nuint[] { 8, 1, 4, 4, 15 })
+        {
+            var message = new WindowMessage(42, DesktopIntegrationModule.WindowMessageSessionChange, kind, 12);
+            Assert.IsFalse(module.HandleWindowMessage(message));
+        }
+
+        Assert.AreEqual(1L, module.LayoutRecoveryRevision);
+        Assert.AreEqual(before, runtime.Placements[runtime.Placements.Count - 1]);
+        Assert.IsTrue(checks > 1);
+        Assert.AreEqual(0, runtime.ActivationCount);
+        module.ToggleExpanded();
+        var expanded = runtime.Placements[runtime.Placements.Count - 1];
+        module.HandleWindowMessage(new WindowMessage(42, DesktopIntegrationModule.WindowMessageSessionChange, 1, 12));
+        Assert.AreEqual(expanded, runtime.Placements[runtime.Placements.Count - 1]);
+        module.SetPanelVisible(false);
+        var hiddenChecks = checks;
+        var hiddenPlacements = runtime.Placements.Count;
+        module.HandleWindowMessage(new WindowMessage(42, DesktopIntegrationModule.WindowMessageSessionChange, 4, 12));
+        module.Refresh();
+        Assert.AreEqual(hiddenChecks, checks);
+        Assert.AreEqual(hiddenPlacements, runtime.Placements.Count);
+        Assert.AreEqual(0, runtime.ActivationCount);
+    }
+
+    [TestMethod]
+    public void SessionReturnForeignWindowSessionOrUncertainGeometryDoesNotRequestInternalRecovery()
+    {
+        var runtime = new FakeDesktopIntegrationRuntime();
+        using var module = CreateModule(runtime);
+        module.Attach(42, new PanelOptions(200));
+        var checks = 0;
+        module.PanelLayoutCheckRequested += (_, _) => checks++;
+        module.HandleWindowMessage(new WindowMessage(42, DesktopIntegrationModule.WindowMessageSessionChange, 4, 99));
+        module.HandleWindowMessage(new WindowMessage(99, DesktopIntegrationModule.WindowMessageSessionChange, 4, 12));
+        Assert.AreEqual(0, checks);
+        Assert.AreEqual(0L, module.LayoutRecoveryRevision);
+        runtime.Geometry = runtime.Geometry with { TrackingState = DisplayTrackingState.Fallback };
+        module.HandleWindowMessage(new WindowMessage(42, DesktopIntegrationModule.WindowMessageSessionChange, 4, 12));
+        Assert.AreEqual(0, checks);
+        runtime.Geometry = CreateDefaultGeometry();
+        module.Refresh();
+        Assert.AreEqual(1, checks);
+        module.HandleWindowMessage(new WindowMessage(42, 0x0002, 0, 0));
+        Assert.AreEqual(1, runtime.SessionDetachCount);
+    }
+
+    [TestMethod]
     [Timeout(10_000)]
     public async Task LocalWpfPanelPlacementPreservesForegroundAndRestoresCollapsedBounds()
     {
@@ -465,6 +521,15 @@ public sealed class DesktopWindowIntegrationTests
 
     private sealed class FakeDesktopIntegrationRuntime : IDesktopIntegrationRuntime
     {
+        internal int SessionDetachCount { get; private set; }
+
+        public bool IsCurrentSessionNotification(WindowMessage message)
+        {
+            return SessionDetachCount == 0 && message.WindowHandle == 42 && message.LongParameter == 12;
+        }
+
+        public void DetachSessionNotifications() => SessionDetachCount++;
+
         public uint TaskbarCreatedMessage { get; } = 0xC123;
 
         public DesktopGeometrySnapshot Geometry { get; set; } = CreateDefaultGeometry();

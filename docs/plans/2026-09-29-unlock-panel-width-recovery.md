@@ -4,8 +4,24 @@
 
 2026-09-29의 stale collapsed frame 보정은 구현·자동 검증 완료다. 실제 잠금/해제 검증은
 MAN-056의 미수행 상태를 유지한다. 2026-10-14 RDP 해제 후 로컬 PC 복귀 때 발생한다는 같은 형태의
-재발 제보를 아래 `panel-rdp-width-recovery` 후속 Task로 추가했다. **기획 완료·구현 미착수**이며,
+재발 제보를 아래 `panel-rdp-width-recovery` 후속 Task로 추가했다. **부분 구현·호스트 연결 범위 확인 대기**이며,
 기존 외곽 geometry 보정만으로 WebView2 내부 너비까지 복구됐다고 해석하지 않는다.
+
+### 2026-10-14 실행 계획
+
+실제 RDP 조작은 이 실행 환경에서 제공되지 않는다. 원인은 미확정이며, 확인 가능한
+경계에 크기 관측과 조건부 복구를 추가한다. 현재 코드에는 동일 HWND 크기의 내부
+불일치 검사와 WTS 알림 수명이 없고, xterm fit은 workspace ResizeObserver에 의존한다.
+DesktopIntegration에서 현재 세션 WTS 등록/해제와 client pixel/window DPI 관측을 소유한다.
+중복 알림은 5초 창으로 병합하며 기존 1초 재조정을 fallback으로 유지한다.
+WPF DPI가 최신 HWND DPI와 일치할 때만 client pixel을 DIP로 변환한다.
+Terminal presentation은 WPF host/control와 DOM CSS 폭을 비교하고 불일치에만 layout/fit을
+복구한다. 동일 크기/DPI의 보정은 최대 5회이며 renderer와 shell을 재시작하지 않는다.
+DOM 진단은 숫자 bounds/DPR만 수집한다. 실제 RDP 및 배율 관찰은 별도 수동 matrix에 남긴다.
+영향: DesktopIntegration contract/runtime/interop, Terminal presentation, 해당 회귀 테스트와
+architecture/test-plan/index. 실제 host 경로가 지정 목록과 달라 Shell/MainWindow와
+Composition/AppCoordinator의 범위 포함 여부를 질의했으며 응답 전 이 파일은 수정하지 않는다.
+검증: Task의 집중 .NET 테스트, npm ci/test/build, 전체 restore/build/test, 정렬과 diff 검사.
 
 ## 목표와 완료 조건
 
@@ -159,7 +175,7 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
 ### 독립 Task: `panel-rdp-width-recovery`
 
 - 제목: RDP 해제 후 로컬 복귀 시 패널과 WebView2 가로 폭 복구
-- 상태: **기획 완료·구현 미착수**. 이번 제보 기록은 문서만 변경한다.
+- 상태: **부분 구현·호스트 연결 범위 확인 대기** (2026-10-14 실행). 실제 RDP 원인은 미확정이다.
 - capabilities: `desktop`, `frontend`, `qa`; 위험도: 중간.
 - 선행: 완료된 잠금 해제 geometry 보정 및 현재 renderer 가로 fill 계약을 보존한다.
 - 우선 조사/예상 영향: DesktopIntegrationModule, `Infrastructure/Interop`의 세션 notification adapter와
@@ -171,11 +187,16 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
   원격 PC/RDP 설정 변경, 강제 로그오프, commit/push·release·바탕화면 재배포.
 - 파일 소유권: 진단과 계층 구분을 먼저 수행한다. 그 뒤 수정 파일이 독립적일 때만 native 알림·geometry와
   Terminal layout을 병렬로 나눈다. MainWindow/TerminalView/renderer 공유 파일은 담당자를 하나로 고정한다.
-- [ ] 사용자 확인 조건인 RDP 해제→로컬 복귀를 우선 재현하고 HWND client→WPF→WebView2→DOM 경계를
-  측정해 실패 계층을 확정한다. 연결 직후·접속 중은 별도 대조군으로 관찰한다.
-- [ ] 확인된 경로에 한정해 세션 전환·DPI/layout 복구와 제한된 재시도·정리·fallback을 구현한다.
-- [ ] 중복/역순/지연 알림, 임시 geometry, 동일 외곽 크기의 child mismatch, DPI·focus·세션 보존 회귀를
-  자동 검증하고 전체 restore/build/test 및 문서를 갱신한다.
+- [x] 로컬 코드와 공식 API에서 크기 전달 경계 및 지원되는 관측/보정 수단을 조사했다.
+  실제 RDP 재현·측정과 원인 확정은 수행하지 않았으며 RDP-MAN-01~07에 남겼다.
+- [x] 현재 세션 WTS 등록/해제·5초 병합·기존 fallback, native client/window DPI contract,
+  Terminal presentation의 숫자 관측·조건부 measure/UpdateWindowPos/fit과 5회/5초 제한을 구현했다.
+- [ ] HWND→WPF 연결: 지정된 `src/Starboard.Windows/MainWindow.xaml.cs`가 존재하지 않고 실제 파일은
+  `src/Starboard.Windows/Shell/MainWindow.xaml.cs`다. AppCoordinator도 `Composition/`에 있다.
+  Task의 "Change only expected paths" 규칙 때문에 실제 경로 수정 범위를 질의했으며 응답 대기다.
+  현재 `PanelLayoutCheckRequested` 소비자가 없어 native client→WPF root 보정은 아직 연결되지 않았다.
+- [x] 중복/역순/지연 알림, 임시 geometry, 동일 외곽 폭의 내부 mismatch, DPI·zoom·focus·renderer
+  객체 보존의 집중 회귀를 추가했다. 전체 검증 결과는 아래 실행 기록에 별도로 기록한다.
 
 ### 검증과 미수행 항목
 
@@ -191,5 +212,27 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
   위치한다. 100/125/150/200%에서 clipping·taskbar 겹침 없이 높이·foreground·PID·작업 상태를 보존한다.
   실제 RDP를 수행하지 못한 자동/mock 테스트는 실제 화면 통과 근거가 아니다.
 - **Not run (manual):** 이번에는 RDP 연결/해제나 HWND/WebView2/DOM 경계 측정을 수행하지 않았다.
-  구현 시 [MAN-056](../test-plan.md)의 기존 잠금 해제 검증은 유지하고 별도 RDP matrix를 추가한다.
+  [MAN-056](../test-plan.md)의 기존 잠금 해제 검증을 유지하고 별도 RDP-MAN-01~07 matrix를 추가했다.
   제보를 실제 재현·원인 확정·수정 완료로 표시하지 않는다.
+
+### 2026-10-14 실행 검증과 인수인계
+
+- DesktopIntegration 집중 테스트 120개, DesktopWindowIntegrationTests 집중 13개 통과.
+  최초 기본 병렬 .NET 실행이 restore 이후 진행하지 않아 취소하고 `-m:1 -nr:false`를 사용했다.
+  기존 SDK analyzer가 test 이름의 밑줄을 CA1707로 거부해 기존 테스트의 PascalCase 이름을 따랐다.
+- npm ci 성공 (새 의존성 없음), renderer 테스트 76개와 renderer build 통과. sandbox에서는
+  esbuild spawn EPERM이므로 동일 npm test/build를 제한 밖에서 재실행했다.
+  새 recover-layout parser는 빈 global payload만 허용한다. 기존 drag source/test와 fixture는 수정하지 않았다.
+- 지정 .NET executable로 solution restore, Debug build (경고/오류 0), 전체 테스트 585개 통과.
+  restore는 sandbox에서 출력 없이 코드 1로 종료되어 동일 명령을 제한 밖에서 재실행했다.
+  전체 test도 renderer bridge의 esbuild EPERM 한 건으로 실패한 뒤 동일 suite를 제한 밖에서 통과했다.
+  build/test는 `-m:1 -nr:false`를 사용했고 `--no-restore`/`--no-build`는 선행 성공 뒤에만 사용했다.
+- C# WorkingTree 정렬 검사와 git diff --check 통과. 실제 host 경로는 수정하지 않았으며
+  Preferences, Terminal Infrastructure, drag controller/test, fixture에 content diff가 없다.
+  초기 license 파일의 line-ending dirty 상태를 보존했다. commit/merge/push/deploy는 수행하지 않았다.
+- **남은 구현:** 실제 host 경로를 Task scope에 포함한 뒤 MainWindow에서 layout check를 UI dispatcher로
+  병합하고 최신 client/window DPI와 WPF DPI를 비교한다. root 크기 불일치만 최대 5회/5초 보정한다.
+  close/dispose에서 구독·예약 작업을 해제하고 root 불일치/동일 외곽 크기 회귀를 추가한다.
+  `LayoutRecoveryRevision`은 5초 이내 session burst에서 동일하며 기존 주기 check는 활성화하지 않는다.
+  해당 변경 후 영향받는 focused 테스트와 전체 build/test를 다시 실행한다.
+  현재 Task는 호스트 연결을 기다리는 **부분 구현**으로, 전체 acceptance 완료가 아니다.

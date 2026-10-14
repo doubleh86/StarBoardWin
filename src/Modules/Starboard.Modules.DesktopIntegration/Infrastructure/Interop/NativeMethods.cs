@@ -4,6 +4,24 @@ namespace Starboard.Modules.DesktopIntegration.Infrastructure.Interop;
 
 internal static partial class NativeMethods
 {
+    internal const uint NotifyForThisSession = 0;
+
+    [LibraryImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool WTSRegisterSessionNotification(nint windowHandle, uint flags);
+
+    [LibraryImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool WTSUnRegisterSessionNotification(nint windowHandle);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ProcessIdToSessionId(uint processId, out uint sessionId);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetClientRect(nint windowHandle, out NativeRect rectangle);
+
     internal const uint AppBarGetState = 0x00000004;
     internal const uint AppBarGetTaskbarPosition = 0x00000005;
     internal const uint AppBarGetAutoHideBar = 0x00000007;

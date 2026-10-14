@@ -63,6 +63,7 @@ type RendererMessage =
     };
 
 type GlobalHostMessageType =
+  | "recover-layout"
   | "initialize"
   | "apply-appearance"
   | "workspace-save-status"
@@ -385,6 +386,7 @@ function getPayload(message: Record<string, unknown>): Record<string, unknown> |
 function isGlobalHostMessageType(value: string): value is GlobalHostMessageType {
   return (
     value === "initialize" ||
+    value === "recover-layout" ||
     value === "apply-appearance" ||
     value === "workspace-save-status" ||
     value === "launch-profiles-result"
@@ -425,6 +427,13 @@ function parseHostMessage(value: unknown): HostMessage | undefined {
 
   if (value.type === "workspace-sync-begin" || value.type === "workspace-sync-complete") {
     return parseWorkspaceSyncMessage(value);
+  }
+
+  if (value.type === "recover-layout") {
+    if (value.sessionId !== undefined || Object.keys(payload).length !== 0) {
+      return undefined;
+    }
+    return { version: ProtocolVersion, type: value.type, payload };
   }
 
   if (value.type === "workspace-save-status") {
@@ -2538,6 +2547,12 @@ function isSessionPayload(
 function handleHostMessage(value: unknown): void {
   const message = parseHostMessage(value);
   if (message === undefined) {
+    return;
+  }
+
+  if (message.type === "recover-layout") {
+    // Refit the existing active terminal without selecting, focusing or recreating it.
+    fitActiveSession();
     return;
   }
 

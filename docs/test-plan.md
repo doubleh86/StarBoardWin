@@ -1070,3 +1070,36 @@ DRAG-MAN-01/02/04/05의 후속 절차:
 48조합 모두 실제 화면 미수행: 이 세션의 native 앱 제어가 비활성화되어 실제 WPF/WebView2
 화면 캡처·pointer 입력을 수행하지 않았다. Windows 배율 변경도 수행하지 않았다.
 기존 DRAG-MAN-01~06의 Not run 상태를 유지하며 위 절차로 실행한 조합만 증거와 함께 갱신한다.
+
+## RDP 해제 후 로컬 복귀 별도 matrix — 2026-10-14
+
+MAN-056의 기존 잠금 해제 절차·상태는 유지한다. 아래는 RDP 해제→원래 PC 로컬 복귀를
+우선하는 별도 인수다. 실제 RDP 장비/세션 전환과 배율 변경은 이 실행에서 미수행이다.
+현재 HWND→WPF host 연결이 지정 Task 경로 차이로 대기 중이므로 전체 복구 인수는 완료가 아니다.
+
+| ID | 조건 / 실행 | 인수 | 실제 결과 |
+|---|---|---|---|
+| RDP-MAN-01 | 로컬 정상 → 다른 해상도 RDP 연결 → resize → 해제 → 로컬 로그인 | geometry 안정화 후 tab strip/viewport가 가용 폭을 채우고 scrollbar가 오른쪽 끝에 위치 | Not run |
+| RDP-MAN-02 | 같은 해상도·배율의 RDP 재연결·해제 5회, unlock/console-connect의 중복·역순 확인 | 동일 외곽 크기에서도 복구, 무한 layout/resize 없음 | Not run |
+| RDP-MAN-03 | 로컬 100/125/150/200% 각각, 원격은 다른 배율 | HWND window DPI와 WPF scale 일치 후 DIP 변환 한 번, DOM DPR/zoom 비교; clipping/이중 scaling 없음 | Not run (4조합) |
+| RDP-MAN-04 | primary/secondary taskbar와 mixed-DPI, monitor 분리·재연결 | 최신 taskbar monitor/anchor와 높이 보존, 임시 fallback에서는 내부 복구 보류 | Not run |
+| RDP-MAN-05 | engaged/idle × collapsed/expanded, 입력·장시간 작업 중 해제 | foreground·활성 탭 ID·shell PID·입력·scrollback·작업 상태 보존, 활성화/재시작 없음 | Not run |
+| RDP-MAN-06 | 사용자 숨김, auto-hide, fullscreen, 로컬 복귀 후 다시 표시 | 숨긴 패널은 숨김 유지; 표시 가능한 상태에서 폭 복구, taskbar 비겹침 | Not run |
+| RDP-MAN-07 | 종료·창 detach 중 늦은 알림/DOM query, WTS 등록 실패 환경 | 등록 해제와 늦은 결과 무시; 숫자 error code와 기존 fallback, 명령·출력·계정 기록 없음 | Not run |
+
+각 단계에서 이벤트 종류와 상대 timing, native window/client pixel, HWND DPI,
+WPF window/root/RendererHost/control ActualWidth/Height·scale, DOM innerWidth/DPR,
+tab strip/workspace/xterm/scrollbar bounds를 비교한다. 숫자와 고정 event 이름만 기록한다.
+private controller bounds는 WPF WebView2 public surface에서 직접 노출되지 않으므로 DOM/control
+관측으로 구분하며 controller 원인을 확정하지 않는다. 필요 시 수동 디버거에서 측정하되
+native child 폭과 DOM 폭을 같은 단위로 취급하지 않는다. PID/활성 ID는 수동 전후 대조용이며
+복구 진단 로그에 추가하지 않는다. 탭 이름·경로·원격 계정·명령·출력은 증거에 넣지 않는다.
+
+자동/모의: `PanelClientLayoutTests`는 96/120/144/192 DPI와 stale WPF DPI 거부를,
+`SessionNotificationRegistrationTests`는 fake native adapter의 수명·등록 실패를,
+`SessionRecoveryTriggerTests`는 fake monotonic time의 중복/역순/지연 알림을 검증한다.
+DesktopWindowIntegrationTests의 새 세션 사례는 fake geometry/runtime이며 기존 로컬 WPF
+placement smoke와 구분한다. `RendererLayoutRecoveryTests`는 동일 외곽 폭의 내부 불일치,
+physical/CSS/zoom 변환과 5회/5초 제한을 검증한다. renderer harness는 기존 terminal 객체,
+generation/order/active ID/focus/output을 보존하는 fit만 검증하며 실제 shell PID와 화면 인수를
+대체하지 않는다.

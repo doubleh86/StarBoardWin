@@ -88,6 +88,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         InitializeComponent();
         renderer = CreateRendererControl();
         RendererHost.Children.Add(renderer);
+        Loaded += StartLayoutObservation;
+        Unloaded += StopLayoutObservation;
         var canvas = ((SolidColorBrush)FindResource("CanvasBrush")).Color;
         SetRendererBackground(canvas);
     }
@@ -243,6 +245,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         CancelPendingSafetyConfirmation(sendRendererCancellation: false);
         isDisposed = true;
+        StopLayoutObservation(null, new RoutedEventArgs());
+        Loaded -= StartLayoutObservation;
+        Unloaded -= StopLayoutObservation;
         collapsedHeightChangeSequence++;
         rendererOperationCancellation.Cancel();
         lifetimeCancellation.Cancel();
