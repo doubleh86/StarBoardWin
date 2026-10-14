@@ -1,5 +1,12 @@
 # 잠금 해제 후 패널 너비 복구
 
+## 현재 상태
+
+2026-09-29의 stale collapsed frame 보정은 구현·자동 검증 완료다. 실제 잠금/해제 검증은
+MAN-056의 미수행 상태를 유지한다. 2026-10-14 RDP 해제 후 로컬 PC 복귀 때 발생한다는 같은 형태의
+재발 제보를 아래 `panel-rdp-width-recovery` 후속 Task로 추가했다. **기획 완료·구현 미착수**이며,
+기존 외곽 geometry 보정만으로 WebView2 내부 너비까지 복구됐다고 해석하지 않는다.
+
 ## 목표와 완료 조건
 
 PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/세로 scrollbar가
@@ -45,9 +52,9 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
   view/renderer fit 경로를 이 계획에 추가하고 먼저 범위를 갱신한다.
 - 구현 영향 파일: `src/Modules/Starboard.Modules.DesktopIntegration/DesktopIntegrationModule.cs`,
   `tests/Starboard.IntegrationTests/DesktopWindowIntegrationTests.cs`,
-  `docs/architecture.md`, `docs/test-plan.md`. 기존 1초 재조정과 display,
+  `docs/architecture.md`, `docs/test-plan.md`. 2026-09-29 구현은 기존 1초 재조정과 display,
   settings, DPI, Explorer 알림으로 snapshot 복구를 확인하므로 session unlock
-  전용 알림은 추가하지 않는다.
+  전용 알림을 추가하지 않았다. RDP 후속의 알림 보강 여부는 아래 별도 Task에서 판단한다.
 - auto-hide로 taskbar가 concealed여도 snapshot 자체가 정상적으로 추적되면
   입력 중인 frame의 taskbar 쪽 anchor와 두께를 유지하면서 평행축을 현재
   work area 전체로 늘린다. 이 방향의 edge·DPI가 이전 frame과 맞지 않으면
@@ -103,3 +110,86 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
   재발하지 않았으므로 기존 접근 거부의 정확한 실패 경로와 파일 잠금·권한 원인은
   여전히 미확정이다. 재발 시 경로와 점유 프로세스·ACL을 먼저 확인한다.
   실제 잠금 해제 및 HWND·WebView2·DOM 경계 측정은 MAN-056 `Not run`이다.
+
+## 후속 — RDP 전환 후 창과 내부 viewport 너비 불일치 (2026-10-14)
+
+### 제보와 확인 범위
+
+- 사용자 제보: RDP 연결 후 발생하는 것 같다는 관찰이다. 첨부
+  `codex-clipboard-45c41ff2-38be-4b76-a869-cd9975248721.png`에서는 패널 배경은 약 1900px 폭으로
+  보이지만 탭 바의 `▾`와 terminal 세로 scrollbar는 약 1040px에서 끝나고 오른쪽이 비어 있다.
+  추가 사용자 확인(2026-10-14): **RDP를 끊고 원래 로컬 PC로 돌아온 뒤**에 이 화면이 발생한다.
+  원격 접속 직후·접속 중에도 발생하는지는 미확인이므로 정상이라고 단정하지 않는다.
+  임시 이미지 파일의 영구 존재를 전제하지 않고 이 관찰을 텍스트 근거로 보존한다.
+- 탭 바와 terminal이 함께 좁다는 점은 단순 shell 출력·ConPTY 열 수 문제가 아니라 상위
+  WPF/WebView2 viewport 크기 전달 문제도 조사해야 한다는 단서다. 실제 HWND/child/DOM rect와
+  DPI를 측정한 결과는 아니며 스크린샷만으로 원인 또는 실패 계층을 확정하지 않는다.
+- 현재 코드: `WM_DISPLAYCHANGE`·`WM_DPICHANGED`·설정 변경과 1초 재조정은 처리한다.
+  DPI 메시지 handler는 `false`를 반환해 WPF 기본 처리를 막지 않고 MainWindow에서도 지연 refresh를
+  예약한다. 메시지를 삼킨다는 가정을 원인으로 사용하지 않는다.
+- 2026-09-29 보정은 DesktopIntegration의 안전 frame 복원 경로다. WPF/WebView2에는 고정 child 폭을
+  지정하지 않지만, RDP 연결/해제 전용 WTS 등록·알림과 내부 bounds 불일치 복구 경로는 현재 없다.
+  renderer의 ResizeObserver는 받은 workspace 크기를 기준으로 xterm fit을 호출하므로 상위 viewport가
+  이전 폭이면 fit만 반복해도 전체 화면 폭으로 늘어나지 않을 수 있다.
+- 후보: 전환 중 monitor/work area snapshot 또는 DPI가 임시 값인 경우, native 창과 WPF arrange가
+  서로 다른 크기를 갖는 경우, WebView2 child/controller 또는 DOM viewport가 이전 크기로 남는 경우.
+  우선 원격 화면에서 로컬 monitor로 복귀할 때 이전 원격 크기·배율이 내부에 남는지 비교한다.
+  실제 측정으로 구분하고 기존 geometry 수정을 되돌리거나 renderer를 무조건 재생성하지 않는다.
+
+### 공식 API 근거와 복구 방향
+
+- [WM_WTSSESSION_CHANGE](https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change)는
+  remote/console 연결·해제, unlock 등 세션 전환을 구분한다. 필요 시 DesktopIntegration에서
+  [WTSRegisterSessionNotification](https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsregistersessionnotification)의
+  `NOTIFY_FOR_THIS_SESSION`으로 현재 세션만 등록하고, detach/dispose 때 대응하는 해제를 수행한다.
+  등록 실패는 local 진단과 기존 display/주기 재조정 fallback으로 처리하며 관리자 권한을 요구하지 않는다.
+- 알림 도착이 geometry 안정화를 보장한다고 가정하지 않는다. 현재 monitor/work area/taskbar/DPI를
+  다시 조회하고 UI dispatcher 적용 뒤의 크기를 확인한다. 중복 알림은 합치고 재시도는 횟수·시간을
+  제한한다. 예전 크기를 강제로 적용하거나 무한 layout/resize loop를 만들지 않는다.
+- [WM_DPICHANGED](https://learn.microsoft.com/en-us/windows/win32/hidpi/wm-dpichanged)의 새 window DPI,
+  WPF DIP·native pixel·DOM CSS pixel·WebView2 scale을 명시적으로 비교한다. 과거 system DPI 또는
+  RDP/로컬의 이전 monitor 값으로 이중 scaling하지 않는다.
+- 측정 결과 외곽 HWND가 좁으면 DesktopIntegration geometry를, WPF/child bounds가 좁으면 host→
+  Terminal presentation의 resize 전달을, DOM만 정상인데 xterm만 좁으면 renderer fit을 보정한다.
+  필요한 경계만 수정하고 module 간 직접 참조·UI의 새 Win32 호출은 추가하지 않는다.
+- 복구는 활성화·최상단 고정·panel expand/collapse·앱 재시작 없이 수행한다. 높이·taskbar anchor,
+  숨김/확장 상태, active ID·shell PID·실행 중 작업·입력·scrollback을 보존한다. 사용자가 패널을 숨긴
+  상태에서 RDP 알림 때문에 다시 보여주지 않는다. renderer 교체와 terminal reset은 기본 해법이 아니다.
+
+### 독립 Task: `panel-rdp-width-recovery`
+
+- 제목: RDP 해제 후 로컬 복귀 시 패널과 WebView2 가로 폭 복구
+- 상태: **기획 완료·구현 미착수**. 이번 제보 기록은 문서만 변경한다.
+- capabilities: `desktop`, `frontend`, `qa`; 위험도: 중간.
+- 선행: 완료된 잠금 해제 geometry 보정 및 현재 renderer 가로 fill 계약을 보존한다.
+- 우선 조사/예상 영향: DesktopIntegrationModule, `Infrastructure/Interop`의 세션 notification adapter와
+  수명 처리, DesktopWindowIntegrationTests 및 해당 module 테스트. 측정으로 필요함을 확인한 경우에만
+  host 조정(MainWindow/AppCoordinator), TerminalView의 WebView2 크기 전달, renderer src/dist와 UI 테스트를
+  포함한다. 변경 경계를 확정한 뒤 코드를 수정한다.
+- 문서: 이 계획, 계획 index, `docs/test-plan.md`, 필요한 architecture 복구 정책.
+- 제외: 다른 기능·drag controller 수정, 저장 schema·shell bootstrap 변경, 새 dependency,
+  원격 PC/RDP 설정 변경, 강제 로그오프, commit/push·release·바탕화면 재배포.
+- 파일 소유권: 진단과 계층 구분을 먼저 수행한다. 그 뒤 수정 파일이 독립적일 때만 native 알림·geometry와
+  Terminal layout을 병렬로 나눈다. MainWindow/TerminalView/renderer 공유 파일은 담당자를 하나로 고정한다.
+- [ ] 사용자 확인 조건인 RDP 해제→로컬 복귀를 우선 재현하고 HWND client→WPF→WebView2→DOM 경계를
+  측정해 실패 계층을 확정한다. 연결 직후·접속 중은 별도 대조군으로 관찰한다.
+- [ ] 확인된 경로에 한정해 세션 전환·DPI/layout 복구와 제한된 재시도·정리·fallback을 구현한다.
+- [ ] 중복/역순/지연 알림, 임시 geometry, 동일 외곽 크기의 child mismatch, DPI·focus·세션 보존 회귀를
+  자동 검증하고 전체 restore/build/test 및 문서를 갱신한다.
+
+### 검증과 미수행 항목
+
+- 제어된 재현: 로컬 정상 상태 → 다른 해상도/배율 RDP 연결 → 원격 세션 크기 변경 → 해제 → 로컬 복귀,
+  **해제 후 로컬 화면의 폭 복구**를 우선 확인한다. 같은 해상도/배율 재연결 및 반복도 나눠 확인한다.
+  로컬 복귀 전후 세션 알림·display/DPI 변경·layout 적용의 실제 순서를 기록하되 항상 같은 순서로
+  도착한다고 가정하지 않는다. 단일/다중 monitor, engaged/idle, 확장/축소,
+  사용자 숨김과 auto-hide를 구분한다. 연결과 복귀를 같은 event로 뭉뚱그리지 않는다.
+- 각 단계에서 native window/client rect, WPF ActualWidth/ActualHeight와 해당 window DPI,
+  RendererHost/WebView2 크기·scale, DOM window.innerWidth/workspace/viewport rect·scrollbar 끝을 비교한다.
+  진단은 크기·DPI·event 종류·제한된 timing만 기록하고 명령·출력·탭 이름·경로·원격 계정은 기록하지 않는다.
+- 인수: 정상 geometry가 돌아온 뒤 탭 바와 viewport가 패널 가용 폭을 채우고 scrollbar가 오른쪽 끝에
+  위치한다. 100/125/150/200%에서 clipping·taskbar 겹침 없이 높이·foreground·PID·작업 상태를 보존한다.
+  실제 RDP를 수행하지 못한 자동/mock 테스트는 실제 화면 통과 근거가 아니다.
+- **Not run (manual):** 이번에는 RDP 연결/해제나 HWND/WebView2/DOM 경계 측정을 수행하지 않았다.
+  구현 시 [MAN-056](../test-plan.md)의 기존 잠금 해제 검증은 유지하고 별도 RDP matrix를 추가한다.
+  제보를 실제 재현·원인 확정·수정 완료로 표시하지 않는다.
