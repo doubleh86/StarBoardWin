@@ -1223,3 +1223,20 @@ Architecture 실행은 출력 정체로 자체 취소했으며 solution restore�
 현재 생성물 쓰기·삭제와 cache 배타적 열기는 성공했고 동시 빌드 충돌이나 근본 원인은 미확정이다.
 **자동 검증 미완료**이며 선행 성공이 없어 Debug build와 전체 test는 미실행이다. 과거 접근 거부,
 620개 통과 및 이번 자체 취소를 구분한 [조사 기록](plans/2026-09-29-unlock-panel-width-recovery.md#추가-실패-조사-2026-10-15-1758-kst-시작)을 따른다.
+
+2026-10-15 CA1707 후속 수정: Task가 전달한 최신 확정 검증은 09:04:25 UTC 시작이며,
+restore 및 SharedKernel·Terminal 빌드는 성공했다. `RendererLayoutRequestDispatcherTests.cs:34`
+CA1707 때문에 테스트 프로젝트 컴파일에서 중단되어 테스트는 실행되지 않았다. 해당 메서드의
+밑줄만 제거하고 본문·assertion·실행 대상·analyzer 강도를 유지한다. 과거 접근 거부와 MSBuild
+조사는 당시 이력이며 이번 컴파일 실패 원인이 아니다. 새 집중/전체 검증 결과는
+[후속 기록](plans/2026-09-29-unlock-panel-width-recovery.md#ca1707-이름-수정검증-재개-2026-10-15)에 남기며
+확인 전에는 자동 검증 미완료 상태를 유지한다.
+
+이름 수정 후 이번 실행도 **자동 검증 미완료**다. 18:09:31 KST Terminal test와 18:10:59
+Architecture test는 restore 단계 출력 이후 대기하며 테스트 실행·종료 결과가 확인되지 않았다.
+18:12:30~18:12:39 solution restore는 exit 1, 추가 diagnostic의 최초 실패 상태는
+18:13:06.930 `_FilterRestoreGraphProjectInputItems` MSBuild 하위 작업(요약 오류 0개)이다.
+이 실행의 상세 컴파일 오류·접근 거부·동시 빌드 충돌은 확인되지 않았다. 선행 성공이 없어
+Debug build와 전체 test는 미실행이며 worker 옵션 변경·제한 우회·반복 build는 하지 않았다.
+C# WorkingTree 정렬과 diff 검사는 통과했다. 테스트 본문과 assertion은 유지했지만
+CA1707 해소 및 회귀 통과를 새 결과로 입증하지 못했다. 과거 620개 통과를 재사용하지 않는다.

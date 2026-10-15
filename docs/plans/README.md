@@ -7,6 +7,18 @@
 
 ## 현재 작업 상태 — 2026-10-15
 
+`terminal-layout-recovery-entrypoint` 최신 후속: 2026-10-15 09:04:25 UTC 시작 검증은 restore와
+SharedKernel·Terminal build 성공 후 테스트 프로젝트 `RendererLayoutRequestDispatcherTests.cs:34`
+CA1707로 중단돼 테스트가 실행되지 않았다. 밑줄 한 개를 제거하는 이름 수정과 재검증을
+[진행 기록](2026-09-29-unlock-panel-width-recovery.md#ca1707-이름-수정검증-재개-2026-10-15)에 추가한다.
+아래 완료 Task와 과거 접근 거부·MSBuild 조사 이력은 보존하며 현재 검증 결과와 구분한다.
+
+이름 수정 후 현재 상태는 **자동 검증 미완료**다. Terminal/Architecture 집중 검증은
+restore 단계 출력 뒤 실행 결과가 없고, 18:12 KST solution restore는 exit 1이다.
+18:13 diagnostic은 `_FilterRestoreGraphProjectInputItems` 하위 작업 실패(오류 0개)를
+기록했다. 선행 조건 미충족으로 Debug build/전체 test는 미실행이며 정렬·diff 검사는 통과했다.
+새 컴파일·테스트 성공이 확인되기 전에는 이름 수정만으로 해결 완료를 선언하지 않는다.
+
 초기에는 `main`의 `1505ccb` 코드를 기준으로 기존 계획과 구현을 대조했고, 이후 Task 결과를
 아래 표에 반영했다. 아래 표는 현재 상태의
 진입점이며, 과거 제보·초기 UX·검증 횟수는 각 문서의 당시 기록으로 보존한다.

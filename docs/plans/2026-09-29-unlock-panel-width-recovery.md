@@ -409,3 +409,45 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
   원인을 확인·해소한 뒤 지정 집중 테스트와 restore→Debug build→전체 test가 필요하다.
   제품 코드 결함이나 읽기 전용 환경을 확정할 수 없어 추가 테스트 변경도 하지 않았다.
   실제 host 연결 및 RDP-MAN-01~07의 `Not run (manual)` 상태는 유지한다.
+
+#### CA1707 이름 수정·검증 재개 (2026-10-15)
+
+- 할당 작업공간의 기준 `a9f6c9d61365c46d66ccc3faf0322491ecadc97c` 이후 변경과
+  현재 `8189a68`까지의 기록을 대조했다. 기존 공개 진입점·dispatcher·수명 검사와 회귀를
+  보존한다. 이번 코드 변경은 테스트 메서드 이름의 밑줄 한 개 제거뿐이며 본문·assertion,
+  실행 대상과 analyzer 설정은 유지한다.
+- Task에 전달된 최신 확정 검증은 **2026-10-15T09:04:25+00:00 시작**이다. restore 및
+  SharedKernel·Terminal 빌드는 성공했고 `RendererLayoutRequestDispatcherTests.cs:34`의
+  `CA1707`로 테스트 프로젝트 컴파일에서 중단됐다. 테스트는 실행되지 않았다.
+  과거 접근 거부·MSBuild 하위 작업 조사 기록은 보존하되 이 실행의 원인으로 취급하지 않는다.
+- `RequestDuringObservationLatestRevisionWinsAndDuplicatesKeepOriginalBudget`로 이름을
+  수정한 뒤 지정 Terminal/Architecture 집중 테스트와 solution restore→Debug build→전체 test,
+  C# WorkingTree 정렬·diff 검사를 수행한다. 새 실행 결과 전에는 해결 완료로 표시하지 않는다.
+  쓰기 제한 발생 시 반복 빌드나 우회 없이 검증 불가를 기록하고, 동시 MSBuild 충돌이
+  확인된 재실행에만 `-m:1 -nr:false`를 적용한다. 실제 host 연결·RDP 수동 인수는 별도 범위다.
+
+이번 이름 수정 후 검증 결과 (2026-10-15 KST, 지정 `.dotnet/dotnet.exe` 사용):
+
+| 필수 검증 | 실행 시각과 결과 |
+|---|---|
+| Terminal Debug test | 18:09:31.580 시작. restore 최신 상태 출력 뒤 추가 출력 없음. 18:10:58경 중단 신호를 보냈으나 도구 세션 종료·exit는 미확인. compiler/테스트 실행 결과 없음 |
+| Architecture Debug test | 18:10:59.704 시작. restore 프로젝트 확인 뒤 추가 출력 없음. 도구 세션 종료·exit와 테스트 실행 결과 미확인 |
+| solution restore | 18:12:30.345~18:12:39.450, exit 1. stdout/stderr에 상세 오류 없음 |
+| restore diagnostic | 18:13:00.620~18:13:07.134, exit 1. 최초 실패 상태는 18:13:06.930 MSBuild 하위 작업 및 `_FilterRestoreGraphProjectInputItems`, 요약 오류 0개 |
+| solution Debug build `--no-restore` | 이번 solution restore 실패로 선행 조건 불충족, 미실행 |
+| solution test `--no-build --no-restore` | 이번 Debug build 미성공으로 미실행. 과거 binary로 대체하지 않음 |
+| C# WorkingTree 정렬 | 지정 명령 통과 |
+| `git diff --check` | 통과 |
+
+- 이번 실행에서 접근 거부가 나온 것은 읽기 전용 WMI process 조회이며 생성물 쓰기 거부
+  증거가 아니다. process 수와 MSBuild worker 명령행만으로 동시 빌드 충돌을 확정하지 않았다.
+  worker 옵션 변경, 생성물 정리, 권한 변경, 제한 밖 재실행이나 다른 process 종료는 하지 않았다.
+  반복 build로 우회하지 않았으며 root process를 추적하고 stdout/stderr를 분리한 solution restore는
+  정상 종료 코드 1을 확인했다. 집중 테스트의 대기 세션은 성공이나 SDK 정상 종료로 계산하지 않는다.
+- 이번 restore 로그는 Terminal.Tests의 무시되는 `obj/layout-ca1707-restore.stdout.log`,
+  `layout-ca1707-restore.stderr.log`, `layout-ca1707-restore-diagnostic.log`,
+  `layout-ca1707-restore-diagnostic.stderr.log`다. 과거 로그는 덮어쓰지 않았다.
+- **테스트 이름 수정 완료·자동 검증 미완료**다. 새 CA1707 출력은 없지만 수정한 테스트의
+  컴파일·실행 성공도 확인되지 않았다. SDK 하위 작업 실패/집중 검증 대기 원인을 해소한 환경에서
+  지정 집중 테스트와 solution restore→Debug build→전체 test를 재개해야 한다. 기존 복구 동작과
+  공개 표면은 재구현하지 않았고 실제 host 연결 및 RDP 수동 검증의 별도 범위는 유지한다.

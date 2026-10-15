@@ -31,7 +31,7 @@ public sealed class RendererLayoutRequestDispatcherTests
     }
 
     [TestMethod]
-    public async Task RequestDuringObservation_LatestRevisionWinsAndDuplicatesKeepOriginalBudget()
+    public async Task RequestDuringObservationLatestRevisionWinsAndDuplicatesKeepOriginalBudget()
     {
         await RunOnDispatcherAsync(async dispatcher =>
         {
