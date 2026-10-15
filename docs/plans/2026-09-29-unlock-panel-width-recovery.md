@@ -275,3 +275,41 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
 - C# WorkingTree 정렬 및 `git diff --check` 통과. 지정 경로만 변경했으며 Preferences,
   Terminal Infrastructure, renderer source/dist/protocol에는 content diff가 없다.
   commit/merge/push/deploy는 수행하지 않았다. 실제 host 연결과 수동 RDP 인수는 별도 작업이다.
+
+#### 재시도 점검 (2026-10-15)
+
+- 기준 `a9f6c9d`와 현재 `7683092`를 대조했다. 기존 공개 계약·module 진입점과 구현을
+  보존한다. 기존 완료 Task 및 위 성공·실패 기록은 당시 이력으로 유지한다.
+- 누락된 검증: 기존 5회 제한 테스트는 여섯 번째 관측이 정확히 5초에 도달하므로 횟수 제한과
+  시간 제한을 구분하지 못했다. 5초 이내의 반복으로 바꾸고, 관측 도중 취소 후 새 요청이
+  기존 작업과 병합되는 수명 회귀를 보완한다. 제품 API/renderer/host 범위는 확장하지 않는다.
+- 현재 Task 계정의 영향받는 bin/obj에서 생성·쓰기·삭제 probe와 기존 Terminal markup cache의
+  배타적 read/write 열기가 성공했다. 읽기 전용 속성은 없고 ACL에는 Authenticated Users Modify가
+  있다. 이 사실만으로 과거 접근 거부 원인이나 동시 빌드 충돌을 확정하지 않는다.
+- 추가 권한 확인: Terminal bin/obj, Preferences obj, DesktopIntegration.Tests bin/obj의 파일에
+  ReadOnly/reparse 항목이 없었다. 두 module의 markup cache 및 DesktopIntegration.Tests의
+  AssemblyInfo/cache를 내용 변경 없이 배타적 read/write로 열었다. 별도 .NET compiler process도
+  Terminal.Tests obj에 진단용 assembly를 작성했고 진단용 source/assembly 삭제가 성공했다.
+  현재 검사로 일반적인 생성물 쓰기 제한이나 검사 시점의 해당 파일 잠금은 재현되지 않았다.
+- WMI process 명령행 조회는 접근 거부로 실패했다. 읽기 전용 process snapshot에서는 다수의
+  dotnet child와 이미 종료된 parent가 관측됐지만 해당 작업공간의 동시 빌드·worker 충돌을
+  입증하지 못했다. 생성물 정리·ACL 변경·다른 process 종료·sandbox 밖 재실행을 하지 않았고,
+  확인되지 않은 충돌을 근거로 `-m:1 -nr:false`를 적용하지 않았다.
+- 이번 재시도는 **구현 보존·테스트 보완, 자동 검증 미완료**다. 실행 계정은
+  `DESKTOP-BVS661A\\round1studio_14`이며 모든 SDK 명령에 지정 `.dotnet/dotnet.exe`를 사용했다.
+
+| 필수 검증 | 이번 재시도 결과 |
+|---|---|
+| Terminal Debug test | restore 최신 상태 확인 뒤 build/test 출력 없이 대기하여 자체 실행을 중단. 통과 아님 |
+| Architecture Debug test | exit 1, restore 단계 실패. diagnostic에서도 `_GetAllRestoreProjectPathItems` / `_GenerateRestoreProjectPathWalk`의 MSBuild task 실패, warning/error 0. 테스트 미실행 |
+| solution restore | exit 1. diagnostic에서 `_FilterRestoreGraphProjectInputItems`의 MSBuild task 실패, warning/error 0. 생성물 접근 거부 메시지는 재현되지 않았으며 원인 미확정 |
+| solution Debug build `--no-restore` | 이번 solution restore가 실패해 선행 성공 조건 불충족으로 미실행 |
+| solution test `--no-build --no-restore` | 이번 Debug build가 없어 오래된 binary를 검증하지 않도록 미실행 |
+| C# WorkingTree 정렬 | 통과 |
+| `git diff --check` | 통과 |
+
+- 진단 로그는 해당 테스트 project의 무시되는 obj 아래 `layout-terminal-verification.log`,
+  `layout-retry-diagnostic.log`, `layout-restore-diagnostic.log`에 남겼다. 앞의 620개 성공 기록은
+  이전 커밋의 이력이며 이번 변경의 검증 근거가 아니다. 변경 테스트의 실행 결과도 아직 없다.
+  SDK 하위 작업 실패 원인을 확인한 뒤 지정 집중 테스트와 restore→Debug build→전체 test를
+  다시 수행해야 한다. 실제 host 연결 및 RDP 수동 인수의 별도 범위는 유지한다.

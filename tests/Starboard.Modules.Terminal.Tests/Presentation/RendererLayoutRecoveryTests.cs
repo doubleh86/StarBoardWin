@@ -55,15 +55,16 @@ public sealed class RendererLayoutRecoveryTests
         var recovery = new RendererLayoutRecovery(time);
         Assert.IsTrue(recovery.BeginRevision(1));
         var narrow = Normal with { DomWidth = 1040 };
+        // Exhaust the attempt cap before the time cap, so each limit is tested independently.
         for (var attempt = 0; attempt < 5; attempt++)
         {
-            time.Timestamp = attempt * 1_000;
+            time.Timestamp = attempt * 100;
             Assert.IsTrue(recovery.TryRepair(narrow));
         }
 
         for (var attempt = 5; attempt < 20; attempt++)
         {
-            time.Timestamp = attempt * 1_000;
+            time.Timestamp = attempt * 100;
             Assert.IsFalse(recovery.TryRepair(narrow));
         }
 

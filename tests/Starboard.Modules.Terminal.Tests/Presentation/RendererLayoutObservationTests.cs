@@ -51,6 +51,37 @@ public sealed class RendererLayoutObservationTests
     }
 
     [TestMethod]
+    public async Task RequestAfterCancellationDuringObservationMergesIntoOneNewLifetimeFollowUp()
+    {
+        var first = new TaskCompletionSource();
+        var second = new TaskCompletionSource();
+        var calls = 0;
+        var available = true;
+        var observation = new RendererLayoutObservation(() => ++calls == 1 ? first.Task : second.Task,
+                                                        () => available, () => false);
+        observation.Request();
+        var completion = observation.Completion;
+        var oldEpoch = observation.Epoch;
+        available = false;
+        observation.Cancel();
+        observation.Observe();
+        available = true;
+        for (var request = 0; request < 100; request++)
+        {
+            observation.Request();
+        }
+
+        Assert.AreEqual(1, calls);
+        Assert.AreSame(completion, observation.Completion);
+        Assert.AreNotEqual(oldEpoch, observation.Epoch);
+        first.SetResult();
+        Assert.AreEqual(2, calls);
+        second.SetResult();
+        await completion;
+        Assert.AreEqual(2, calls);
+    }
+
+    [TestMethod]
     public async Task TimedOutBrowserCallBlocksFurtherObservationsUntilUnderlyingTaskCompletes()
     {
         var pending = new TaskCompletionSource();

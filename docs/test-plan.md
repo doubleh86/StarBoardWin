@@ -1184,8 +1184,17 @@ generation/order/active ID/focus/output을 보존하는 fit만 검증하며 실�
 실제 host 이벤트→Terminal 연결 및 RDP-MAN-01~07의 화면·foreground·PID·입력·scrollback 검증은
 별도 인수 대상이며 `Not run (manual)`을 유지한다.
 
-실행 결과: Terminal 376, Architecture 14, solution 전체 620개 최종 통과. 새 module 수명 integration도
+이전 커밋 `7683092` 실행 결과: Terminal 376, Architecture 14, solution 전체 620개 최종 통과. 새 module 수명 integration도
 포함한다. Debug build는 기본 병렬 실행의 생성물 접근 거부 뒤 `-m:1 -nr:false`로 경고·오류 0개다.
 첫 전체 실행의 기존 Windows PowerShell bootstrap timeout 한 건은 분리 두 사례와 전체 재실행에서
 통과했다. sandbox esbuild EPERM은 동일 지정 argv를 sandbox 밖에서 실행해 통과했다.
 최초 접근 거부·timeout 원인은 미확정이며 [실행 기록](plans/2026-09-29-unlock-panel-width-recovery.md#완료검증-기록)에 남겼다.
+
+2026-10-15 재시도: 공개 계약과 기존 구현을 보존하고 횟수 제한을 5초 전에 소진하도록 테스트를
+보강했다. 관측 중 취소 후 새 수명 요청 100개가 후속 한 건으로 합쳐지는 사례도 추가했다.
+**변경 테스트의 실행은 미완료**다. Terminal test는 restore 이후 대기하여 중단했고,
+Architecture test와 solution restore는 MSBuild 하위 작업 실패(exit 1, warning/error 0)로 막혔다.
+이번 restore/build가 성공하지 않아 `--no-restore` build와 `--no-build` 전체 test는 실행하지 않았다.
+같은 계정의 생성물 쓰기·삭제 및 별도 .NET compiler 쓰기는 성공했지만 실패 원인은 미확정이다.
+정렬·diff 검사는 통과했으며 과거 성공을 이번 재시도 성공으로 간주하지 않는다.
+자세한 검사·재개 조건은 [재시도 기록](plans/2026-09-29-unlock-panel-width-recovery.md#재시도-점검-2026-10-15)을 따른다.
