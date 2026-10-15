@@ -780,6 +780,7 @@ WebView2 transparent composition 위험 때문에 glassmorphism과 blur를 쓰�
 - local diagnostic log는 `%LOCALAPPDATA%/Starboard/Logs/starboard.log`와 `.1`~`.4` 보관본만 사용한다. 각 파일은 512 KiB를 넘기기 전에 회전하므로 총 보관 상한은 2.5 MiB다.
 - subsystem, operation, level, native error code, 고정 예외 분류와 숫자 HRESULT의 제한된 metadata만 기록한다. message와 exception 본문/stack/Data는 file sink에서 의도적으로 폐기하며 허용 문자/길이를 벗어난 metadata는 `redacted`로 대체한다.
 - 입력 진단은 Presentation 전용 `input-diagnostic` envelope를 엄격하게 검사한다. route(0 key 도착, 1 copy, 2 paste 요청, 3 차단/폐기, 4 interrupt 경로, 5 xterm paste 적용), selection(0/1), focus(0 문서 비활성, 1 editor, 2 문서 활성), modal/suppressed/pointer capture(0/1)만 허용한다. session ID와 원문은 이 envelope에 없으며, extra field·범위 초과·512자 초과는 폐기한다. host는 Copy/Paste.Completed·Unavailable·Stale·Retry, 확인 전달/폐기와 예외 코드를 별도로 남긴다. Clipboard.Completed는 실제 shell 전달 성공을 뜻하지 않는다.
+- 입력 상태의 파일 operation은 `Input.Rr.Ss.Ff.Mm.Uu.Cc`다. 각 소문자 자리는 위 순서의 route, selection, focus, modal, suppressed, capture 숫자 한 자리이며, 예를 들어 `Input.R1.S1.F2.M0.U0.C0`로 저장한다. 23자 고정 형식으로 여섯 상태를 구분하며 파일 로그의 64자 제한과 기존 문자 검사는 그대로 유지한다. 이전 긴 형식도 현재 허용 범위에서는 63자로 제한 안에 있었으므로 실제 redaction 발생을 확정하지 않는다. parser부터 파일 기록까지 288개 조합과 원문 배제를 회귀 검증한다(이번 실행 결과는 테스트 계획 참조).
 - 파일 잠금, I/O, 손상된 기존 파일과 회전 실패는 best-effort로 격리한다. 진단 기록 실패는 startup, recovery 또는 shutdown을 중단하지 않는다.
 - command, terminal output, clipboard, environment value와 full custom arguments는
   기록하지 않는다.

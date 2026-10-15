@@ -1240,3 +1240,52 @@ Architecture test는 restore 단계 출력 이후 대기하며 테스트 실행�
 Debug build와 전체 test는 미실행이며 worker 옵션 변경·제한 우회·반복 build는 하지 않았다.
 C# WorkingTree 정렬과 diff 검사는 통과했다. 테스트 본문과 assertion은 유지했지만
 CA1707 해소 및 회귀 통과를 새 결과로 입증하지 못했다. 과거 620개 통과를 재사용하지 않는다.
+
+### 입력 진단 dispatcher 재검증 2026-10-15
+
+실행 시각: 19:29~19:35 KST.
+
+Run `20261014-072003-981783-1949fb3a`, Task `terminal-clipboard-shortcut-regression`,
+시작 HEAD `98fda53`, 기준 clipboard commit `a9f6c9d`다. 기준 이후 ClipboardAccess와
+ClipboardRequestLifetime 변경은 없으며 TerminalView의 layout 관련 후속만 있다.
+기존 키 억제·fresh keydown/blur·IME 보호, 3회 STA 재시도·OLE 수명 검사·callback 관측은 보존했다.
+입력 operation은 63자였으므로 현재 값이 64자 제한으로 가려졌다는 증거는 없다. 짧은
+`Input.Rr.Ss.Ff.Mm.Uu.Cc` (23자)로 바꾸고 기존 parser whitelist/파일 sanitizer는 유지했다.
+
+추가 회귀는 production parser를 reflection delegate로 연결하여 public surface를 늘리지 않고,
+288개 상태 조합의 실제 FileDiagnosticLog 기록·고유성·64자 경계와 금지 문자를 검사한다.
+각 상태에 임의 원문 및 extra field를 넣으면 거부하며 clipboard 원문, terminal 입력·출력,
+탭 이름, 경로, 예외 message/stack은 파일에 없어야 한다. 기존 dispatcher STA 성공 case에
+실제 Task.Delay/dispatcher pump 중 무효화되는 case를 추가해 재시도·snapshot 전달 0회를 검사한다.
+OS clipboard는 사용하지 않는다. **새 C# 회귀는 실행되지 못했으므로 통과로 간주하지 않는다.**
+
+| 이번 명령 | 결과 |
+| --- | --- |
+| 지정 npm ci | Passed — 6 packages, audit 취약점 0; esbuild postinstall은 환경 allowScripts 정책으로 blocked 경고 |
+| 지정 npm test | Failed — 최초 `clipboardShortcuts.test.mjs` harness의 esbuild `ensureServiceIsRunning`에서 `spawn EPERM` (-4048). 총 7 항목 중 독립 3개만 통과, 4개 suite load 실패; 기존 103개 회귀 실행 성공이 아님 |
+| 지정 npm run build | Failed — 같은 esbuild `spawn EPERM`, Node v24.18.0. 실패 중 변경/삭제된 dist는 실행 전 HEAD 내용으로 복구, source/dist 제품 변경 없음 |
+| 지정 Terminal 집중 test | restore 최신 상태 출력 뒤 정체되어 해당 실행만 Ctrl+C 취소. 상세 재실행은 19:31:58.158 첫 MSBuild 실패 상태: `BuildProject`, 이어 `_GetProjectReferenceTargetFrameworkProperties`; summary warning/error 0, 테스트 호스트/assertion 미관측. summary 이후 프로세스가 반환하지 않아 해당 실행만 취소 |
+| 지정 FileDiagnosticLogTests 집중 test | restore 확인 출력 뒤 진행 결과가 없어 해당 실행만 Ctrl+C 취소. 새 회귀 compile/test 성공 증거 없음 |
+| 지정 solution restore | 19:33:08 exit 1, 출력 없음. 상세 재실행도 exit 1; 19:33:38.034 첫 실패는 MSBuild task ID 5 → `_FilterRestoreGraphProjectInputItems`, warning/error 0 |
+| Debug build --no-restore / 전체 test --no-build --no-restore | Not run — 이번 solution restore 실패, 선행 성공 조건 미충족. 오래된 bin 결과로 대체하지 않음 |
+| 지정 C# WorkingTree 정렬 / git diff --check | Passed — 최종 변경 기준. 금지 경로와 renderer source/dist의 내용 변경 없음 |
+
+상세 로그의 MSB4276 workload locator 메시지는 뒤이어 WorkloadSdkResolver가 확인한 fallback
+기록으로, 위 최초 실패 상태의 원인이라고 단정하지 않는다. 이 실행은 지정 SDK
+`C:\Users\round1studio_14\.dotnet\dotnet.exe` 10.0.301을 사용했다. 진단 로그는 worktree의
+ignored `terminal-clipboard-*.log`에 보존했다. 이전 기록의 handshake salt 변경이나 별도
+worker pool을 이번 검증에 적용하지 않았다.
+
+동일 실행 계정의 Terminal obj 임시 파일 쓰기·독점 ReadWrite 열기·삭제 및 project.nuget.cache
+독점 열기는 성공했고, cache는 Archive/ReadOnly 아님, obj는 Directory이며 소유자는 실행 계정이다.
+ACL은 Authenticated Users Modify를 포함한다. esbuild.exe도 Archive/ReadOnly 아님이며
+독점 ReadWrite 열기가 성공했다. 이는 child process 실행 권한 성공을 뜻하지 않는다.
+Get-Process에서 dotnet worker들이 보였으나 command line/parent를 위한 CIM 조회는 access denied다.
+이 worktree의 동시 build 충돌·잠금은 확인하지 못했고 `-m:1 -nr:false`를 적용하지 않았다.
+다른 프로세스 종료, ACL/속성 변경, SDK/allowScripts 정책 변경, cache 삭제, 제한 우회나 검증
+완화는 하지 않았다. SDK child task 실패·spawn 거부의 직접 원인은 미확정이며 제품 결함으로
+단정하지 않는다. 정상적인 child process 실행 환경에서 지정 검증을 순서대로 다시 수행해야 한다.
+
+이번 상태는 **구현 보완·자동 검증 미완료**다. 과거 Node 103/.NET 610 통과는 당시 환경의
+성공 이력으로 보존하며, 별도 layout Task의 이후 성공/오케스트레이터 실패와 이번 결과를 구분한다.
+실제 자발 종료 원인은 미확정이고 CLIP-MAN-01~05는 모두 **Not run (manual)**을 유지한다.

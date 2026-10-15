@@ -7,6 +7,15 @@
 
 ## 현재 작업 상태 — 2026-10-15
 
+2026-10-15 `terminal-clipboard-shortcut-regression` 입력 진단 후속은 **구현 보완·자동 검증 미완료**다.
+기준 `a9f6c9d`의 clipboard/키 복구를 보존하고 23자 고정 진단 코드, parser→실제 파일 privacy 회귀와
+STA dispatcher await 중 무효화 검사를 보완했다. 기존 operation도 63자로 제한 안에 있었으므로
+64자 redaction 발생을 확정하지 않는다. npm ci만 통과, test/build는 esbuild spawn EPERM이며
+C# 집중 검증은 정체/MSBuild 하위 작업 실패, solution restore exit 1로 build/전체 test 미실행이다.
+과거 610개 통과·별도 layout Task 이력은 당시 기록이며 이번 성공으로 간주하지 않는다.
+[이번 상세 기록](../test-plan.md#입력-진단-dispatcher-재검증-2026-10-15)을 따른다.
+CLIP-MAN-01~05와 실제 자발 종료 원인 미확정 상태를 유지한다.
+
 `terminal-layout-recovery-entrypoint` 최신 후속: 2026-10-15 09:04:25 UTC 시작 검증은 restore와
 SharedKernel·Terminal build 성공 후 테스트 프로젝트 `RendererLayoutRequestDispatcherTests.cs:34`
 CA1707로 중단돼 테스트가 실행되지 않았다. 밑줄 한 개를 제거하는 이름 수정과 재검증을

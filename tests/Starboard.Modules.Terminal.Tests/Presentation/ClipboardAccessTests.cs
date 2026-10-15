@@ -163,7 +163,9 @@ public sealed class ClipboardAccessTests
     }
 
     [TestMethod]
-    public async Task ExecuteAsyncRealDispatcherDelayClipboardAdapterStaysOnSta()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ExecuteAsyncRealDispatcherDelayClipboardAdapterStaysOnSta(bool invalidateDuringDelay)
     {
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
@@ -175,11 +177,27 @@ public sealed class ClipboardAccessTests
                 try
                 {
                     var attempts = 0;
+                    var current = true;
+                    var verifications = 0;
+                    var observations = 0;
                     var access = new ClipboardAccess(() =>
                     {
                         dispatcher.VerifyAccess();
                         Assert.AreEqual(ApartmentState.STA, Thread.CurrentThread.GetApartmentState());
-                    }, token => Task.Delay(10, token));
+                        verifications++;
+                    }, async token =>
+                    {
+                        var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                        _ = dispatcher.InvokeAsync(() =>
+                        {
+                            current = invalidateDuringDelay == false;
+                            pending.SetResult();
+                        });
+                        await Task.Delay(10, token);
+                        await pending.Task.WaitAsync(token);
+                        dispatcher.VerifyAccess();
+                        Assert.AreEqual(ApartmentState.STA, Thread.CurrentThread.GetApartmentState());
+                    });
                     var result = await access.ExecuteAsync(() =>
                     {
                         if (++attempts == 1)
@@ -188,9 +206,13 @@ public sealed class ClipboardAccessTests
                         }
 
                         return "snapshot";
-                    }, () => true, _ => { }, CancellationToken.None);
-                    Assert.AreEqual(ClipboardAccessStatus.Completed, result.Status);
-                    Assert.AreEqual(2, attempts);
+                    }, () => current, _ => observations++, CancellationToken.None);
+                    Assert.AreEqual(invalidateDuringDelay == true ? ClipboardAccessStatus.Stale : ClipboardAccessStatus.Completed,
+                                    result.Status);
+                    Assert.AreEqual(invalidateDuringDelay == true ? 1 : 2, attempts);
+                    Assert.AreEqual(invalidateDuringDelay == true ? null : "snapshot", result.Value);
+                    Assert.AreEqual(2, verifications);
+                    Assert.AreEqual(1, observations);
                     completion.TrySetResult();
                 }
                 catch (Exception exception)

@@ -39,7 +39,8 @@ internal static class RendererInputDiagnostics
                 }
             }
 
-            operation = FormattableString.Invariant($"InputRoute.{values[0]}.Selection.{values[1]}.Focus.{values[2]}.Modal.{values[3]}.Suppressed.{values[4]}.Capture.{values[5]}");
+            // Keep all six bounded states identifiable within the file log's 64-character limit.
+            operation = FormattableString.Invariant($"Input.R{values[0]}.S{values[1]}.F{values[2]}.M{values[3]}.U{values[4]}.C{values[5]}");
 
             return true;
         }

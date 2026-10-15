@@ -12,7 +12,7 @@ public sealed class RendererInputDiagnosticsTests
             {"version":2,"type":"input-diagnostic","payload":{"route":1,"selection":1,"focus":2,"modal":0,"suppressed":0,"capture":0}}
             """;
         Assert.IsTrue(RendererInputDiagnostics.TryParse(json, out var operation));
-        Assert.AreEqual("InputRoute.1.Selection.1.Focus.2.Modal.0.Suppressed.0.Capture.0", operation);
+        Assert.AreEqual("Input.R1.S1.F2.M0.U0.C0", operation);
         Assert.IsTrue(operation.Length <= 64);
     }
 

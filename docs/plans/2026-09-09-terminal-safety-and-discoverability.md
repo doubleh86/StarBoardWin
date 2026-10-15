@@ -427,3 +427,31 @@ Authenticated Users Modify를 허용한다. sandbox CIM 조회는 access denied�
 - source에서 dist/app.js·app.css를 재생성했으며 license 내용은 보존했다. commit/push·앱 버전·
   바탕화면 배포는 수행하지 않았다. 실제 Windows clipboard, 장기 실행·자발 종료 재현·한글 IME·
   RDP는 CLIP-MAN-01~05 **Not run (manual)**이다.
+
+### 2026-10-15 입력 진단·dispatcher 회귀 보완 계획
+
+기준 `a9f6c9d61365c46d66ccc3faf0322491ecadc97c` 이후 clipboard adapter/lifetime은 변경되지
+않았고 TerminalView 변경은 별도 layout 진입점 연결이다. 기존 키 억제·STA 3회 재시도·OLE
+재진입 검사·callback 관측을 보존한다. 현재 입력 operation은 실제 63자로 64자 제한 이내이나,
+parser에서 실제 파일까지의 회귀 검증이 없다. 짧은 고정 형식 `Input.Rr.Ss.Ff.Mm.Uu.Cc`로
+변경하고 288개 허용 조합의 parser→FileDiagnosticLog 기록과 원문 배제를 검사한다.
+FileDiagnosticLog의 64자/문자 제한과 임의 문자열 허용 범위는 변경하지 않는다.
+영향 범위는 RendererInputDiagnostics, Terminal Presentation 테스트, FileDiagnosticLogTests와
+지정 문서다. 기존 실제 dispatcher STA 테스트는 보존하고 await 중 수명 무효화만 보완한다.
+지정 npm 검증, 집중 .NET 검사, solution restore→Debug build→전체 test와 정렬/diff를 실행한다.
+실패 시 최신 최초 오류를 확인하며 이전 610개 성공과 이번 실행을 구분한다. 별도 worker pool,
+권한/속성 변경, 프로세스 종료 또는 제한 우회는 하지 않는다. CLIP-MAN-01~05는 미수행 유지다.
+
+### 2026-10-15 입력 진단 보완 결과
+
+입력 operation을 `Input.Rr.Ss.Ff.Mm.Uu.Cc` 23자로 축약했다. 기존 63자 값도 현재 64자
+제한 안에 있으므로 redaction 발생 사실은 확정하지 않는다. parser→실제 파일의 288개 조합,
+원문/예외 privacy와 sanitizer 유지 테스트, 실제 dispatcher await 중 무효화 case를 보완했다.
+ClipboardAccess/ClipboardRequestLifetime/TerminalView 및 renderer 동작은 변경하지 않았다.
+이번 npm ci는 통과했으나 npm test/build는 esbuild spawn EPERM이고, C# 집중 검증은 정체/SDK
+하위 작업 실패로 새 테스트가 실행되지 않았다. solution restore exit 1로 build/전체 test는
+선행 조건 미충족 미실행이다. 동시 build 충돌을 확인하지 못해 단일 worker 옵션을 쓰지 않았고,
+권한/프로세스/실행 정책을 바꾸지 않았다. 상세 최초 실패와 동일 계정 쓰기·ACL·잠금 조사 결과는
+[이번 검증 기록](../test-plan.md#입력-진단-dispatcher-재검증-2026-10-15)에 남겼다.
+기존 완료 구현·610개 성공은 보존하며 **이번 자동 검증은 미완료**다. 실제 자발 종료 원인과
+CLIP-MAN-01~05의 미수행 상태는 유지한다.
