@@ -313,3 +313,54 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
   이전 커밋의 이력이며 이번 변경의 검증 근거가 아니다. 변경 테스트의 실행 결과도 아직 없다.
   SDK 하위 작업 실패 원인을 확인한 뒤 지정 집중 테스트와 restore→Debug build→전체 test를
   다시 수행해야 한다. 실제 host 연결 및 RDP 수동 인수의 별도 범위는 유지한다.
+
+#### 추가 재개 점검 (2026-10-15 14:35 KST 시작)
+
+- 기준 `a9f6c9d` 이후 `7683092`의 공개 진입점·구현과 `af9aee5`의 테스트 보완 및 실패 기록을
+  대조했다. 작업 트리는 clean이었다. 기존 제품 구현과 완료 Task 이력을 유지한다.
+- 보완 범위는 Terminal 테스트에서 실제 dispatcher→revision 예산→진행 중 관측을 함께 연결해
+  최신 요청만 후속 관측으로 합쳐지고 중복·지연 revision이 예산을 갱신하지 않는지 확인하는
+  회귀다. 공개 계약·module 경계·renderer protocol·host 연결 범위를 바꾸지 않는다.
+- 이번 Task 계정/환경에서 생성물 속성·ACL, 생성/쓰기/삭제, 기존 cache 배타적 열기와 읽기 전용
+  process 조사를 별도로 수행한다. 과거 로그 시각의 실패를 이번 실패로 계산하지 않는다.
+  일반 쓰기가 허용되지 않는 실행 환경이면 코드 수정·반복 build로 해결하지 않고 정상적인
+  생성물 쓰기가 허용되는 실행 환경에서 재개해야 한다. 기존 생성물 정리, 다른 process 종료, 권한 변경,
+  제한 우회는 수행하지 않는다. 동시 MSBuild 충돌이 입증되지 않으면 worker 옵션을 바꾸지 않는다.
+- 검증은 지정 Terminal/Architecture 테스트 후 restore→Debug build→전체 test, 정렬·diff 검사다.
+  선행 restore/build 실패 시 `--no-restore`/`--no-build` 단계는 미실행으로 명시한다.
+
+이번 실행 결과 (KST, `af9aee5` 이후 변경에 대한 기록):
+
+- 실행 계정은 `desktop-bvs661a\round1studio_14`다. Terminal module 및 Terminal.Tests의 네 bin/obj
+  경로가 할당 작업공간 안임을 해석 후 확인했다. 디렉터리 ReadOnly 속성은 없고 소유자는 현재
+  계정, ACL은 Authenticated Users Modify를 포함한다. 네 경로의 새 파일 생성·쓰기·배타적 열기·삭제와
+  기존 Terminal markup cache의 내용 변경 없는 배타적 read/write 열기가 모두 성공했다.
+  현재 일반 쓰기/삭제 제한과 해당 cache 잠금은 재현되지 않았다. 과거 거부 원인의 해소 증거는 아니다.
+- process snapshot에는 dotnet 446개와 VBCSCompiler 1개가 있었다. WMI 명령행 조회는 접근 거부라
+  해당 workspace의 동시 MSBuild 충돌을 확인하지 못했다. process 수만으로 원인을 확정하지 않았으며
+  `-m:1 -nr:false`로 바꾸거나 다른 process를 종료하지 않았다. 생성물 정리·ACL 변경도 하지 않았다.
+- 제품 구현은 추가 변경이 필요하지 않았다. 기존 contract/public surface·조건부 복구·수명 테스트를
+  유지하고 `RendererLayoutRequestDispatcherTests`에 실제 STA dispatcher와 제어된 관측을 연결한
+  회귀를 추가했다. 진행 중 revision 1을 100으로 대체하면 이전 결과는 적용되지 않고 후속 하나만
+  관측하며, 중복/역순 요청과 주기 관측은 예산을 갱신하지 않고 새 revision만 예산을 여는지 확인한다.
+
+| 필수 검증 | 이번 실행 시각과 결과 (2026-10-15 KST) |
+|---|---|
+| 지정 Terminal Debug test | 14:36:41 시작. 14:36:42 restore 최신 상태 출력 이후 진행 출력이 없어 14:37:43 자체 실행 취소(exit 1). 테스트 통과 아님 |
+| 지정 Architecture Debug test | 14:37:56 시작. restore 확인 출력 이후 진행 출력이 없어 14:39:04 직전 자체 실행 취소(exit 1). 테스트 미실행 |
+| 지정 solution restore | 14:39:04~14:39:12 exit 1, 상세 오류 출력 없음 |
+| restore diagnostic 추가 조사 | 14:39:17~14:39:22 exit 1. `_FilterRestoreGraphProjectInputItems`의 MSBuild 하위 작업 실패, warning/error 0. 생성물 접근 거부나 동시 빌드 충돌 메시지는 없음 |
+| solution Debug build `--no-restore` | 현재 solution restore 실패로 선행 조건 불충족, 미실행 |
+| solution test `--no-build --no-restore` | 현재 Debug build 미성공으로 미실행. 과거 binary를 이번 변경 검증에 사용하지 않음 |
+| C# WorkingTree 정렬 | 새 테스트의 인자 정렬 한 칸 수정 후 14:38 재실행 통과 |
+| `git diff --check` | 통과 |
+
+- 로그는 각각 Terminal.Tests obj의 `layout-terminal-20261015-1440.log`, ArchitectureTests obj의
+  `layout-architecture-20261015-1438.log`, `layout-restore-20261015-1439.log`,
+  `layout-restore-diagnostic-20261015-1439.log`다. 파일명은 이번 실행의 고유 구분용이며 실제 시각은
+  위 표를 따른다. 이전 14:28 로그와 앞선 커밋의 성공/실패를 이번 실행 결과로 재사용하지 않았다.
+- **구현 보존·회귀 보완, 자동 검증 미완료**다. 이번 조사로 실행 환경이 읽기 전용이라고 확정할
+  수는 없지만 SDK 하위 작업 실패 원인도 해소되지 않았다. 정상적인 생성물 쓰기와 SDK 하위 작업
+  실행이 허용되는 환경이 필요하다. 실행 환경 담당자가 원인을 확인·해소한 뒤 지정 집중 테스트 및
+  restore→Debug build→전체 test를 재개한다. 같은 실패를 반복 build나 제품 코드 변경으로 해결하지
+  않는다. 실제 host 이벤트 연결 및 RDP 수동 검증은 계속 별도 범위다.

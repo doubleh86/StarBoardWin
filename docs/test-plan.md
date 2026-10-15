@@ -1198,3 +1198,19 @@ Architecture test와 solution restore는 MSBuild 하위 작업 실패(exit 1, wa
 같은 계정의 생성물 쓰기·삭제 및 별도 .NET compiler 쓰기는 성공했지만 실패 원인은 미확정이다.
 정렬·diff 검사는 통과했으며 과거 성공을 이번 재시도 성공으로 간주하지 않는다.
 자세한 검사·재개 조건은 [재시도 기록](plans/2026-09-29-unlock-panel-width-recovery.md#재시도-점검-2026-10-15)을 따른다.
+
+2026-10-15 14:35 KST 추가 재개 (`af9aee5` 이후): dispatcher→revision 예산→진행 중 관측의
+조합 회귀를 추가했다. 최신 revision의 후속 하나만 관측하고 이전 관측 결과를 버리는지,
+중복/지연 요청·주기 관측은 5회/5초 예산을 갱신하지 않는지 확인하는 테스트다.
+**이번 변경의 자동 검증은 미완료**다. 지정 Terminal test는 14:36:41~14:37:43에 restore 이후
+정체하여 자체 실행을 취소했고 Architecture test도 14:37:56~14:39:04 직전에 restore 단계 정체로
+취소했다. solution restore는 14:39:04~14:39:12 exit 1, 추가 diagnostic은 14:39:17~14:39:22
+MSBuild `_FilterRestoreGraphProjectInputItems` 하위 작업 실패(warning/error 0)였다.
+선행 성공 조건이 없어 Debug `--no-restore` build와 `--no-build` 전체 test는 미실행이다.
+
+동일 Task 계정에서 Terminal module/Terminal.Tests bin·obj의 생성·쓰기·삭제와 기존 markup cache의
+배타적 read/write 열기는 성공했다. 현재 파일 쓰기 제한이나 cache 잠금을 재현하지 못했으며
+동시 MSBuild 충돌도 입증하지 못해 worker 옵션을 변경하지 않았다. 생성물 접근 거부의 과거 기록과
+이번 SDK 실패는 구분한다. 정렬·diff 검사는 통과했다. 실행 환경의 SDK 하위 작업 실패를 해소한 뒤
+집중 테스트와 restore→Debug build→전체 test가 필요하며, 읽기 전용 실행 환경이라면 정상적인
+생성물 쓰기가 허용되는 환경에서 재개해야 한다. [이번 시각별 결과와 로그](plans/2026-09-29-unlock-panel-width-recovery.md#추가-재개-점검-2026-10-15-1435-kst-시작)를 따른다.

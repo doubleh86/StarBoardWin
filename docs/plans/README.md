@@ -34,6 +34,14 @@
 대체하지 않았다. 이번 restore→build→전체 test 통과 전에는 현재 재시도를 완료로 처리하지 않는다.
 검사 근거와 재개 조건은 [재시도 점검](2026-09-29-unlock-panel-width-recovery.md#재시도-점검-2026-10-15)을 따른다.
 
+같은 날 14:35 KST의 추가 재개도 **자동 검증 미완료**다. `af9aee5`까지의 구현과 실행 이력을
+보존하고 dispatcher·진행 중 관측·revision 예산의 조합 회귀만 보완했다. Terminal/Architecture
+테스트는 restore 이후 또는 단계에서 진행하지 않아 자체 실행을 취소했고, 14:39 solution restore는 exit 1이다.
+현재 계정의 생성물 쓰기·삭제·cache 배타적 열기는 성공했으나 SDK 하위 작업 실패 원인은 미확정이다.
+선행 조건이 없어 build/전체 test는 실행하지 않았다. 정상적인 SDK 하위 작업 실행이 가능한 환경에서
+재검증해야 하며 기존 완료 Task를 취소하거나 과거 통과를 이번 통과로 간주하지 않는다.
+[이번 시각별 결과와 재개 조건](2026-09-29-unlock-panel-width-recovery.md#추가-재개-점검-2026-10-15-1435-kst-시작)을 따른다.
+
 ## 파일 이름
 
 `YYYY-MM-DD-topic.md` 형식을 사용한다.
