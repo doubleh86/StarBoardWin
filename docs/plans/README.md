@@ -14,6 +14,7 @@
 | 구분 | 현재 상태와 정본 |
 |---|---|
 | 긴급 입력·종료 회귀 (2026-10-14) | [Ctrl+C/Ctrl+V 불능·자발 종료](2026-09-09-terminal-safety-and-discoverability.md#2026-10-14-복사붙여넣기-불능과-앱-자동-종료): `terminal-clipboard-shortcut-regression` P0, 진단 기획·구현 미착수. 본문 재클릭으로 회복하지 않고 앱 재시작 후 회복한다는 제보와 실제 Windows 충돌 기록을 보존한다. 두 증상의 동일 원인은 미확정이다. |
+| 재부팅 후 탭 복원 회귀 (2026-10-14) | [작업공간 복원 계획](2026-09-09-workspace-convenience.md#후속--windows-재부팅-후-탭-구성-복원-실패-2026-10-14): 설정은 켜져 있고 저장된 3탭 구성도 남아 있지만 사용자는 재부팅 뒤 탭 이름·개수가 초기화됐다고 확인했다. 원인 미확정·제품 수정 미착수. Windows 로그인 자동 실행과 화면 복원은 별도 인수 대상이다. |
 | 탭 드래그 정렬 | [계획과 인수 기록](2026-10-13-tab-drag-reorder.md): contract/runtime/workspace-sync/renderer 구현 및 integration 자동 검증 완료. 실제 WebView2·IME·focus·DPI 화면 인수는 수동 검증 대기다. |
 | 탭 드래그 시각 피드백 | [계획과 완료 기록](2026-10-13-tab-drag-reorder.md#후속--탭-드래그-시각-피드백-보강-2026-10-13): `tab-drag-visual-feedback` 구현·자동 검증 완료 (2026-10-14). 이동 탭 강조, 3px 삽입선·끝 표시와 이름 미리보기 및 source/dist 동기화를 완료했다. 실제 WebView2·네 theme·DPI 화면 인수는 수동 검증 대기다. |
 | 다음 복구 보강 (2026-10-14) | [RDP 해제·로컬 복귀 후 내부 너비 복구](2026-09-29-unlock-panel-width-recovery.md#후속--rdp-전환-후-창과-내부-viewport-너비-불일치-2026-10-14): `panel-rdp-width-recovery` 부분 구현. 현재 세션 WTS 수명, native client/DPI 관측과 Terminal 내부 조건부 복구 및 회귀를 추가했다. 실제 host 파일은 지정 경로와 달라 연결 범위 확인 대기이며 전체 인수는 완료가 아니다. 실제 RDP·배율 검증은 RDP-MAN-01~07 Not run. 기존 잠금 해제 geometry 보정은 유지한다. |
