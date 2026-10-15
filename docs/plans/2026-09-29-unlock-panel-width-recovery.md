@@ -364,3 +364,48 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
   실행이 허용되는 환경이 필요하다. 실행 환경 담당자가 원인을 확인·해소한 뒤 지정 집중 테스트 및
   restore→Debug build→전체 test를 재개한다. 같은 실패를 반복 build나 제품 코드 변경으로 해결하지
   않는다. 실제 host 이벤트 연결 및 RDP 수동 검증은 계속 별도 범위다.
+
+#### 추가 실패 조사 (2026-10-15 17:58 KST 시작)
+
+- 기준 `a9f6c9d61365c46d66ccc3faf0322491ecadc97c` 이후 `7683092`, `af9aee5`,
+  `e2def41`의 diff·검증 기록을 대조했다. 시작 시 작업 트리는 clean이었다. 공개 revision 계약,
+  TerminalModule 진입점, UI dispatcher, 조건부 보정과 취소 수명 및 기존 회귀 테스트를 보존했다.
+  이번 변경은 실패 증거와 검증 상태 문서만 갱신한다. 확인되지 않은 원인을 제품 수정이나
+  assertion 완화·테스트 제외로 처리하지 않는다.
+- 이전 Terminal 로그의 수정 시각은 각각 14:28:26과 14:36:42 KST였으며 둘 다 restore 최신 상태
+  출력까지만 있었다. 과거 접근 거부나 assertion을 이번 원인으로 사용할 상세 증거는 없었다.
+  작업공간 쓰기 확인 후 지정 Terminal 명령을 한 번 실행하고, 상세 출력 부재를 보완하기 위해
+  같은 명령에 `--verbosity diagnostic`만 추가해 조사했다.
+
+| 필수 검증·조사 | 이번 실행 시각과 결과 (2026-10-15 KST) |
+|---|---|
+| 지정 Terminal Debug test | 17:58:04 시작. restore 최신 상태 이후 출력이 없어 17:58:47 자체 실행 취소(exit 1). 실패 테스트 이름·assertion·테스트 호스트 시작은 관측되지 않음 |
+| Terminal diagnostic | 17:59:02 시작. 17:59:06.182 최초 실패 상태: MSBuild `BuildProject` / `_GetProjectReferenceTargetFrameworkProperties` 하위 작업. SharedKernel `GetTargetFrameworks`도 실패 상태이며 compiler 오류·호스트 시작·assertion 출력 없음. 요약 warning/error 0 이후 process가 종료하지 않아 18:00:01 자체 실행 취소. SDK 자체 종료 코드로 오인하지 않음 |
+| 지정 Architecture Debug test | 18:00:01 시작. restore 프로젝트 확인 이후 진행 출력이 없어 18:01:00 자체 실행 취소(exit 1). 테스트 미실행 |
+| 지정 solution restore | 18:01:00~18:01:08 exit 1. stdout/stderr에 상세 오류 없음 |
+| restore diagnostic | 18:01:29~18:01:36 exit 1. 18:01:36.184 최초 실패 상태는 MSBuild `_FilterRestoreGraphProjectInputItems` 하위 작업, warning/error 0 |
+| solution Debug build `--no-restore` | 현재 solution restore 실패로 선행 성공 조건 불충족, 미실행 |
+| solution test `--no-build --no-restore` | 현재 Debug build 미성공으로 미실행. 이전 binary나 과거 620개 통과를 이번 검증으로 사용하지 않음 |
+| C# WorkingTree 정렬 | 지정 `pwsh -NoProfile -File scripts/Test-CSharpAlignment.ps1 -WorkingTree` 통과 |
+| `git diff --check` | 통과. 변경 경로는 지정 문서 3개뿐이며 제품·테스트와 금지 경로의 content 변경 없음 |
+
+- 진단 로그의 앞선 `MSB4276` 문자열은 기본 SDK resolver의 workload locator 조회 결과이며,
+  바로 뒤 workload SDK resolver에서 resolve된 기록이 있다. 이를 치명적 오류나 SDK 설치 손상
+  근거로 단정하지 않는다. 실패 상태는 위 표까지 확인했으며 최초 치명적 오류 메시지와 근본 원인은 미확정이다.
+- 동일 계정 `desktop-bvs661a\round1studio_14`에서 Terminal module/Terminal.Tests bin·obj
+  네 절대 경로가 할당 작업공간 하위임을 확인했다. 생성·쓰기·배타적 read/write 열기·삭제가 모두
+  성공했고 ReadOnly/reparse 파일은 0개였다. 기존 Terminal markup cache도 내용 변경 없이 배타적
+  read/write로 열었다. 확인한 obj ACL의 소유자는 현재 계정이며 Authenticated Users Modify가 있다.
+  검사 시점의 일반 쓰기와 해당 cache 잠금만 확인했으며 과거 거부 원인 해소를 뜻하지 않는다.
+- process snapshot에는 dotnet 15개가 있었으나 WMI 명령행 조회가 접근 거부여서 이 작업공간의
+  동시 빌드 충돌은 입증하지 못했다. 조사 API의 거부를 생성물 쓰기 거부로 해석하지 않는다.
+  `-m:1 -nr:false`, 생성물 정리, 다른 process 종료, ACL/시스템 권한 변경이나 제한 밖 재실행은
+  하지 않았다. restore 진단 출력 위치만 obj로 지정했으며 추가 failure 파일은 없었다.
+- 이번 로그는 Terminal.Tests obj의 `layout-terminal-current.log`,
+  `layout-terminal-current-diagnostic.log`와 ArchitectureTests obj의 `layout-architecture-current.log`,
+  `layout-restore-current-diagnostic.log`다. 지정 restore는 상세 출력이 없어 실행 시각·exit만 위 표에
+  기록했다. 이전 로그와 완료 Task 이력은 덮어쓰지 않았다.
+- 상태는 **기존 구현·회귀 보존, 자동 검증 미완료**다. MSBuild 하위 작업 실패와 종료 대기의
+  원인을 확인·해소한 뒤 지정 집중 테스트와 restore→Debug build→전체 test가 필요하다.
+  제품 코드 결함이나 읽기 전용 환경을 확정할 수 없어 추가 테스트 변경도 하지 않았다.
+  실제 host 연결 및 RDP-MAN-01~07의 `Not run (manual)` 상태는 유지한다.

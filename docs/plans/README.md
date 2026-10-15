@@ -42,6 +42,13 @@
 재검증해야 하며 기존 완료 Task를 취소하거나 과거 통과를 이번 통과로 간주하지 않는다.
 [이번 시각별 결과와 재개 조건](2026-09-29-unlock-panel-width-recovery.md#추가-재개-점검-2026-10-15-1435-kst-시작)을 따른다.
 
+같은 날 17:58 KST 재조사도 **자동 검증 미완료**다. `e2def41`까지의 구현·회귀를 보존했다.
+이번 Terminal 상세 로그는 restore 이후 `BuildProject` / `_GetProjectReferenceTargetFrameworkProperties`의
+MSBuild 하위 작업 실패 상태를 보여 주며 compiler 오류·테스트 호스트 시작·assertion은 관측되지 않았다.
+solution restore는 18:01 exit 1이며 원인은 미확정이다. 생성물 쓰기·cache 열기는 성공했으나 동시 빌드
+충돌은 입증하지 못했다. 이번 실패의 단계·시각과 미실행 build/전체 test를
+[별도 기록](2026-09-29-unlock-panel-width-recovery.md#추가-실패-조사-2026-10-15-1758-kst-시작)에 남겼다.
+
 ## 파일 이름
 
 `YYYY-MM-DD-topic.md` 형식을 사용한다.

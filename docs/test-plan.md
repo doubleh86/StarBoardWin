@@ -1214,3 +1214,12 @@ MSBuild `_FilterRestoreGraphProjectInputItems` 하위 작업 실패(warning/erro
 이번 SDK 실패는 구분한다. 정렬·diff 검사는 통과했다. 실행 환경의 SDK 하위 작업 실패를 해소한 뒤
 집중 테스트와 restore→Debug build→전체 test가 필요하며, 읽기 전용 실행 환경이라면 정상적인
 생성물 쓰기가 허용되는 환경에서 재개해야 한다. [이번 시각별 결과와 로그](plans/2026-09-29-unlock-panel-width-recovery.md#추가-재개-점검-2026-10-15-1435-kst-시작)를 따른다.
+
+2026-10-15 17:58 KST 재조사 (`e2def41` 이후): 기존 구현과 회귀 테스트를 보존했다.
+Terminal diagnostic은 restore 완료 뒤 17:59:06 MSBuild 참조 framework 조회 단계의 실패 상태를
+기록했다. compiler 오류·테스트 호스트 시작·실패 테스트/assertion은 관측되지 않았다. 지정 Terminal과
+Architecture 실행은 출력 정체로 자체 취소했으며 solution restore는 18:01:08 exit 1이었다.
+추가 restore diagnostic도 `_FilterRestoreGraphProjectInputItems` 하위 작업 실패(warning/error 0)였다.
+현재 생성물 쓰기·삭제와 cache 배타적 열기는 성공했고 동시 빌드 충돌이나 근본 원인은 미확정이다.
+**자동 검증 미완료**이며 선행 성공이 없어 Debug build와 전체 test는 미실행이다. 과거 접근 거부,
+620개 통과 및 이번 자체 취소를 구분한 [조사 기록](plans/2026-09-29-unlock-panel-width-recovery.md#추가-실패-조사-2026-10-15-1758-kst-시작)을 따른다.
