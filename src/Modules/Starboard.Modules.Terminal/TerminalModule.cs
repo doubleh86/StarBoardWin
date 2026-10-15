@@ -42,6 +42,13 @@ public sealed class TerminalModule : IDisposable
 
     public FrameworkElement Surface => terminalView;
 
+    /// <summary>Queues a best-effort UI layout observation without activating or recreating the surface.</summary>
+    /// <remarks>Duplicate, older, nonpositive and post-shutdown revisions are ignored.</remarks>
+    public void RequestLayoutCheck(TerminalLayoutCheckRequest request)
+    {
+        terminalView.RequestLayoutCheck(request);
+    }
+
     public Task StartAsync(TerminalOptions options, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(isDisposed, this);

@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Starboard.Modules.Terminal.Contracts;
 using Starboard.SharedKernel.Diagnostics;
 
 namespace Starboard.Modules.Terminal.Presentation;
@@ -20,10 +21,53 @@ internal partial class TerminalView
         "scrollbar: v?.right ?? 0, expectedScrollbar: t ? t.right - parseFloat(getComputedStyle(term).paddingRight) : 0 }; })()";
 
     private readonly RendererLayoutRecovery _layoutRecovery = new(TimeProvider.System);
+    private readonly RendererLayoutRequestDispatcher _layoutRequests;
+    private readonly RendererLayoutObservation _layoutObservation;
     private DispatcherTimer? _layoutTimer;
-    private Task _layoutCheckTask = Task.CompletedTask;
     private Task<string>? _layoutScriptTask;
     private bool _layoutObservationFailureReported;
+    private bool _panelLayoutVisible = true;
+    private CancellationTokenSource? _layoutObservationCancellation;
+
+    internal void RequestLayoutCheck(TerminalLayoutCheckRequest request)
+    {
+        _layoutRequests.Request(request.RecoveryRevision);
+    }
+
+    private void RequestRendererLayoutCheck(long revision)
+    {
+        Dispatcher.VerifyAccess();
+        if (CanObserveRendererLayout() == false || _layoutRecovery.BeginRevision(revision) == false)
+        {
+            return;
+        }
+
+        // A newer burst supersedes an in-flight sample; retain only one follow-up observation.
+        _layoutObservation.Request();
+    }
+
+    private bool CanObserveRendererLayout()
+    {
+        return isDisposed == false && IsLoaded == true && IsVisible == true && _panelLayoutVisible == true &&
+               rendererFailed == false && renderer.IsVisible == true &&
+               rendererReady.Task.IsCompletedSuccessfully == true && renderer.CoreWebView2 is not null;
+    }
+
+    private void CancelLayoutChecks()
+    {
+        _layoutRequests.CancelPending();
+        _layoutObservation.Cancel();
+        _layoutRecovery.Cancel();
+        _layoutObservationCancellation?.Cancel();
+    }
+
+    private void LayoutVisibilityChanged(object sender, DependencyPropertyChangedEventArgs eventArguments)
+    {
+        if (IsVisible == false)
+        {
+            CancelLayoutChecks();
+        }
+    }
 
     private void StartLayoutObservation(object? sender, RoutedEventArgs eventArguments)
     {
@@ -38,6 +82,7 @@ internal partial class TerminalView
 
     private void StopLayoutObservation(object? sender, RoutedEventArgs eventArguments)
     {
+        CancelLayoutChecks();
         _layoutTimer?.Stop();
         if (_layoutTimer is not null)
         {
@@ -48,20 +93,18 @@ internal partial class TerminalView
 
     private void CheckRendererLayout(object? sender, EventArgs eventArguments)
     {
-        if (_layoutCheckTask.IsCompleted == false || isDisposed == true || IsVisible == false ||
-            _layoutScriptTask?.IsCompleted == false || rendererFailed == true ||
-            rendererReady.Task.IsCompletedSuccessfully == false || renderer.CoreWebView2 is null)
-        {
-            return;
-        }
-
-        _layoutCheckTask = ObserveRendererLayoutAsync();
+        _layoutObservation.Observe();
     }
 
     private async Task ObserveRendererLayoutAsync()
     {
         var observedRenderer = renderer;
         var generation = rendererGeneration;
+        var revision = _layoutRecovery.Revision;
+        var epoch = _layoutObservation.Epoch;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCancellation.Token,
+                                                                                 rendererOperationCancellation.Token);
+        _layoutObservationCancellation = cancellation;
         try
         {
             var width = RendererHost.ActualWidth;
@@ -72,8 +115,10 @@ internal partial class TerminalView
             // the next tick cannot accumulate pending browser calls.
             _ = _layoutScriptTask?.Exception;
             _layoutScriptTask = observedRenderer.ExecuteScriptAsync(_LayoutScript);
-            var json = await _layoutScriptTask.WaitAsync(TimeSpan.FromMilliseconds(750), lifetimeCancellation.Token);
-            if (isDisposed == true || IsVisible == false || ReferenceEquals(observedRenderer, renderer) == false ||
+            var json = await _layoutScriptTask.WaitAsync(TimeSpan.FromMilliseconds(750), cancellation.Token);
+            if (CanObserveRendererLayout() == false || cancellation.IsCancellationRequested == true ||
+                epoch != _layoutObservation.Epoch || revision != _layoutRecovery.Revision ||
+                ReferenceEquals(observedRenderer, renderer) == false ||
                 generation != rendererGeneration || width != RendererHost.ActualWidth || height != RendererHost.ActualHeight ||
                 scale != VisualTreeHelper.GetDpi(renderer).DpiScaleX || zoom != renderer.ZoomFactor)
             {
@@ -111,9 +156,9 @@ internal partial class TerminalView
             renderer.UpdateWindowPos();
             SendGlobalMessage("recover-layout", new { });
         }
-        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested == true)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested == true)
         {
-            // Shutdown cancels observation before the WebView is disposed.
+            // Hiding, unloading, renderer replacement/failure and shutdown invalidate the sample.
             return;
         }
         catch (Exception exception) when (exception is COMException or InvalidOperationException or
@@ -125,6 +170,10 @@ internal partial class TerminalView
                 diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "ObserveRendererLayout",
                                     "Layout observation unavailable; existing resize remains active.", exception);
             }
+        }
+        finally
+        {
+            _layoutObservationCancellation = null;
         }
     }
 }

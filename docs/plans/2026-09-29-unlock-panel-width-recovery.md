@@ -236,3 +236,42 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
   `LayoutRecoveryRevision`은 5초 이내 session burst에서 동일하며 기존 주기 check는 활성화하지 않는다.
   해당 변경 후 영향받는 focused 테스트와 전체 build/test를 다시 실행한다.
   현재 Task는 호스트 연결을 기다리는 **부분 구현**으로, 전체 acceptance 완료가 아니다.
+
+### Terminal 공개 점검 진입점 (2026-10-15)
+
+- Task `terminal-layout-recovery-entrypoint`: TerminalModule에 revision만 받는 공개 요청 계약을
+  추가하고 기존 TerminalView 숫자 관측·조건부 measure/UpdateWindowPos/`recover-layout`에 연결한다.
+  host 연결, DesktopIntegration, shell transport, renderer protocol/asset은 이번 범위에서 변경하지 않는다.
+- 영향: TerminalModule, Contracts, TerminalView와 LayoutRecovery, RendererLayoutRecovery,
+  Terminal/Integration/Architecture 테스트 및 architecture/test-plan/계획 index.
+- 양수의 단조 증가 revision은 module 수명 안의 복구 묶음이다. 같은 값과 낮은 값은 무시한다.
+  정상 관측·target 변경·주기 관측은 예산을 새로 열지 않는다. 새 revision만 최대 5회/5초를 연다.
+  dispatcher에는 최신 요청 하나, 관측 중에는 최신 후속 revision 하나만 남긴다.
+- 위험: 숨김/Unloaded/실패/교체/종료 전 관측 결과가 뒤늦게 적용되는 경우. 수명 epoch와
+  renderer identity/generation, visibility 재검사로 차단한다. WebView2 script timeout은 실제 script를
+  취소하지 못하므로 완료 전 새 script를 누적하지 않는다. 무시한 revision은 다시 재생하지 않는다.
+- [x] 공개 계약·dispatcher 병합·관측 수명·revision 예산 구현과 집중 회귀 테스트.
+- [x] 지정 Terminal/Architecture 테스트, solution restore/build/test, C# 정렬 및 diff 검사.
+- 실제 RDP·화면/foreground/PID 검증은 RDP-MAN-01~07 `Not run (manual)`을 유지한다.
+
+#### 완료·검증 기록
+
+- 공개 호출 예: `terminalModule.RequestLayoutCheck(new TerminalLayoutCheckRequest(revision));`
+  TerminalView 구현 타입이나 다른 module 참조 없이 worker thread에서 호출할 수 있다.
+  관측 중 새 revision은 이전 결과를 버리고 후속 관측 하나로 합친다. 기존 숫자 script와
+  조건부 보정·빈 `recover-layout` 메시지를 재사용하며 renderer/shell 재생성은 추가하지 않았다.
+- 지정 .NET executable로 Terminal 376개, Architecture 14개 통과. solution restore 성공,
+  Debug build `-m:1 -nr:false` 경고·오류 0개, 최종 지정 전체 test argv에서 **620개 통과**
+  (Terminal 376, Architecture 14, DesktopIntegration 120, Preferences 37, Integration 73).
+- 첫 sandbox Terminal 실행은 restore 뒤 진행하지 않아 중단했고, 단일 작업자 실행은 기존 renderer
+  bridge의 esbuild `spawn EPERM` 한 건으로 실패했다(375개 통과). sandbox 밖 동일 지정 argv는
+  376개 통과했다. 기본 병렬 solution build는 Terminal/Preferences WPF markup cache와 기존
+  DesktopIntegration test coverage 생성물의 접근 거부로 실패했다. ACL에는 현재 계정 소유 및
+  Authenticated Users Modify가 있었으며 정확한 점유/worker 원인은 미확정이다. 단일 작업자에서
+  통과한 사실을 원인 해결로 단정하지 않는다.
+- 첫 전체 suite는 기존 `powershell-bootstrap-windows`가 `powershell-first-input-written` 단계에서
+  TaskCanceledException으로 실패했다(619/620). 관련 PowerShell 두 사례의 분리 재실행과 지정
+  전체 suite 재실행은 통과했다. bootstrap 코드를 변경하지 않았고 최초 timeout 원인은 미확정이다.
+- C# WorkingTree 정렬 및 `git diff --check` 통과. 지정 경로만 변경했으며 Preferences,
+  Terminal Infrastructure, renderer source/dist/protocol에는 content diff가 없다.
+  commit/merge/push/deploy는 수행하지 않았다. 실제 host 연결과 수동 RDP 인수는 별도 작업이다.

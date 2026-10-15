@@ -206,6 +206,24 @@ public sealed class ModuleBoundaryTests
     }
 
     [TestMethod]
+    public void TerminalLayoutCheckExposesOnlyModuleOwnedRevisionContract()
+    {
+        var contract = typeof(TerminalLayoutCheckRequest);
+        Assert.AreSame(typeof(TerminalModule).Assembly, contract.Assembly);
+        Assert.AreEqual("Starboard.Modules.Terminal.Contracts", contract.Namespace);
+        CollectionAssert.AreEqual(new[] { typeof(long) },
+                                  contract.GetProperties().Select(property => property.PropertyType).ToArray());
+        var request = typeof(TerminalModule).GetMethod(nameof(TerminalModule.RequestLayoutCheck),
+                                                       BindingFlags.Instance | BindingFlags.Public);
+        Assert.IsNotNull(request);
+        Assert.AreEqual(typeof(void), request.ReturnType);
+        CollectionAssert.AreEqual(new[] { contract },
+                                  request.GetParameters().Select(parameter => parameter.ParameterType).ToArray());
+        Assert.IsFalse(typeof(TerminalModule).Assembly.GetType(
+            "Starboard.Modules.Terminal.Presentation.TerminalView", throwOnError: true)!.IsPublic);
+    }
+
+    [TestMethod]
     public void SharedKernelDoesNotReferenceProductionAssemblies()
     {
         var forbiddenReferences = typeof(IDiagnosticLog)

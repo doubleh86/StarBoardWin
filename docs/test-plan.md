@@ -1165,3 +1165,27 @@ placement smoke와 구분한다. `RendererLayoutRecoveryTests`는 동일 외곽 
 physical/CSS/zoom 변환과 5회/5초 제한을 검증한다. renderer harness는 기존 terminal 객체,
 generation/order/active ID/focus/output을 보존하는 fit만 검증하며 실제 shell PID와 화면 인수를
 대체하지 않는다.
+
+2026-10-15 `terminal-layout-recovery-entrypoint` 자동 검증 범위:
+
+- `RendererLayoutRecoveryTests`: 동일 외곽 폭의 각 내부 mismatch·DPI/zoom 비교를 유지한다.
+  새 revision만 5회/5초 예산을 열고 정상 관측·target 변화·중복/낮은 revision·주기 관측은
+  예산을 초기화하지 않는지, 취소 뒤 같은 revision을 재생하지 않는지 fake time으로 확인한다.
+- `RendererLayoutRequestDispatcherTests`: 실제 STA Dispatcher와 worker thread에서 최신 요청 병합,
+  중복/역순 무시, 대기 작업 abort, dispose/dispatcher shutdown 뒤 무시를 확인한다.
+- `RendererLayoutObservationTests`: 제어된 비동기 관측에서 동시 작업 없이 후속 하나로 병합,
+  취소 epoch 변경·후속 제거, timeout을 모사한 script 대기 중 추가 호출 차단을 확인한다.
+- `TerminalLayoutCheckIntegrationTests`: 실제 TerminalModule 공개 진입점에 worker 요청을 전달하고
+  unloaded/미초기화 renderer, panel visibility 통지, 대기 중 shutdown과 종료 후 요청을 확인한다.
+  renderer 객체를 보존하며 StartAsync를 호출하지 않는다. 실제 WebView2 DOM·shell 실행 검증은 아니다.
+- `ModuleBoundaryTests`: revision-only Terminal 소유 contract, module 공개 진입점과 비공개 view 및
+  기존 cross-module 참조 경계를 확인한다. 기존 `recover-layout` protocol과 renderer harness는 유지한다.
+
+실제 host 이벤트→Terminal 연결 및 RDP-MAN-01~07의 화면·foreground·PID·입력·scrollback 검증은
+별도 인수 대상이며 `Not run (manual)`을 유지한다.
+
+실행 결과: Terminal 376, Architecture 14, solution 전체 620개 최종 통과. 새 module 수명 integration도
+포함한다. Debug build는 기본 병렬 실행의 생성물 접근 거부 뒤 `-m:1 -nr:false`로 경고·오류 0개다.
+첫 전체 실행의 기존 Windows PowerShell bootstrap timeout 한 건은 분리 두 사례와 전체 재실행에서
+통과했다. sandbox esbuild EPERM은 동일 지정 argv를 sandbox 밖에서 실행해 통과했다.
+최초 접근 거부·timeout 원인은 미확정이며 [실행 기록](plans/2026-09-29-unlock-panel-width-recovery.md#완료검증-기록)에 남겼다.

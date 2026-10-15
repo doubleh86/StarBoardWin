@@ -93,8 +93,12 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         InitializeComponent();
         renderer = CreateRendererControl();
         RendererHost.Children.Add(renderer);
+        _layoutObservation = new RendererLayoutObservation(ObserveRendererLayoutAsync, CanObserveRendererLayout,
+                                                           () => _layoutScriptTask?.IsCompleted == false);
+        _layoutRequests = new RendererLayoutRequestDispatcher(Dispatcher, RequestRendererLayoutCheck);
         Loaded += StartLayoutObservation;
         Unloaded += StopLayoutObservation;
+        IsVisibleChanged += LayoutVisibilityChanged;
         var canvas = ((SolidColorBrush)FindResource("CanvasBrush")).Color;
         SetRendererBackground(canvas);
     }
@@ -250,9 +254,11 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         CancelPendingSafetyConfirmation(sendRendererCancellation: false);
         isDisposed = true;
+        _layoutRequests.Dispose();
         StopLayoutObservation(null, new RoutedEventArgs());
         Loaded -= StartLayoutObservation;
         Unloaded -= StopLayoutObservation;
+        IsVisibleChanged -= LayoutVisibilityChanged;
         collapsedHeightChangeSequence++;
         rendererOperationCancellation.Cancel();
         lifetimeCancellation.Cancel();
@@ -266,7 +272,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         rendererSessionGenerations.Clear();
         try
         {
-            await Task.WhenAll(copyTask, pasteTask, _layoutCheckTask);
+            await Task.WhenAll(copyTask, pasteTask, _layoutObservation.Completion);
         }
         finally
         {
@@ -277,8 +283,10 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     internal void NotifyPanelVisibilityChanged(bool isVisible)
     {
+        _panelLayoutVisible = isVisible;
         if (isVisible == false && isDisposed == false)
         {
+            CancelLayoutChecks();
             CancelPendingSafetyConfirmation(sendRendererCancellation: true);
         }
     }
@@ -373,6 +381,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
     private void RecreateRendererControl()
     {
+        CancelLayoutChecks();
         DetachRendererEvents(renderer.CoreWebView2);
         RendererHost.Children.Remove(renderer);
         renderer.Dispose();
@@ -1275,6 +1284,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             return;
         }
 
+        CancelLayoutChecks();
         collapsedHeightChangeSequence++;
         rendererGeneration++;
         rendererOperationCancellation.Cancel();

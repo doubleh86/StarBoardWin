@@ -617,16 +617,28 @@ policy에서만 `PanelLayoutCheckRequested`를 내보낸다. **실제 Shell/Main
 Task의 지정 경로와 달라 범위 확인 대기이며 현재 이 이벤트의 제품 소비자는 없다.**
 따라서 native client→WPF root 불일치 복구는 아직 구현 완료가 아니다.
 
-Terminal presentation은 Loaded 동안 1초 간격으로 숫자 bounds만 관측한다. host/control DIP,
+호스트는 `TerminalModule.RequestLayoutCheck(new TerminalLayoutCheckRequest(revision))`으로
+Terminal 소유의 공개 계약만 전달한다. revision은 module 수명 안에서 양수·단조 증가하며 동일
+세션 전환 묶음에서는 같은 값을 사용한다. 임의 thread에서 nonblocking 요청이 가능하며
+최신 revision 하나만 Background UI dispatcher에 예약한다. 0/음수·중복·역순·종료 후 요청은 무시한다.
+실제 host 이벤트 연결은 위의 미완료 범위이며 이 진입점 추가가 host 연결 완료를 뜻하지 않는다.
+
+Terminal presentation은 요청과 Loaded 동안의 1초 주기 관측에 같은 숫자 bounds 경로를 사용한다. host/control DIP,
 WPF DPI, DOM innerWidth/DPR, tab strip/workspace/xterm 폭과 scrollbar right를 비교한다.
 DOM CSS pixel × DPR은 WPF DIP × 현재 DPI와 비교하고 browser zoom은 별도 값으로 다룬다.
-늦은 결과는 renderer identity/generation, visibility, host 크기/DPI/zoom을 재검사해 버린다.
+외곽 크기 변화 없이도 내부 불일치를 검사한다. 관측 중 새 revision은 최신 후속 관측 하나로
+병합하고 이전 revision의 결과를 버린다. 늦은 결과는 renderer identity/generation, 수명 epoch,
+revision, visibility, host 크기/DPI/zoom을 재검사해 버린다.
 script 대기는 750ms로 제한하고 timeout 뒤에도 실제 task가 끝나기 전 새 script를 보내지 않는다.
-불일치인 크기/DPI에 대해서만 최대 5회/5초 measure와
+UI에서 받아들인 새 revision 시점부터 동일 묶음 전체에서 최대 5회/5초이며, 불일치일 때만 measure와
 [HwndHost.UpdateWindowPos](https://learn.microsoft.com/en-us/dotnet/api/system.windows.interop.hwndhost.updatewindowpos?view=windowsdesktop-10.0)를
-적용하고 빈 global `recover-layout`으로 기존 활성 xterm만 fit한다. 동일 target의 지속 실패는
-다시 layout을 반복하지 않는다. 성공 관측 또는 새 target으로 새 budget을 시작한다.
-Unloaded/dispose에서 timer를 해제하고 shutdown cancellation과 disposed guard로 늦은 결과를 막는다.
+적용하고 빈 global `recover-layout`으로 기존 활성 xterm만 fit한다. 정상 관측은 보정을 하지 않고
+예산도 초기화하지 않는다. target 변경·동일 revision의 지연 재전달·주기 관측으로 새 묶음을 시작하지
+않는다. 최초 공개 요청 전에도 주기 관측은 가능하지만 복구 예산은 열지 않는다.
+숨김/Unloaded/renderer 실패·교체는 예약 요청과 후속 관측을 버리고 진행 중 관측을 취소한다.
+보이지 않거나 준비되지 않은 renderer에는 요청을 재생하지 않는다. 취소해도 revision watermark를
+보존하므로 재표시/renderer 재시작 뒤에는 새 revision이 필요하다. Unloaded/dispose에서 timer를
+해제하고 dispose는 dispatcher 요청을 영구 차단한 뒤 관측 task의 종료를 기다린다.
 controller는 WPF WebView2의 내부 소유이므로 private controller 접근이나 scale 강제 변경은 하지 않는다.
 
 진단은 크기·scale·event 종류·고정 budget/error code만 남긴다. 명령/출력/탭 이름/경로/계정과
