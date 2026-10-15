@@ -14,8 +14,20 @@ public partial class MainWindow : Window
     private HwndSource? windowSource;
 
     internal MainWindow()
+        : this(TimeProvider.System)
     {
+    }
+
+    internal MainWindow(TimeProvider layoutTimeProvider, ResourceDictionary? resources = null)
+    {
+        _layoutTimeProvider = layoutTimeProvider;
+        if (resources is not null)
+        {
+            Resources = resources;
+        }
+
         InitializeComponent();
+        IsVisibleChanged += HandlePanelLayoutVisibilityChanged;
         Activated += HandleActivated;
         Deactivated += HandleDeactivated;
         Closed += HandleClosed;
@@ -49,6 +61,7 @@ public partial class MainWindow : Window
     {
         desktopIntegration = module;
         desktopIntegration.ShortcutGuideRequested += HandleShortcutGuideRequested;
+        desktopIntegration.PanelLayoutCheckRequested += HandlePanelLayoutCheckRequested;
         var helper = new WindowInteropHelper(this);
         windowSource = HwndSource.FromHwnd(helper.Handle)
             ?? throw new InvalidOperationException("The Starboard window source is unavailable.");
@@ -106,6 +119,7 @@ public partial class MainWindow : Window
         _ = eventArguments;
 
         windowSource?.RemoveHook(WindowProcedure);
+        StopPanelLayoutRecovery();
         windowSource = null;
         if (desktopIntegration is not null)
         {
@@ -118,6 +132,7 @@ public partial class MainWindow : Window
         Activated -= HandleActivated;
         Deactivated -= HandleDeactivated;
         Closed -= HandleClosed;
+        IsVisibleChanged -= HandlePanelLayoutVisibilityChanged;
     }
 
     private static SolidColorBrush CreateBrush(string color)

@@ -145,7 +145,10 @@ public sealed class DesktopIntegrationModule : IDisposable
     {
         lock (stateLock)
         {
-            if (isDisposed == true || isAttached == false)
+            if (isDisposed == true || isAttached == false || isResizeInProgress == true ||
+                lastDecision?.Presentation != PanelWindowPresentation.Visible || lastGeometry is null ||
+                lastGeometry.TrackingState == DisplayTrackingState.Fallback ||
+                lastGeometry.TaskbarPresence == TaskbarPresence.Unknown)
             {
                 return null;
             }

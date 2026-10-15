@@ -224,6 +224,28 @@ public sealed class ModuleBoundaryTests
     }
 
     [TestMethod]
+    public void HostRoutesNativeLayoutChecksThroughWindowAndTerminalPublicEntryPoint()
+    {
+        var root = FindSolutionRoot();
+        var window = File.ReadAllText(Path.Combine(root, "src", "Starboard.Windows", "Shell", "MainWindow.xaml.cs"));
+        var recovery = File.ReadAllText(Path.Combine(root, "src", "Starboard.Windows", "Shell",
+                                                     "MainWindow.LayoutRecovery.cs"));
+        var coordinator = File.ReadAllText(Path.Combine(root, "src", "Starboard.Windows", "Composition",
+                                                        "AppCoordinator.cs"));
+        StringAssert.Contains(window, "PanelLayoutCheckRequested += HandlePanelLayoutCheckRequested");
+        StringAssert.Contains(recovery, "PanelLayoutCheckRequested -= HandlePanelLayoutCheckRequested");
+        StringAssert.Contains(recovery, "CapturePanelClientLayout()");
+        StringAssert.Contains(recovery, "sample.TryGetSizeDip(dpi.DpiScaleX, dpi.DpiScaleY");
+        StringAssert.Contains(coordinator, "PanelLayoutCheckReady += HandlePanelLayoutCheckReady");
+        StringAssert.Contains(coordinator, "PanelLayoutCheckReady -= HandlePanelLayoutCheckReady");
+        StringAssert.Contains(coordinator, "terminalModule.RequestLayoutCheck(new TerminalLayoutCheckRequest(revision))");
+        Assert.IsFalse(recovery.Contains("DllImport", StringComparison.Ordinal));
+        Assert.IsFalse(recovery.Contains("NativeMethods", StringComparison.Ordinal));
+        Assert.IsTrue(coordinator.IndexOf("mainWindow?.Close();", StringComparison.Ordinal) <
+                      coordinator.IndexOf("desktopIntegrationModule.Dispose();", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void SharedKernelDoesNotReferenceProductionAssemblies()
     {
         var forbiddenReferences = typeof(IDiagnosticLog)

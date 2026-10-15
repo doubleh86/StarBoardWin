@@ -1181,7 +1181,7 @@ generation/order/active ID/focus/output을 보존하는 fit만 검증하며 실�
 - `ModuleBoundaryTests`: revision-only Terminal 소유 contract, module 공개 진입점과 비공개 view 및
   기존 cross-module 참조 경계를 확인한다. 기존 `recover-layout` protocol과 renderer harness는 유지한다.
 
-실제 host 이벤트→Terminal 연결 및 RDP-MAN-01~07의 화면·foreground·PID·입력·scrollback 검증은
+아래 2026-10-15 호스트 연결 회귀와 별도로, RDP-MAN-01~07의 실제 화면·foreground·PID·입력·scrollback 검증은
 별도 인수 대상이며 `Not run (manual)`을 유지한다.
 
 이전 커밋 `7683092` 실행 결과: Terminal 376, Architecture 14, solution 전체 620개 최종 통과. 새 module 수명 integration도
@@ -1289,3 +1289,28 @@ Get-Process에서 dotnet worker들이 보였으나 command line/parent를 위한
 이번 상태는 **구현 보완·자동 검증 미완료**다. 과거 Node 103/.NET 610 통과는 당시 환경의
 성공 이력으로 보존하며, 별도 layout Task의 이후 성공/오케스트레이터 실패와 이번 결과를 구분한다.
 실제 자발 종료 원인은 미확정이고 CLIP-MAN-01~05는 모두 **Not run (manual)**을 유지한다.
+
+### 실제 MainWindow 호스트 경계 회귀 (2026-10-15)
+
+- `DesktopWindowIntegrationTests`의 새 5건은 실제 MainWindow XAML/root·HWND hook·STA Dispatcher를
+  생성하고 native client/DPI·desktop geometry·시간만 주입한다. WTS message는 모의 전달이다.
+- 같은 외곽 크기에서 root만 좁게 arrange한 상태를 복구하고 높이·외곽 폭·taskbar placement와
+  명시적 활성화 횟수를 유지한다. 같은 revision으로 최대 5회, 최초 요청부터 5초를 확인한다.
+  일반 Refresh/0/중복/역순 요청은 예산을 시작하거나 연장하지 않는다.
+- WPF와 다른 window DPI, fallback geometry, empty client는 root 보정을 보류한다.
+  같은 revision이 안정화됐을 때 보정하고 5초 뒤 지연 재전달·만료된 dispatcher 요청은 거부한다.
+- worker 요청의 최신 revision 병합, 숨김/재표시에서 이전 예산 미재생, 종료 전 timer·작업 취소,
+  창 Close 뒤 callback 무시를 검증한다. terminal 공개 진입점과 같은 renderer 객체 보존도 확인한다.
+- `ModuleBoundaryTests`는 실제 host event 구독/해제와 AppCoordinator→TerminalModule의 공개
+  revision-only 호출, UI에 Win32 구현이 없고 창 Close가 module dispose보다 앞서는 경계를 확인한다.
+- 실제 TerminalModule은 시작하지 않은 surface로 호출한다. 실 WebView2 DOM, 실제 WTS/RDP,
+  shell PID/working directory/입력/scrollback·foreground 보존의 장비 인수는 증명하지 않는다.
+  RDP-MAN-01~07은 모두 **Not run (manual)**이다. 이전 실행·실패·통과 기록은 당시 이력으로 보존한다.
+
+호스트 연결 최종 자동 결과: DesktopWindow 집중 18, DesktopIntegration 120, Terminal 379 통과.
+solution restore와 Debug build(경고/오류 0), 전체 .NET 630개(Architecture 15 / Terminal 379 /
+DesktopIntegration 120 / Preferences 37 / Integration 79), C# WorkingTree 정렬·diff 검사 통과.
+기본 SDK 병렬 argv는 진행 대기 또는 상세 원인 없는 exit 1 뒤 `-m:1 -nr:false`로 통과했다.
+기존 renderer bridge의 sandbox esbuild EPERM 한 건은 승인된 제한 밖 Terminal/전체 suite에서
+재실행해 통과했다. 중간 호스트 fixture resource·종료 hook 오류와 정렬 실패도 수정 후 재검증했다.
+정확한 범위·시행착오·worker 옵션은 [호스트 인수 기록](plans/2026-09-29-unlock-panel-width-recovery.md#실제-호스트-연결-완료-인수-2026-10-15)을 따른다.

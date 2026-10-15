@@ -593,7 +593,7 @@ cached system DPI는 적용하지 않는다.
 
 ## Focus와 activation
 
-### RDP 로컬 복귀의 크기 경계 (2026-10-14, 호스트 연결 대기)
+### RDP 로컬 복귀의 크기 경계 (2026-10-15, 호스트 연결)
 
 실제 RDP 재현 및 전후 HWND/WPF/WebView2/DOM 측정은 미수행이다. 원인을 확정하지 않았다.
 코드에서 확인한 경계는 native placement → WPF root arrange → RendererHost/WebView2 →
@@ -613,15 +613,24 @@ WM_DESTROY와 runtime dispose에서 등록을 해제한다. 등록/해제 실패
 monitor/system의 이전 DPI를 다시 곱하지 않는다.
 [window DPI 계약](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getdpiforwindow)을
 사용하며 DPI 0/empty client는 복구 근거로 쓰지 않는다. 정상 tracked geometry와 visible
-policy에서만 `PanelLayoutCheckRequested`를 내보낸다. **실제 Shell/MainWindow 연결은
-Task의 지정 경로와 달라 범위 확인 대기이며 현재 이 이벤트의 제품 소비자는 없다.**
-따라서 native client→WPF root 불일치 복구는 아직 구현 완료가 아니다.
+policy에서만 `PanelLayoutCheckRequested`를 내보낸다. `CapturePanelClientLayout`도 숨김·resize·
+fallback/unknown geometry에서는 관측을 보류한다. 실제 `Shell/MainWindow`가 이벤트를 구독하고
+Background UI dispatcher에서 최신 revision 하나로 병합한다. 주기 재조정의 0/중복/역순 revision은
+새 복구를 시작하지 않는다. 현재 native window/client와 WPF DPI가 일치하고 유효할 때만
+client pixel을 DIP로 변환해 `PanelBorder`의 ActualWidth/Height와 비교한다. 1 DIP 초과 불일치에만
+root measure/arrange를 수행하며 Window의 Width/Height·위치·활성화는 변경하지 않는다.
 
 호스트는 `TerminalModule.RequestLayoutCheck(new TerminalLayoutCheckRequest(revision))`으로
 Terminal 소유의 공개 계약만 전달한다. revision은 module 수명 안에서 양수·단조 증가하며 동일
 세션 전환 묶음에서는 같은 값을 사용한다. 임의 thread에서 nonblocking 요청이 가능하며
 최신 revision 하나만 Background UI dispatcher에 예약한다. 0/음수·중복·역순·종료 후 요청은 무시한다.
-실제 host 이벤트 연결은 위의 미완료 범위이며 이 진입점 추가가 host 연결 완료를 뜻하지 않는다.
+`MainWindow.PanelLayoutCheckReady`를 AppCoordinator가 구독해 이 공개 진입점으로 전달한다.
+최초 UI 점검 때 Terminal에 같은 revision을 보내고 root/DPI 안정화 재점검에도 그대로 재사용한다.
+root 관측·보정은 최초 요청 수신 시점부터 최대 5회/5초, 1초 간격이다. 정상 root도 제한된 기간
+관측해 늦게 발생한 불일치를 처리한다. Terminal 중복 요청은 기존 watermark가 거부하므로
+root가 뒤늦게 안정화돼도 Terminal 예산을 연장하지 않는다. 숨김 때 예약 작업·timer를 취소하고
+revision watermark를 보존한다. shutdown 시작 시 event 구독·작업·timer를 해제하며 창을 닫고
+native hook을 제거한 후 DesktopIntegration을 dispose해 종료 중 callback이 disposed module을 호출하지 않는다.
 
 Terminal presentation은 요청과 Loaded 동안의 1초 주기 관측에 같은 숫자 bounds 경로를 사용한다. host/control DIP,
 WPF DPI, DOM innerWidth/DPR, tab strip/workspace/xterm 폭과 scrollbar right를 비교한다.

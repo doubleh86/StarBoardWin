@@ -10,7 +10,7 @@ using Starboard.SharedKernel.Diagnostics;
 namespace Starboard.IntegrationTests;
 
 [TestClass]
-public sealed class DesktopWindowIntegrationTests
+public sealed partial class DesktopWindowIntegrationTests
 {
     [TestMethod]
     public void SessionReturnDuplicateReverseNotificationsKeepGeometryModeVisibilityAndForegroundPolicy()
@@ -521,11 +521,25 @@ public sealed class DesktopWindowIntegrationTests
 
     private sealed class FakeDesktopIntegrationRuntime : IDesktopIntegrationRuntime
     {
+        private nint _attachedWindow = 42;
+
+        internal PanelClientLayout? ClientLayout { get; set; }
+
+        internal int ClientCaptureCount { get; private set; }
+
+        public PanelClientLayout? CapturePanelClientLayout(nint windowHandle)
+        {
+            Assert.AreEqual(_attachedWindow, windowHandle);
+            ClientCaptureCount++;
+
+            return ClientLayout;
+        }
+
         internal int SessionDetachCount { get; private set; }
 
         public bool IsCurrentSessionNotification(WindowMessage message)
         {
-            return SessionDetachCount == 0 && message.WindowHandle == 42 && message.LongParameter == 12;
+            return SessionDetachCount == 0 && message.WindowHandle == _attachedWindow && message.LongParameter == 12;
         }
 
         public void DetachSessionNotifications() => SessionDetachCount++;
@@ -556,6 +570,7 @@ public sealed class DesktopWindowIntegrationTests
         public void Attach(nint windowHandle)
         {
             Assert.AreNotEqual(0, windowHandle);
+            _attachedWindow = windowHandle;
         }
 
         public bool RegisterHotKey(nint windowHandle, int identifier, uint virtualKey)

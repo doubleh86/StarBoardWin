@@ -4,8 +4,9 @@
 
 2026-09-29의 stale collapsed frame 보정은 구현·자동 검증 완료다. 실제 잠금/해제 검증은
 MAN-056의 미수행 상태를 유지한다. 2026-10-14 RDP 해제 후 로컬 PC 복귀 때 발생한다는 같은 형태의
-재발 제보를 아래 `panel-rdp-width-recovery` 후속 Task로 추가했다. **부분 구현·호스트 연결 범위 확인 대기**이며,
-기존 외곽 geometry 보정만으로 WebView2 내부 너비까지 복구됐다고 해석하지 않는다.
+재발 제보를 아래 `panel-rdp-width-recovery` 후속 Task로 추가했다. **2026-10-15 호스트 연결·자동 검증 완료**이며,
+기존 외곽 geometry·WTS·Terminal 내부 복구를 보존하고 실제 MainWindow/AppCoordinator를 연결했다.
+전체 .NET 630개 통과. 실제 RDP-MAN-01~07은 Not run (manual)이며 제보의 실제 재현·원인 확정은 아니다.
 
 ### 2026-10-14 실행 계획
 
@@ -175,7 +176,8 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
 ### 독립 Task: `panel-rdp-width-recovery`
 
 - 제목: RDP 해제 후 로컬 복귀 시 패널과 WebView2 가로 폭 복구
-- 상태: **부분 구현·호스트 연결 범위 확인 대기** (2026-10-14 실행). 실제 RDP 원인은 미확정이다.
+- 상태: 2026-10-14 당시 **부분 구현·호스트 연결 범위 확인 대기**였으며, 아래 2026-10-15 인수에서
+  **호스트 연결·자동 검증 완료**로 갱신한다. 실제 RDP 원인은 미확정이다.
 - capabilities: `desktop`, `frontend`, `qa`; 위험도: 중간.
 - 선행: 완료된 잠금 해제 geometry 보정 및 현재 renderer 가로 fill 계약을 보존한다.
 - 우선 조사/예상 영향: DesktopIntegrationModule, `Infrastructure/Interop`의 세션 notification adapter와
@@ -191,10 +193,10 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
   실제 RDP 재현·측정과 원인 확정은 수행하지 않았으며 RDP-MAN-01~07에 남겼다.
 - [x] 현재 세션 WTS 등록/해제·5초 병합·기존 fallback, native client/window DPI contract,
   Terminal presentation의 숫자 관측·조건부 measure/UpdateWindowPos/fit과 5회/5초 제한을 구현했다.
-- [ ] HWND→WPF 연결: 지정된 `src/Starboard.Windows/MainWindow.xaml.cs`가 존재하지 않고 실제 파일은
+- [x] HWND→WPF 연결 (2026-10-15 완료, 아래 인수 기록): 당시 지정된 `src/Starboard.Windows/MainWindow.xaml.cs`가 존재하지 않고 실제 파일은
   `src/Starboard.Windows/Shell/MainWindow.xaml.cs`다. AppCoordinator도 `Composition/`에 있다.
   Task의 "Change only expected paths" 규칙 때문에 실제 경로 수정 범위를 질의했으며 응답 대기다.
-  현재 `PanelLayoutCheckRequested` 소비자가 없어 native client→WPF root 보정은 아직 연결되지 않았다.
+  당시에는 소비자가 없었으나 이번 명시된 실제 host 경로에서 이벤트·root 보정·공개 Terminal 호출을 연결했다.
 - [x] 중복/역순/지연 알림, 임시 geometry, 동일 외곽 폭의 내부 mismatch, DPI·zoom·focus·renderer
   객체 보존의 집중 회귀를 추가했다. 전체 검증 결과는 아래 실행 기록에 별도로 기록한다.
 
@@ -230,12 +232,12 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
 - C# WorkingTree 정렬 검사와 git diff --check 통과. 실제 host 경로는 수정하지 않았으며
   Preferences, Terminal Infrastructure, drag controller/test, fixture에 content diff가 없다.
   초기 license 파일의 line-ending dirty 상태를 보존했다. commit/merge/push/deploy는 수행하지 않았다.
-- **남은 구현:** 실제 host 경로를 Task scope에 포함한 뒤 MainWindow에서 layout check를 UI dispatcher로
+- **당시 남은 구현 (2026-10-15 아래 인수에서 완료):** 실제 host 경로를 Task scope에 포함한 뒤 MainWindow에서 layout check를 UI dispatcher로
   병합하고 최신 client/window DPI와 WPF DPI를 비교한다. root 크기 불일치만 최대 5회/5초 보정한다.
   close/dispose에서 구독·예약 작업을 해제하고 root 불일치/동일 외곽 크기 회귀를 추가한다.
   `LayoutRecoveryRevision`은 5초 이내 session burst에서 동일하며 기존 주기 check는 활성화하지 않는다.
   해당 변경 후 영향받는 focused 테스트와 전체 build/test를 다시 실행한다.
-  현재 Task는 호스트 연결을 기다리는 **부분 구현**으로, 전체 acceptance 완료가 아니다.
+  당시 Task는 호스트 연결을 기다리는 **부분 구현**이었다. 현재 구현·자동 검증 완료와 실제 RDP 수동 인수를 구분한다.
 
 ### Terminal 공개 점검 진입점 (2026-10-15)
 
@@ -451,3 +453,67 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
   컴파일·실행 성공도 확인되지 않았다. SDK 하위 작업 실패/집중 검증 대기 원인을 해소한 환경에서
   지정 집중 테스트와 solution restore→Debug build→전체 test를 재개해야 한다. 기존 복구 동작과
   공개 표면은 재구현하지 않았고 실제 host 연결 및 RDP 수동 검증의 별도 범위는 유지한다.
+
+### 실제 호스트 연결 실행 계획 (2026-10-15)
+
+- 이번 할당은 실제 `Shell/MainWindow.*.cs`와 `Composition/AppCoordinator.cs`를 명시적으로 포함한다.
+  이전 경로 확인 대기는 이번 범위에서 해소한다. clipboard Task와는 파일 중복 외 기능 의존성이 없다.
+- MainWindow가 DesktopIntegration 이벤트를 구독하고 소유한 Background dispatcher 작업과 timer로
+  최신 revision을 병합한다. client/window DPI와 WPF DPI가 일치할 때만 root 크기를 비교하고
+  불일치 root만 measure/arrange한다. Window 외곽 geometry·높이·focus는 수정하지 않는다.
+- 새 revision 최초 UI 처리 때 Terminal 공개 점검을 AppCoordinator로 전달하며 이후 재점검도
+  같은 revision을 사용한다. 중복·역순·주기 알림으로 예산을 다시 열지 않는다.
+  root 보정과 안정화 재점검은 최대 5회/5초로 제한하고 종료 전에 이벤트·timer·예약 작업을 해제한다.
+- 영향: 위 host 파일, 필요 시 DesktopIntegration capture 유효성 guard, 실제 MainWindow를 쓰는
+  DesktopWindowIntegrationTests와 architecture 경계 회귀, architecture/test-plan/계획 index.
+  WTS·Terminal 내부·renderer·shell 구현은 보존한다.
+- 검증: 지정 DesktopWindow/desktop/terminal 집중 테스트, solution restore→Debug build→전체 test,
+  C# 정렬·diff. DPI 지연·임시 geometry·같은 외곽의 root 불일치·중복/지연·종료 callback을
+  실제 WPF 호스트와 모의 native runtime에서 검증한다. 실제 RDP-MAN-01~07은 Not run (manual) 유지.
+
+### 실제 호스트 연결 완료 인수 (2026-10-15)
+
+- [x] `MainWindow`가 `PanelLayoutCheckRequested`를 구독하고 최신 revision 하나를 Background
+  UI Dispatcher로 병합한다. native client/window DPI와 WPF DPI가 일치할 때만 DIP로 변환하고
+  1 DIP 초과 root 불일치만 보정한다. 최초 요청부터 5회/5초 제한이며 정상·불안정 관측도 같은
+  예산을 사용한다. periodic Refresh/0/중복/역순/지연 재요청으로 예산을 다시 열지 않는다.
+- [x] `PanelLayoutCheckReady`→AppCoordinator→TerminalModule의 기존 공개 계약에 동일 revision을
+  전달한다. Terminal 최초 요청을 root 안정화 뒤로 미루지 않아 host 재시도가 Terminal 예산을
+  늦춰 열거나 연장하지 않는다. Terminal 내부·WTS·clipboard 구현과 renderer asset은 변경하지 않았다.
+- [x] 숨김은 timer/예약을 취소하고 watermark를 보존한다. shutdown 시작 시 event와 예약 작업을
+  해제하며, 창 Close/native hook 제거 후 DesktopIntegration을 dispose한다. 테스트에서 기존
+  dispose→Close 순서가 disposed module hook 호출을 발생시켜 수명 순서를 함께 수정했다.
+- [x] 실제 MainWindow XAML/root/HWND hook/STA Dispatcher와 fake native runtime·시간의 회귀 5건을
+  추가했다. 외곽 크기 고정/root 축소, DPI·geometry 지연, 중복·역순·만료, 숨김/재표시,
+  worker 병합·종료 뒤 callback과 최대 5회/5초를 검증했다. AppCoordinator의 공개 경계 연결은
+  architecture 회귀로 확인한다. 실제 TerminalModule surface/renderer 객체도 보존한다.
+
+이번 지정 executable 실행 결과:
+
+| 검증 | 최종 결과 |
+|---|---|
+| DesktopWindowIntegrationTests | 18 통과 (새 호스트 경계 5건 포함) |
+| DesktopIntegration Debug | 120 통과 |
+| Terminal Debug | 379 통과 (제한 밖 재실행) |
+| solution restore | 통과 |
+| solution Debug build `--no-restore` | 통과, 경고/오류 0 |
+| solution test `--no-build --no-restore` | 630 통과: Architecture 15, Terminal 379, DesktopIntegration 120, Preferences 37, Integration 79 |
+| C# WorkingTree 정렬 / git diff --check | 통과 |
+
+- 기본 argv도 실행했다. 기본 집중 검증은 restore 이후 진행 출력·정상 종료가 확인되지 않았고,
+  기본 Desktop/Terminal/restore/build/suite는 상세 원인 없는 exit 1을 보였다(build 요약 오류 0).
+  기본 argv 로그는 무시되는 IntegrationTests `obj/panel-host-20261015-194451-*`와
+  `obj/panel-host-20261015-194602-*`에 보존한다. process 수만으로 동시 빌드 충돌을 확정하지 않는다.
+  `-m:1 -nr:false`를 추가한 순차 SDK 검증은 정상 진행·종료했다. SDK 병렬 실패의 원인은 미확정이다.
+- sandbox Terminal/suite에서 기존 renderer bridge의 esbuild spawn EPERM 한 건을 확인했다.
+  승인된 제한 밖에서 같은 Terminal 대상과 같은 전체 suite(동일 worker 옵션)를 재실행해 통과했다.
+  테스트 제외·analyzer 완화·생성물 삭제 없이 검증했다. 정렬 두 차례 수정 후 최종 Debug build와
+  전체 suite를 다시 통과했으며 과거 통과 결과를 이번 결과로 사용하지 않았다.
+- 첫 호스트 테스트는 앱 resource 누락으로 실패해 clock/resource 주입 seam을 추가했고, 이후
+  hook 종료 수명 오류를 위 순서로 수정했다. 이 중간 실패는 최종 통과와 구분한다.
+- 기존 금지 경로의 line-ending dirty 상태는 보존하고 content 변경은 없다. 작업 경로는 이번
+  지정 host/module/test/문서에 한정했다. clipboard Task에 새 기능 의존성은 추가하지 않았다.
+  commit/merge/push/deploy는 수행하지 않았다.
+- **Not run (manual):** 실제 WTS/RDP 전환·100/125/150/200% 및 mixed-DPI·실제 WebView2
+  scrollbar/foreground·활성 탭·shell PID·작업 디렉터리·입력·scrollback 인수는 미수행이다.
+  RDP-MAN-01~07 및 MAN-056의 수동 상태와 이전 실행 이력은 보존한다.

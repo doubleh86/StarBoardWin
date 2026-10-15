@@ -71,6 +71,7 @@ internal sealed class AppCoordinator : IDisposable
             Height = settings.CollapsedHeightDip,
             Opacity = settings.Opacity,
         };
+        mainWindow.PanelLayoutCheckReady += HandlePanelLayoutCheckReady;
         mainWindow.Show();
 
         var windowHandle = mainWindow.AttachDesktopIntegration(desktopIntegrationModule);
@@ -136,6 +137,12 @@ internal sealed class AppCoordinator : IDisposable
         }
 
         isDisposed = true;
+        if (mainWindow is not null)
+        {
+            mainWindow.PanelLayoutCheckReady -= HandlePanelLayoutCheckReady;
+            mainWindow.StopPanelLayoutRecovery();
+        }
+
         lifetimeCancellation.Cancel();
         terminalModule.CommandCompleted -= HandleCommandCompleted;
         terminalModule.PanelResizeRequested -= HandlePanelResizeRequested;
@@ -152,8 +159,8 @@ internal sealed class AppCoordinator : IDisposable
         var workspaceResult = await terminalModule.ShutdownAsync();
         LogWorkspaceShutdownResult(workspaceResult);
         settingsApplicationService?.Dispose();
-        desktopIntegrationModule.Dispose();
         mainWindow?.Close();
+        desktopIntegrationModule.Dispose();
         lifetimeCancellation.Dispose();
     }
 
@@ -312,6 +319,14 @@ internal sealed class AppCoordinator : IDisposable
         _ = sender;
         _ = eventArguments;
         _ = desktopIntegrationModule.BeginCollapsedPanelResize();
+    }
+
+    private void HandlePanelLayoutCheckReady(long revision)
+    {
+        if (isDisposed == false)
+        {
+            terminalModule.RequestLayoutCheck(new TerminalLayoutCheckRequest(revision));
+        }
     }
 
     private void HandleExitRequested(object? sender, EventArgs eventArguments)
