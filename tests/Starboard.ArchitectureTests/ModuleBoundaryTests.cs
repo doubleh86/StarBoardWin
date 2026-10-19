@@ -13,12 +13,32 @@ namespace Starboard.ArchitectureTests;
 [TestClass]
 public sealed class ModuleBoundaryTests
 {
+    private static readonly string[] _workspaceTabPropertyNames =
+        ["ConfigurationId", "Name", "Order", "StartingDirectory", "ShellKind", "LaunchProfileId"];
+
     private static readonly Assembly[] ModuleAssemblies =
     [
         typeof(DesktopIntegrationModule).Assembly,
         typeof(PreferencesModule).Assembly,
         typeof(TerminalModule).Assembly,
     ];
+
+    [TestMethod]
+    public void WorkspaceProfileContractsRemainTerminalOwnedAndConfigurationOnly()
+    {
+        foreach (var type in new[] { typeof(TerminalWorkspaceConfiguration), typeof(TerminalWorkspaceTabConfiguration),
+                                    typeof(TerminalLaunchProfileId) })
+        {
+            Assert.AreSame(typeof(TerminalModule).Assembly, type.Assembly);
+            Assert.AreEqual("Starboard.Modules.Terminal.Contracts", type.Namespace);
+        }
+
+        CollectionAssert.AreEquivalent(_workspaceTabPropertyNames,
+                                       typeof(TerminalWorkspaceTabConfiguration).GetProperties()
+                                           .Select(property => property.Name).ToArray());
+        Assert.AreEqual(typeof(TerminalLaunchProfileId),
+                        typeof(TerminalWorkspaceTabConfiguration).GetProperty("LaunchProfileId")!.PropertyType);
+    }
 
     [TestMethod]
     public void FeatureModulesDoNotReferenceOtherFeatureModules()

@@ -461,7 +461,7 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
 
 ### 2026-10-19 WSL 혼합 탭 저장 실패
 
-- **상태: 전체 구성 저장을 거부하는 코드 경로 확인, 수정 미착수.** 사용자가 다시
+- **최초 진단: 전체 구성 저장을 거부하는 코드 경로 확인. 현재는 아래 schema 준비를 완료했고 혼합 복원 연결은 미완료다.** 사용자가 다시
   재부팅 복원 실패를 제보했으며 첨부 화면에는 Windows 셸 2탭과 Ubuntu 1탭이 있다.
   복원 옵션은 여전히 켜져 있지만 작업공간 primary/backup은 10월 14일의 내장 셸
   3탭 구성 그대로다. 화면의 변경된 이름과 Ubuntu는 저장 파일에 반영되지 않았다.
@@ -484,8 +484,67 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
   기존 schema 1은 계속 읽고 더 새로운 schema는 보존한다. 임의 executable/arguments는
   저장하지 않는다. WSL은 기존 선택 실행 경로로 새 프로세스를 만들고 Linux 홈 시작을
   유지한다. 배포판 삭제·조회 실패는 해당 탭에 표시하면서 나머지 탭 복원을 계속한다.
-- **검증과 인수 기준:** Windows 2탭+Ubuntu 1탭에서 이름·순서·선택을 변경한 뒤 실제
-  저장된 구성에 모두 반영되는지, 재로드 후 같은 3탭이 새 세션으로 생성되는지 자동
-  검증한다. WSL 누락·발견 실패·이전 schema·미래 schema·종료 flush·지원하지 않는
+- **후속 검증과 인수 기준 (미완료):** Windows 2탭+Ubuntu 1탭에서 이름·순서·선택을 변경한 뒤 실제
+  저장된 구성에 모두 반영되는지, 재로드 후 같은 3탭이 새 세션으로 생성되는지 확인한다.
+  WSL 누락·발견 실패·이전 schema·미래 schema·종료 flush·지원하지 않는
   프로필 실패와 정상 파일 보존도 포함한다. 실제 Windows 재부팅/로그인 자동 실행 및
-  설치된 Ubuntu의 새 세션 인수는 `Not run (manual)`이며 MAN-041b로 추적한다.
+  설치된 Ubuntu의 새 세션 인수는 Not run (manual)이며 MAN-041b로 추적한다.
+
+### workspace-profile-schema 범위와 검증 (2026-10-19)
+
+- 진행 상태: 저장 스키마 준비·자동 검증 완료, Task 결과의 기존 Application 변경 분리는 오케스트레이터 대기. 실패한 시도의 계약·schema·validator·file store 변경을 기준
+  `ca54091`과 대조했다. schema 1의 내장 셸 호출 계약과 JSON을 유지하고 schema 2는
+  검증된 `shell:*` 또는 `wsl:<배포판 등록 이름>` 식별자만 저장한다. 배포판 설치 여부는
+  저장 검증이 아니라 후속 실행 시 discovery에서 확인한다.
+- 영향 파일: Terminal의 Contracts/Domain/Infrastructure, Terminal/Architecture tests와
+  이 계획·계획 목록·architecture. Application/TerminalWorkspacePersistence.cs의 기존 변경은
+  수정하지 않으며 오케스트레이터가 사용자 변경을 보존해 다음 혼합 복원 Task로 분리한다.
+- 위험: schema 1 필수 필드/알 수 없는 필드 검사, 기본값 struct, 상충 프로필과 미래 schema를
+  잘못 허용하면 정상 파일을 덮을 수 있다. schema 2 저장 DTO를 명시하고 기존 저장 schema는
+  기능 연결 전까지 1로 유지한다. WSL의 StartingDirectory는 기존 Windows metadata이며
+  Linux 경로 변환·실행을 뜻하지 않는다.
+- 검증: schema 1 실제 JSON, 혼합 schema 2 round trip, 잘못된 프로필/금지 필드,
+  미래 파일과 정상 백업 보존, 원자 교체 실패·취소, 64 KiB/8탭 제한 회귀 및
+  지정 Terminal/Architecture tests → solution restore/build/test → diff·변경 경로 확인.
+- 미완료: persistence/coordinator 혼합 복원 연결, 저장한 탭 즐겨찾기의 WSL 지원과
+  실제 Windows 재부팅/로그인·Ubuntu 새 세션 검증. 이 Task의 스키마 준비와 구분한다.
+
+#### 이전 시도의 검증 기록과 인수인계
+
+- 지정 SDK `C:\Users\round1studio_14\.dotnet\dotnet.exe`를 사용했다. Terminal 402개,
+  Architecture 16개, solution 전체 654개가 통과했다. solution restore와 Debug build도
+  통과했으며 build 경고·오류는 0개다. 실제 Windows 재부팅/로그인·설치된 Ubuntu는 미수행이다.
+- 기본 병렬 SDK 실행은 대기하거나 `_FilterRestoreGraphProjectInputItems`의 하위 작업이
+  오류 0개로 실패했다. restore/build는 `--disable-build-servers -m:1`에서 통과했다.
+  Terminal 지정 argv 및 전체 test는 승인된 제한 밖 실행에서 통과했다. 최초 원인은 미확정이다.
+- 최초 Terminal suite는 esbuild 누락으로 399/400 통과했다. renderer 경로를 수정하지 않고
+  기존 고정 버전 esbuild 0.28.2를 작업공간 root의 무시된 node_modules에만 준비한 뒤
+  추가 회귀를 포함한 402개와 전체 654개 통과를 확인했다. manifest/lock/renderer 변경은 없다.
+- `git diff --check` 통과. 이번 수정·추가 9개 파일은 허용된 경로에만 있으며 금지 경로 변경은 없다.
+  `git diff --name-only`에는 시작부터 있던 Application/TerminalWorkspacePersistence.cs도 남아 있다.
+  이 파일은 직접 수정하지 않았으며 시작/종료 SHA-256은 동일하다:
+  `3EEDBDAC80EC0EA3EE0E1D59B8E32C33EB1C17FAC2A704FB04A6A1C8E5A99C42`.
+  오케스트레이터가 기존 사용자 변경을 보존하면서 해당 파일을 이 Task 결과에서 제외해야 한다.
+- WorkingTree C# 정렬 검사는 위 보존 파일의 561행 오류 1건으로 실패했다. 이번 수정 파일의
+  정렬 오류는 없다. 검증은 기존 변경을 보존한 worktree 기준이며, 분리 후 통합 검증은
+  오케스트레이터가 수행해야 한다. commit/push/배포는 수행하지 않았다.
+
+#### 현재 재검증 (2026-10-19)
+
+- 기준 `ca54091` 및 시작 시 diff를 대조했다. 기존 스키마 초안을 유지하면서
+  schema 1의 네 내장 셸 → schema 2 전환, schema 2의 필수 필드 누락 거부,
+  손상 primary를 교체할 때 정상 백업 보존과 크기 초과 primary 복구의 회귀 11건을 추가했다.
+- 지정 SDK로 Terminal 413개, Architecture 16개 및 solution 전체 665개가 통과했다.
+  지정 solution restore가 통과했고 Debug build는 단일 작업자 재실행에서 경고·오류 0개다.
+  최초 Terminal 지정 명령은 restore 뒤 출력 없이 대기해 통과 근거로 사용하지 않았다.
+  Terminal 재검증은 `--disable-build-servers -m:1`을 추가했고, Architecture/restore/전체 test는
+  지정 argv로 실행했다. 최초 병렬 build는 Architecture 생성물 접근 거부(MSB3101/MSB3491)로
+  실패해 같은 옵션으로 재실행했다. 자동 검증은 제한 밖 실행에서 통과했으며 최초 원인은 미확정이다.
+- `git diff --check` 통과. 변경 경로와 untracked 파일을 확인했으며 허용된 9개 파일 외에는
+  시작부터 존재한 아래 Application 변경만 남는다. Renderer 변경은 없다.
+  WorkingTree 정렬 검사에는 Application 561행의 기존 오류 1건만 남으며 이번 범위에는 오류가 없다.
+- Application 파일은 시작부터 범위 밖 변경으로 존재한다. 직접 수정하지 않으며
+  시작/종료 SHA-256은 위 `3EEDBDAC…E5A99C42`로 동일하다. 오케스트레이터의 결과 분리가
+  필요하므로 변경 경로 인수 조건 전체를 통과로 기록하지 않는다. 현재 build/test는 이 기존
+  변경을 포함한 worktree 기준이다. 분리 후 통합 검증은 오케스트레이터가 수행해야 한다.
+  혼합 복원·즐겨찾기 WSL 연결과 실제 Windows 재부팅/로그인·Ubuntu 인수는 미완료다.

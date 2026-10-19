@@ -1,14 +1,31 @@
 namespace Starboard.Modules.Terminal.Contracts;
 
 /// <summary>
-/// The persisted, non-runtime description of one terminal tab.
+/// The persisted, non-runtime description of one terminal tab. StartingDirectory is Windows
+/// metadata for the next built-in shell start; WSL launch keeps its separate Linux home policy.
+/// Order is zero-based. A profile identifier never carries executable paths or arguments.
 /// </summary>
-/// <remarks>
-/// StartingDirectory is a local absolute directory chosen for the next shell start.
-/// It does not track the current directory of a running shell. Order is zero-based.
-/// </remarks>
 public sealed record TerminalWorkspaceTabConfiguration(TerminalTabConfigurationId ConfigurationId, string Name,
-                                                       int Order, string StartingDirectory, TerminalShellKind ShellKind);
+                                                       int Order, string StartingDirectory, TerminalShellKind ShellKind)
+{
+    public TerminalLaunchProfileId LaunchProfileId { get; init; } = TerminalLaunchProfileId.FromShell(ShellKind);
+
+    public TerminalWorkspaceTabConfiguration(TerminalTabConfigurationId configurationId, string name,
+                                             int order, string startingDirectory, TerminalLaunchProfileId? launchProfileId)
+        : this(configurationId, name, order, startingDirectory, TerminalShellKind.Automatic)
+    {
+        if (launchProfileId is null || TerminalLaunchProfileId.TryCreate(launchProfileId.Value.Value, out var validated) == false)
+        {
+            throw new ArgumentException("A workspace tab requires a valid launch profile identifier.", nameof(launchProfileId));
+        }
+
+        LaunchProfileId = validated;
+        if (validated.IsBuiltInShell == true)
+        {
+            ShellKind = validated.ToShellKind();
+        }
+    }
+}
 
 /// <summary>
 /// The persisted terminal-only workspace. It never contains renderer session IDs,

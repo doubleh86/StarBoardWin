@@ -5,7 +5,10 @@ namespace Starboard.Modules.Terminal.Domain;
 
 internal static class TerminalWorkspaceConfigurationValidator
 {
+    internal const int MinimumSchemaVersion = 1;
+    // Keep automatic persistence on schema 1 until mixed-profile restoration is connected.
     internal const int CurrentSchemaVersion = 1;
+    internal const int MaximumSchemaVersion = 2;
     internal const int MaximumTabs = TerminalTabRegistry.DefaultMaximumTabs;
     internal const int MaximumTabNameTextElements = 32;
     internal const int MaximumStartingDirectoryCharacters = 32_767;
@@ -13,7 +16,7 @@ internal static class TerminalWorkspaceConfigurationValidator
     internal static void Validate(TerminalWorkspaceConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        if (configuration.SchemaVersion != CurrentSchemaVersion)
+        if (configuration.SchemaVersion < MinimumSchemaVersion || configuration.SchemaVersion > MaximumSchemaVersion)
         {
             throw new ArgumentOutOfRangeException(nameof(configuration), configuration.SchemaVersion,
                                                   "The terminal workspace schema version is not supported.");
@@ -29,7 +32,7 @@ internal static class TerminalWorkspaceConfigurationValidator
         var orders = new HashSet<int>();
         foreach (var tab in configuration.Tabs)
         {
-            ValidateTab(tab);
+            ValidateTab(tab, configuration.SchemaVersion);
             if (configurationIds.Add(tab.ConfigurationId) == false)
             {
                 throw new ArgumentException("Terminal workspace configuration identifiers must be unique.",
@@ -58,7 +61,7 @@ internal static class TerminalWorkspaceConfigurationValidator
         }
     }
 
-    private static void ValidateTab(TerminalWorkspaceTabConfiguration tab)
+    private static void ValidateTab(TerminalWorkspaceTabConfiguration tab, int schemaVersion)
     {
         ArgumentNullException.ThrowIfNull(tab);
         if (tab.ConfigurationId.Value == Guid.Empty)
@@ -86,10 +89,21 @@ internal static class TerminalWorkspaceConfigurationValidator
             throw new ArgumentException("The terminal starting directory must be a local absolute Windows path.", nameof(tab));
         }
 
-        if (Enum.IsDefined(tab.ShellKind) == false)
+        if (TerminalLaunchProfileId.TryCreate(tab.LaunchProfileId.Value, out var profileId) == false)
         {
-            throw new ArgumentOutOfRangeException(nameof(tab), tab.ShellKind,
-                                                  "The terminal shell kind is not supported for workspace restore.");
+            throw new ArgumentException("The workspace launch profile identifier is invalid.", nameof(tab));
+        }
+
+        if (Enum.IsDefined(tab.ShellKind) == false ||
+            (profileId.IsBuiltInShell == true && profileId.ToShellKind() != tab.ShellKind) ||
+            (profileId.IsBuiltInShell == false && tab.ShellKind != TerminalShellKind.Automatic))
+        {
+            throw new ArgumentException("The workspace shell kind conflicts with its launch profile.", nameof(tab));
+        }
+
+        if (schemaVersion == 1 && profileId.IsBuiltInShell == false)
+        {
+            throw new ArgumentException("Schema 1 supports only built-in shell launch profiles.", nameof(tab));
         }
     }
 }

@@ -60,6 +60,39 @@ public readonly record struct TerminalLaunchProfileId
         return Value ?? string.Empty;
     }
 
+    /// <summary>
+    /// Gets a value indicating whether the identifier represents a built-in shell.
+    /// </summary>
+    public bool IsBuiltInShell => Value?.StartsWith("shell:", StringComparison.Ordinal) == true;
+
+    /// <summary>
+    /// Converts the identifier to a <see cref="TerminalShellKind"/> for built-in shells.
+    /// Throws if the identifier is not a built-in shell.
+    /// </summary>
+    public TerminalShellKind ToShellKind()
+    {
+        if (IsBuiltInShell == false)
+        {
+            throw new InvalidOperationException("The launch profile identifier is not a built-in shell.");
+        }
+
+        var suffix = Value[6..];
+        return suffix switch
+        {
+            "automatic" => TerminalShellKind.Automatic,
+            "pwsh" => TerminalShellKind.Pwsh,
+            "powershell" => TerminalShellKind.PowerShell,
+            "cmd" => TerminalShellKind.Cmd,
+            _ => throw new InvalidOperationException($"Unsupported built-in shell identifier: {Value}")
+        };
+    }
+
+    /// <summary>
+    /// Gets the WSL distribution name if the identifier represents a WSL distribution.
+    /// Returns null if the identifier is not a WSL distribution.
+    /// </summary>
+    public string? WslDistributionName => Value?.StartsWith("wsl:", StringComparison.Ordinal) == true ? Value[4..] : null;
+
     internal static void ValidateDistributionName(string distributionName)
     {
         if (IsValidDistributionName(distributionName) == false)

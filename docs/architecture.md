@@ -407,9 +407,12 @@ tabpanel은 숨기기만 하므로 output buffer, scrollback과 emulator state�
 꺼진 설정은 남아 있는 workspace 파일보다 우선한다. 시작 시 기본 탭 하나를 만들고,
 설정 저장이 성공한 뒤에는 기존 workspace 파일을 삭제한다. 켜진 경우에만 Terminal이
 `%LOCALAPPDATA%/Starboard/workspace.json`을 읽고, 1~8개 탭의 구성 ID, 이름, 연속된
-순서, 시작 폴더, 제한된 builtin shell kind와 활성 구성 ID를 복원한다. WSL distribution은
-동적 profile ID와 Linux home 의미를 가지므로 이 첫 범위의 workspace schema에는 저장하지 않는다.
-WSL tab은 다음 app start 또는 workspace restore에서 builtin 기본 tab으로 대체될 수 있다.
+순서, 시작 폴더, 내장 셸 종류와 활성 구성 ID를 복원한다.
+schema 2의 저장 계약은 내장 셸 또는 검증된 WSL 배포판 식별자를 지원하지만,
+persistence/coordinator의 혼합 구성 저장·복원 연결은 미완료다. 자동 저장은 schema 1을 유지한다.
+schema 1은 shellKind만, schema 2는 launchProfileId만 직렬화하며 잘못되거나 상충한 프로필을 거부한다.
+WSL의 계약상 ShellKind는 기존 호출 호환용 Automatic 값이며 실행 대상을 뜻하지 않는다.
+schema 2의 실제 실행 대상은 LaunchProfileId이고, 설치 여부는 후속 실행 시 discovery로 확인해야 한다.
 
 workspace 저장은 64 KiB 상한과 strict validation을 거친 뒤 같은 directory의 flush된
 `.tmp` file을 `File.Replace`(최초 저장은 move)로 교체한다. 유효한 primary만 `.bak`으로
@@ -432,8 +435,9 @@ launch를 막지 않는다.
 WSL profile launch는 `wsl.exe --distribution <name> --cd ~`로 distribution의 Linux home에서
 하나의 persistent ConPTY session을 시작한다. Windows 시작 폴더를 Linux path로 추측해 변환하지
 않는다. 실행 파일 또는 distribution이 launch 시점에 사라지면 새 tab 하나만 error state가 되고
-원본 tab과 다른 session은 계속 실행된다. saved-tabs도 builtin shell kind만 저장하므로 WSL profile은
-첫 범위에서 저장되지 않으며 saved tab 또는 workspace restore를 통해 재실행되지 않는다.
+원본 tab과 다른 session은 계속 실행된다. 저장한 탭 즐겨찾기는 여전히 내장 셸 종류만 저장하며
+WSL 지원은 미완료다. workspace schema 2 준비만으로 saved tab 또는 workspace restore를 통한
+WSL 재실행을 완료로 취급하지 않는다.
 
 ### Saved terminal tabs
 

@@ -104,12 +104,14 @@ internal sealed class FileTerminalWorkspaceStore : ITerminalWorkspaceStore
         try
         {
             var currentPrimary = await ReadAsync(workspacePath, cancellationToken).ConfigureAwait(false);
-            if (currentPrimary.Status == StoredFileStatus.FutureSchema)
+            var currentBackup = await ReadAsync(backupPath, cancellationToken).ConfigureAwait(false);
+            if (currentPrimary.Status == StoredFileStatus.FutureSchema || currentBackup.Status == StoredFileStatus.FutureSchema)
             {
                 throw new TerminalWorkspaceFutureSchemaException();
             }
 
             await WriteTemporaryFileAsync(bytes, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             if (File.Exists(workspacePath) == true)
             {
                 var backupDestination = currentPrimary.Status == StoredFileStatus.Valid
@@ -169,7 +171,7 @@ internal sealed class FileTerminalWorkspaceStore : ITerminalWorkspaceStore
                 return new StoredFileReadResult(StoredFileStatus.Invalid, null);
             }
 
-            if (schemaVersion > TerminalWorkspaceConfigurationValidator.CurrentSchemaVersion)
+            if (schemaVersion > TerminalWorkspaceConfigurationValidator.MaximumSchemaVersion)
             {
                 return new StoredFileReadResult(StoredFileStatus.FutureSchema, null);
             }
@@ -234,6 +236,7 @@ internal sealed class FileTerminalWorkspaceStore : ITerminalWorkspaceStore
         schemaVersion = 0;
         return root.ValueKind == JsonValueKind.Object &&
                root.TryGetProperty("schemaVersion", out var value) == true &&
+               value.ValueKind == JsonValueKind.Number &&
                value.TryGetInt32(out schemaVersion) == true;
     }
 
@@ -275,7 +278,7 @@ internal sealed class FileTerminalWorkspaceStore : ITerminalWorkspaceStore
         internal static StoredWorkspaceConfiguration From(TerminalWorkspaceConfiguration configuration)
         {
             return new StoredWorkspaceConfiguration(configuration.SchemaVersion,
-                                                    configuration.Tabs.Select(StoredTabConfiguration.From).ToArray(),
+                                                    configuration.Tabs.Select(tab => StoredTabConfiguration.From(tab, configuration.SchemaVersion)).ToArray(),
                                                     configuration.ActiveTabConfigurationId?.ToString());
         }
 
@@ -286,9 +289,9 @@ internal sealed class FileTerminalWorkspaceStore : ITerminalWorkspaceStore
                 throw new InvalidDataException("The terminal workspace tabs are missing.");
             }
 
-            var tabs = Tabs.Select(tab => tab?.ToConfiguration()
-                                          ?? throw new InvalidDataException("A terminal workspace tab is null."))
-                           .ToArray();
+            var tabs = Tabs.Select(tab => tab?.ToConfiguration(SchemaVersion)
+                                           ?? throw new InvalidDataException("A terminal workspace tab is null."))
+                            .ToArray();
             TerminalTabConfigurationId? activeIdentifier = string.IsNullOrEmpty(ActiveTabConfigurationId)
                 ? null
                 : ParseIdentifier(ActiveTabConfigurationId);
@@ -297,23 +300,52 @@ internal sealed class FileTerminalWorkspaceStore : ITerminalWorkspaceStore
     }
 
     private sealed record StoredTabConfiguration(string? ConfigurationId, string? Name, int Order,
-                                                 string? StartingDirectory, TerminalShellKind ShellKind)
+                                                 string? StartingDirectory,
+                                                 [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+                                                 TerminalShellKind? ShellKind = null,
+                                                 [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+                                                 string? LaunchProfileId = null)
     {
-        internal static StoredTabConfiguration From(TerminalWorkspaceTabConfiguration tab)
+        internal static StoredTabConfiguration From(TerminalWorkspaceTabConfiguration tab, int schemaVersion)
         {
+            if (schemaVersion == 1)
+            {
+                return new StoredTabConfiguration(tab.ConfigurationId.ToString(), tab.Name, tab.Order,
+                                                  tab.StartingDirectory, tab.ShellKind);
+            }
+
             return new StoredTabConfiguration(tab.ConfigurationId.ToString(), tab.Name, tab.Order,
-                                              tab.StartingDirectory, tab.ShellKind);
+                                              tab.StartingDirectory, LaunchProfileId: tab.LaunchProfileId.Value);
         }
 
-        internal TerminalWorkspaceTabConfiguration ToConfiguration()
+        internal TerminalWorkspaceTabConfiguration ToConfiguration(int schemaVersion)
         {
             if (Name is null || StartingDirectory is null)
             {
                 throw new InvalidDataException("A terminal workspace tab contains a null field.");
             }
 
+            TerminalLaunchProfileId profileId;
+            if (schemaVersion == 1)
+            {
+                if (ShellKind is null || LaunchProfileId is not null)
+                {
+                    throw new InvalidDataException("Schema 1 requires only a built-in shell kind.");
+                }
+
+                profileId = TerminalLaunchProfileId.FromShell(ShellKind.Value);
+            }
+            else
+            {
+                if (schemaVersion != 2 || ShellKind is not null ||
+                    TerminalLaunchProfileId.TryCreate(LaunchProfileId, out profileId) == false)
+                {
+                    throw new InvalidDataException("Schema 2 requires only a valid launch profile identifier.");
+                }
+            }
+
             return new TerminalWorkspaceTabConfiguration(ParseIdentifier(ConfigurationId), Name, Order,
-                                                         StartingDirectory, ShellKind);
+                                                         StartingDirectory, profileId);
         }
     }
 
