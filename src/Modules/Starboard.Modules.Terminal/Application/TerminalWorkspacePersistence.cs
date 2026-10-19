@@ -522,10 +522,10 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
             throw new NotSupportedException("The terminal workspace contains a custom shell executable.");
         }
 
-        var tabs = snapshot.Tabs
-            .Select((tab, order) => new TerminalWorkspaceTabConfiguration(tab.ConfigurationId, tab.Name, order,
-                                                                          tab.StartingDirectory, tab.ShellKind!.Value))
-            .ToArray();
+         var tabs = snapshot.Tabs
+             .Select(tab => new TerminalWorkspaceTabConfiguration(tab.ConfigurationId, tab.Name, tab.Order,
+                                                                   tab.StartingDirectory, tab.ShellKind!.Value))
+             .ToArray();
         var activeConfigurationId = snapshot.ActiveSessionId is { } activeSessionId
             ? snapshot.Tabs.FirstOrDefault(tab => tab.SessionId == activeSessionId)?.ConfigurationId
             : null;
