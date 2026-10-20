@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.ExceptionServices;
 using Starboard.Modules.Terminal.Contracts;
 using Starboard.Modules.Terminal.Domain;
+using Starboard.Modules.Terminal.Infrastructure;
 using Starboard.SharedKernel.Diagnostics;
 
 namespace Starboard.Modules.Terminal.Application;
@@ -30,6 +31,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
     private readonly HashSet<TerminalTabRequestId> handledTabRequests = [];
     private readonly Func<TerminalConfirmationRequestId> confirmationRequestIdFactory;
     private readonly Func<DateTimeOffset> currentTime;
+    private readonly TerminalLaunchProfileCatalog launchProfileCatalog;
 
     private ShellLaunchSpec? defaultShell;
     private TerminalShellKind? defaultShellKind = TerminalShellKind.Automatic;
@@ -44,7 +46,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                                         int maximumTabs = TerminalTabRegistry.DefaultMaximumTabs,
                                         TimeSpan? sessionCloseTimeout = null, TimeSpan? shutdownTimeout = null,
                                         Func<TerminalConfirmationRequestId>? confirmationRequestIdFactory = null,
-                                        Func<DateTimeOffset>? currentTime = null)
+                                        Func<DateTimeOffset>? currentTime = null,
+                                        TerminalLaunchProfileCatalog? launchProfileCatalog = null)
     {
         this.sessionFactory = sessionFactory;
         this.diagnosticLog = diagnosticLog;
@@ -55,6 +58,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         this.confirmationRequestIdFactory = confirmationRequestIdFactory
             ?? TerminalConfirmationRequestId.CreateNew;
         this.currentTime = currentTime ?? (() => DateTimeOffset.UtcNow);
+        this.launchProfileCatalog = launchProfileCatalog ??
+            new TerminalLaunchProfileCatalog(new WslProcessRunner(), diagnosticLog);
     }
 
     internal event Action<TerminalWorkspaceSnapshot>? WorkspaceChanged;
@@ -211,11 +216,18 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 }
             }
 
+            TerminalLaunchProfileQueryResult? restoredProfiles = null;
             foreach (var configuration in workspaceConfiguration.Tabs.OrderBy(tab => tab.Order))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ThrowIfDisposed();
-                var tab = AddRestoredTab(configuration, shell, shellResolver, out var resolutionFailure);
+                if (configuration.LaunchProfileId.IsBuiltInShell == false && restoredProfiles is null)
+                {
+                    restoredProfiles = await launchProfileCatalog.QueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                var tab = AddRestoredTab(configuration, shell, shellResolver, restoredProfiles,
+                                         out var resolutionFailure);
                 if (resolutionFailure is not null)
                 {
                     MarkRestoredTabFailed(tab.SessionId, resolutionFailure);
@@ -1333,24 +1345,38 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
     private TerminalTab AddRestoredTab(TerminalWorkspaceTabConfiguration configuration, ShellLaunchSpec automaticShell,
                                        Func<TerminalShellKind, ShellLaunchSpec> shellResolver,
+                                       TerminalLaunchProfileQueryResult? restoredProfiles,
                                        out Exception? resolutionFailure)
     {
         ShellLaunchSpec? restoredShell = null;
         resolutionFailure = null;
         try
         {
-            // This restore entry point only resolves built-in shells; never run its automatic
-            // fallback for a WSL identity while mixed-profile restore is not yet connected.
-            if (configuration.LaunchProfileId.IsBuiltInShell == false)
+            if (configuration.LaunchProfileId.IsBuiltInShell == true)
             {
-                throw new NotSupportedException("Workspace restore requires a WSL profile resolver.");
+                var shellKind = configuration.LaunchProfileId.ToShellKind();
+                var resolved = shellKind == TerminalShellKind.Automatic
+                    ? automaticShell
+                    : shellResolver(shellKind);
+                restoredShell = resolved with { WorkingDirectory = configuration.StartingDirectory };
             }
+            else
+            {
+                if (restoredProfiles?.Status != TerminalLaunchProfileQueryStatus.Succeeded)
+                {
+                    throw new InvalidOperationException("WSL 배포판 목록을 확인하지 못해 이 탭을 복원하지 못했습니다.");
+                }
 
-            var shellKind = configuration.LaunchProfileId.ToShellKind();
-            var resolved = shellKind == TerminalShellKind.Automatic
-                ? automaticShell
-                : shellResolver(shellKind);
-            restoredShell = resolved with { WorkingDirectory = configuration.StartingDirectory };
+                var profile = restoredProfiles.Profiles.SingleOrDefault(profile =>
+                    profile.ProfileId == configuration.LaunchProfileId);
+                if (profile is null)
+                {
+                    throw new InvalidOperationException("저장된 WSL 배포판이 없어 이 탭을 복원하지 못했습니다.");
+                }
+
+                // Keep the existing --cd ~ policy and host working directory, ignoring Windows metadata.
+                restoredShell = launchProfileCatalog.Resolve(profile);
+            }
         }
         catch (Exception exception) when (IsRecoverableRestoreException(exception) == true)
         {
@@ -1388,7 +1414,7 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
 
         WorkspaceChanged?.Invoke(snapshot);
         diagnosticLog.Write(DiagnosticLevel.Error, "Terminal", "RestoreSession",
-                            "A restored terminal shell kind could not be resolved.", exception);
+                            "A restored terminal launch profile could not be resolved.", exception);
     }
 
     private bool UpdateWorkspace(Func<bool> update)

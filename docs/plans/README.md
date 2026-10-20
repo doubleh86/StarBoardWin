@@ -7,18 +7,15 @@
 
 ## 혼합 프로필 재개 상태 — 2026-10-20
 
-`workspace-mixed-profile-restore`는 미완료다. 사전 복구 확인 뒤 허용 범위 내 저장 순서·전체
-snapshot 거부·백업 보존 회귀를 보완했다. 후속 `workspace-restored-profile-contract`에서
-Domain `AddRestored`의 프로필 보존 경계를 수정했다. registry·snapshot·복제가 같은 프로필을
-사용하며 내장 셸 전용 복원은 WSL을 실패 탭으로 남긴다. 실제 WSL 복원 실행기 연결은 후속 범위다.
-validator·schema·global.json은 변경하지 않는다.
-프로필 계약은 구현 완료, 전체 자동 검증은 미완료다. Terminal 426개·Architecture 16개와
-지정 restore/Debug build는 통과했으나 전체 681개 중 기존 ConPTY GUI 다중 탭 테스트 1건이
-timeout으로 실패했고 단독 재실행도 실패했다. 자동 교정 1차에서도 제품 소스 변경 없이
-Terminal 426개·restore·Debug build는 통과했으나 전체 679/681 통과로 ConPTY 다중 탭 및
-PowerShell bootstrap 취소 2건이 남는다. 원인은 미확정이다.
-[인수 결과](2026-09-09-workspace-convenience.md#프로필-계약-인수-결과)와
-[재검증](2026-09-09-workspace-convenience.md#자동-교정-1차-재검증-2026-10-20)을 따른다.
+`workspace-mixed-profile-restore`는 완료된 schema 2·프로필 보존 계약을 사용해 Application
+저장·복원을 연결했고 자동 검증을 완료했다. 실제 Ubuntu·재부팅·로그인은 Not run이다.
+준비된 schema 2로 저장하고 schema 1 읽기, 전체 snapshot 거부, 정상 백업·미래 파일 보존과
+기존 시작 수명을 유지한다. WSL은 기존 catalog discovery/Resolve와 Linux 홈 정책을 사용하며
+누락·탐색 실패는 해당 탭에 격리한다. Contracts/Domain/Infrastructure/Presentation/global.json은
+변경하지 않는다. [재개 계획과 결과](2026-09-09-workspace-convenience.md#혼합-프로필-저장복원-연결-재개-2026-10-20)를 따른다.
+지정 SDK로 Terminal 426개·Integration 90개·solution restore·Debug build(경고/오류 0)·전체
+689개가 통과했고 정렬·diff 검사도 통과했다. 최초 전체 실행의 기존 GUI PowerShell bootstrap
+timeout은 단독 및 동일 전체 argv 재실행에서 통과했으며 최초 원인은 미확정이다.
 [현재 검증](../test-plan.md#mixed-profile-01-혼합-프로필-작업공간-저장복원-검증)을 따른다.
 아래 과거 통과 기록은 이번 실행 결과와 구분한다.
 

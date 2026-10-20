@@ -407,22 +407,25 @@ tabpanel은 숨기기만 하므로 output buffer, scrollback과 emulator state�
 꺼진 설정은 남아 있는 workspace 파일보다 우선한다. 시작 시 기본 탭 하나를 만들고,
 설정 저장이 성공한 뒤에는 기존 workspace 파일을 삭제한다. 켜진 경우에만 Terminal이
 `%LOCALAPPDATA%/Starboard/workspace.json`을 읽고, 1~8개 탭의 구성 ID, 이름, 연속된
-순서, 시작 폴더, 내장 셸 종류와 활성 구성 ID를 복원한다.
-schema 2의 저장 계약은 내장 셸 또는 검증된 WSL 배포판 식별자를 지원하지만,
-persistence/coordinator의 혼합 구성 저장·복원 연결은 미완료다. 자동 저장은 schema 1을 유지한다.
+순서, Windows 시작 폴더, 셸 또는 WSL 배포판 식별자와 활성 구성 ID를 복원한다.
+Application persistence는 준비된 schema 2로 전체 구성을 저장한다. Domain의 기존
+`CurrentSchemaVersion = 1`은 이 Task에서 변경하지 않으며, Application의 쓰기 버전은 2다.
+기존 schema 1은 계속 읽으며 기존 validator의 1~2 지원 범위를 사용한다.
 schema 1은 shellKind만, schema 2는 launchProfileId만 직렬화하며 잘못되거나 상충한 프로필을 거부한다.
 WSL의 계약상 ShellKind는 기존 호출 호환용 Automatic 값이며 실행 대상을 뜻하지 않는다.
-schema 2의 실제 실행 대상은 LaunchProfileId이고, 설치 여부는 후속 실행 시 discovery로 확인해야 한다.
+schema 2의 실제 실행 대상은 LaunchProfileId이고, WSL 설치 여부는 시작 복원 시 기존 catalog로 확인한다.
 
 snapshot의 탭 열거 순서로 0부터 연속된 저장 순서를 만든다. 미지원 프로필이 하나라도 있으면
 전체 snapshot 저장을 거부하고 대기 중 저장도 취소한다. 초기 복원 중에는 저장을 억제하며,
 변경 없이 종료하면 로드한 파일을 다시 저장해 정상 백업을 교체하지 않는다.
 `TerminalTabRegistry.AddRestored`는 `LaunchProfileId`로 기존 `TerminalLaunchProfile`을
 재구성한다. WSL 배포판은 nullable `ShellKind`와 함께 탭·snapshot·구성 복제에 동일 식별자로
-유지하며 별도 프로필 상태 저장소를 두지 않는다. 현재 내장 셸 전용 coordinator 복원 진입점은
-WSL을 실패 탭으로 격리하고 내장 셸을 대신 실행하지 않는다. 실패 탭 복제도 기존 profile resolver에
-원래 프로필을 전달한다. 실제 WSL 복원 실행기 연결은 후속 혼합 복원 범위이며 미완료다.
-validator와 자동 저장 schema 1, 저장한 탭 즐겨찾기의 WSL 범위는 유지한다.
+유지하며 별도 프로필 상태 저장소를 두지 않는다. coordinator는 첫 WSL 복원 탭에서 기존
+`TerminalLaunchProfileCatalog.QueryAsync`를 한 번 실행하고 같은 식별자의 발견된 프로필을
+기존 `Resolve`에 전달한다. 누락·탐색 실패·실행 실패는 해당 탭을 Failed로 남기고 다른 탭을
+순서대로 계속 복원한다. 내장 셸로 대체하지 않으며 호출자 취소는 전파한다. WSL은 저장된
+Windows 시작 폴더 대신 catalog의 host working directory와 `--cd ~`를 사용한다.
+실패 탭 복제도 원래 프로필을 resolver에 전달한다. 저장한 탭 즐겨찾기 범위는 유지한다.
 
 workspace 저장은 64 KiB 상한과 strict validation을 거친 뒤 같은 directory의 flush된
 `.tmp` file을 `File.Replace`(최초 저장은 move)로 교체한다. 유효한 primary만 `.bak`으로
@@ -446,8 +449,8 @@ WSL profile launch는 `wsl.exe --distribution <name> --cd ~`로 distribution의 
 하나의 persistent ConPTY session을 시작한다. Windows 시작 폴더를 Linux path로 추측해 변환하지
 않는다. 실행 파일 또는 distribution이 launch 시점에 사라지면 새 tab 하나만 error state가 되고
 원본 tab과 다른 session은 계속 실행된다. 저장한 탭 즐겨찾기는 여전히 내장 셸 종류만 저장하며
-WSL 지원은 미완료다. workspace schema 2 준비만으로 saved tab 또는 workspace restore를 통한
-WSL 재실행을 완료로 취급하지 않는다.
+WSL 지원은 미완료다. 작업공간 자동 복원은 schema 2와 기존 WSL 실행 경로로 연결했지만
+실제 Ubuntu 실행·Windows 재부팅·로그인 검증은 미수행이며 파일/가짜 세션 자동 검증과 구분한다.
 
 ### Saved terminal tabs
 

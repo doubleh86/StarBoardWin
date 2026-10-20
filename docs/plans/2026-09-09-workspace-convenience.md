@@ -1,5 +1,47 @@
 # Starboard 다음 기획 — 가벼운 작업공간
 
+## 혼합 프로필 저장·복원 연결 재개 (2026-10-20)
+
+- Task: `workspace-mixed-profile-restore`. 상태: 구현·자동 검증 완료, 실제 환경 인수 대기. 완료된 schema 2와
+  `AddRestored` 프로필 보존 계약을 사용하며 아래 과거 차단 기록은 당시 상태다.
+- 범위: Application persistence는 검증된 전체 snapshot을 schema 2로 저장한다.
+  coordinator는 WSL 탭이 있을 때 기존 catalog로 배포판을 한 번 조회하고 같은
+  식별자의 기존 실행 경로로 새 세션을 만든다. Windows 시작 폴더를 WSL에 적용하지 않는다.
+- 영향: Terminal Application, Terminal/Integration tests, 이 계획·목록·architecture·test-plan·README.
+  Contracts/Domain/Infrastructure/Presentation 및 global.json은 변경하지 않는다.
+- 위험: 미지원 프로필의 부분 저장, 복원 중 저장, 미래 schema/정상 백업 덮어쓰기,
+  WSL 누락·조회 실패의 전파. 기존 저장 순서·검증·종료 flush·시작 수명을 유지한다.
+- 검증: 실제 임시 workspace 파일과 가짜 세션으로 Windows 2+Ubuntu 1의 이름·순서·선택,
+  독립 새 세션, WSL Linux 홈 인자, 탭별 실패, schema 1 호환·미래 파일·백업 보존,
+  복원 중 저장 억제·종료 flush·미지원 전체 저장 거부를 확인한다. 지정 SDK의 집중
+  Terminal/Integration test, solution restore/build/test, 정렬·diff 검사를 수행한다.
+- 실제 Ubuntu 실행·재부팅·로그인 인수는 Not run (manual)로 유지한다.
+
+### 혼합 프로필 연결 인수 결과
+
+- Windows 2탭+Ubuntu 1탭의 이름·순서·선택 변경이 실제 임시 파일의 schema 2에 저장되고,
+  재로드 후 같은 구성 ID/프로필의 독립적인 새 runtime ID와 가짜 session 객체를 생성했다.
+  기존 startup/renderer 준비 순서를 유지하고 WSL discovery 대기 중 부분 저장을 억제했다.
+- WSL 누락·조회 timeout·실행 파일 부재·launch 실패는 해당 탭만 Failed로 남겼다.
+  기존 catalog의 `--distribution Ubuntu --cd ~`를 재사용하고 Windows 시작 폴더가 없어도
+  WSL을 Windows 경로로 시작하거나 내장 셸로 대체하지 않는다.
+- 실제 파일 기반으로 종료 flush, schema 1 읽기→2 쓰기, 미래 schema/정상 백업 보존,
+  미지원 custom 프로필의 전체 저장 거부와 pending 저장/종료 flush 취소를 확인했다.
+  저장 JSON의 허용 필드만 검사해 명령·출력·환경·PID와 실행 인자가 저장되지 않음을 확인했다.
+- 지정 SDK/argv: Terminal 426개, Integration 90개(새 파일 회귀 8개), solution restore,
+  Debug build(경고·오류 0), 전체 689개 통과(Architecture 16 / Terminal 426 /
+  DesktopIntegration 120 / Preferences 37 / Integration 90). 정렬·diff 검사 통과.
+- 최초 제한 안 Terminal 명령은 restore 뒤 정체되어 성공으로 기록하지 않는다.
+  이후 .NET 검증은 승인된 제한 밖에서 지정 argv 그대로 수행했다. 테스트의 읽기 전용
+  `ShellLaunchSpec.ExecutablePath` 할당 컴파일 오류는 생성자 사용으로 수정했고, 기존
+  순서 저장 테스트의 schema 1 기대를 2로 갱신했다. 첫 실행의 기존 PowerShell pipe 종료
+  timeout은 Terminal 재실행에서 통과했다. 첫 전체 실행은 688/689로 기존 GUI PowerShell
+  bootstrap timeout 1건이 있었으나 해당 2개 사례 단독 재검증 및 동일 전체 argv 재실행에서
+  모두 통과했다. 이 bootstrap은 `ConPtySession.Start`를 직접 사용하며 workspace 복원이나
+  coordinator를 호출하지 않는다. 최초 timeout 원인은 미확정이며 구현·timeout은 변경하지 않았다.
+- 변경 10개 파일은 지정 경로에 한정되고 금지 경로 변경은 없다. 실제 Ubuntu·WebView2 화면·
+  재부팅·로그인은 Not run (manual)이다. commit/merge/push/배포는 수행하지 않았다.
+
 ## 목표와 완료 조건
 
 자주 쓰는 프로젝트 터미널을 이름으로 구분하고, 앱을 다시 켰을 때 같은 탭 구성으로
@@ -461,7 +503,7 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
 
 ### 2026-10-19 WSL 혼합 탭 저장 실패
 
-- **최초 진단: 전체 구성 저장을 거부하는 코드 경로 확인. 현재는 아래 schema 준비를 완료했고 혼합 복원 연결은 미완료다.** 사용자가 다시
+- **최초 진단: 전체 구성 저장을 거부하는 코드 경로 확인. 당시 미완료였던 혼합 연결은 상단 인수 결과에서 완료했다.** 사용자가 다시
   재부팅 복원 실패를 제보했으며 첨부 화면에는 Windows 셸 2탭과 Ubuntu 1탭이 있다.
   복원 옵션은 여전히 켜져 있지만 작업공간 primary/backup은 10월 14일의 내장 셸
   3탭 구성 그대로다. 화면의 변경된 이름과 Ubuntu는 저장 파일에 반영되지 않았다.
@@ -479,7 +521,7 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
   제외 범위였다. 이번 후속 요구는 **WSL을 포함한 탭 구성 저장·복원**으로 제안한다.
   10월 14일 제보 전체의 단일 원인을 WSL로 단정하거나 기존 제외 범위를 구현 완료로
   바꾸지 않는다. Windows 셸만으로도 남는 시작·화면 동기화 회귀는 위 조사 항목을 유지한다.
-- [ ] `workspace-mixed-profile-restore`: workspace 계약·schema·validator·store·persistence와
+- [x] `workspace-mixed-profile-restore`: workspace 계약·schema·validator·store·persistence와
   coordinator 복원을 확장해 내장 셸 종류 또는 검증된 WSL 배포판 식별자를 저장한다.
   기존 schema 1은 계속 읽고 더 새로운 schema는 보존한다. 임의 executable/arguments는
   저장하지 않는다. WSL은 기존 선택 실행 경로로 새 프로세스를 만들고 Linux 홈 시작을

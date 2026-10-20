@@ -299,7 +299,7 @@ public sealed class TerminalTabReorderTests
                                               store.Configuration.Tabs.Select(tab => tab.Order).ToArray(), label);
                     Assert.AreEqual(after.Workspace.Tabs.Single(tab => tab.SessionId == after.Workspace.ActiveSessionId).ConfigurationId,
                                     store.Configuration.ActiveTabConfigurationId, label);
-                    Assert.AreEqual(1, store.Configuration.SchemaVersion, label);
+                    Assert.AreEqual(2, store.Configuration.SchemaVersion, label);
                 }
                 else
                 {

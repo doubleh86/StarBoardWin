@@ -17,7 +17,10 @@ public sealed class TerminalWorkspaceRestoreTests
     public async Task RestoreWslPreservesIdentityAndDuplicateResolvesOriginalProfile()
     {
         var factory = new RecordingSessionFactory();
-        await using var coordinator = new TerminalSessionCoordinator(factory, new NullDiagnosticLog());
+        var catalog = new TerminalLaunchProfileCatalog(new Starboard.Modules.Terminal.Infrastructure.WslProcessRunner(),
+                                                       new NullDiagnosticLog(), _ => null);
+        await using var coordinator = new TerminalSessionCoordinator(factory, new NullDiagnosticLog(),
+                                                                     launchProfileCatalog: catalog);
         var firstId = TerminalTabConfigurationId.CreateNew();
         var wslId = TerminalTabConfigurationId.CreateNew();
         var lastId = TerminalTabConfigurationId.CreateNew();
@@ -654,15 +657,10 @@ public sealed class TerminalWorkspaceRestoreTests
         _ = await persistence.InitializeAsync(true, CancellationToken.None);
         _ = await coordinator.StartAsync(_testShell, 80, 24, CancellationToken.None);
         _ = await coordinator.AddAsync(CancellationToken.None);
-        var profile = TerminalLaunchProfile.CreateWsl("Ubuntu");
-        var request = new TerminalNewTabRequest(TerminalTabRequestId.CreateNew(),
-                                                coordinator.RendererWorkspace.Order[0], profile.ProfileId);
-        var result = await coordinator.LaunchProfileAsync(request, profile,
-                                                          _ => new ShellLaunchSpec("wsl.exe", [], "C:\\Work"),
-                                                          CancellationToken.None);
-        Assert.AreEqual(TerminalTabLaunchStatus.Started, result.Status);
+        coordinator.UpdateDefaultShell(new ShellLaunchSpec("custom.exe", [], _testShell.WorkingDirectory), shellKind: null);
+        _ = await coordinator.AddAsync(CancellationToken.None);
 
-        // Until the registry can retain restored WSL metadata, schema 1 must reject the whole snapshot.
+        // A custom executable without a supported identity must reject the whole snapshot.
         var save = await persistence.SetEnabledAsync(true, CancellationToken.None);
         await persistence.DisposeAsync();
 

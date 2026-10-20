@@ -167,7 +167,7 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
             {
                 return new TerminalWorkspacePersistenceResult(TerminalWorkspacePersistenceOperation.Save,
                                                               TerminalWorkspacePersistenceStatus.Failed,
-                                                              "지원되는 셸 종류만 작업공간에 저장할 수 있습니다.");
+                                                              "지원되는 실행 프로필만 작업공간에 저장할 수 있습니다.");
             }
 
             isEnabled = enabled;
@@ -339,7 +339,7 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
             if (publishFailure == true)
             {
                 PublishStatus(new TerminalWorkspaceSaveStatus(TerminalWorkspaceSaveState.Failed,
-                                                              "지원되는 셸 종류만 작업공간에 저장할 수 있습니다."));
+                                                              "지원되는 실행 프로필만 작업공간에 저장할 수 있습니다."));
             }
 
             return;
@@ -539,7 +539,8 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
             }
         }
 
-        var configuration = new TerminalWorkspaceConfiguration(TerminalWorkspaceConfigurationValidator.CurrentSchemaVersion,
+        // Schema 2 is prepared by the storage contract; schema 1 remains a readable legacy format.
+        var configuration = new TerminalWorkspaceConfiguration(2,
                                                                tabs, activeConfigurationId);
         TerminalWorkspaceConfigurationValidator.Validate(configuration);
         return configuration;

@@ -1,5 +1,39 @@
 # Windows용 Starboard 테스트 계획
 
+## 혼합 프로필 연결 자동 검증 (2026-10-20)
+
+`WorkspaceMixedProfileIntegrationTests`는 실제 임시 파일 store와 가짜 WSL runner/session을
+사용한다. 사용자 파일·실행 중 셸·WSL 설치 상태는 변경하지 않는다. 아래 8개 파일 회귀는
+모두 Passed (automated)이며 과거 계약 Task의 성공/실패 수와 구분한다.
+
+| 항목 | 자동 회귀 |
+| --- | --- |
+| Windows 2+Ubuntu 1의 이름·순서·선택, schema 2 저장과 종료 flush | `MixedWorkspaceFlushReloadCreatesIndependentSessionsAndPreservesRestoreFiles` |
+| renderer 지연, WSL discovery 대기 중 부분 저장 억제, 변경 없는 종료의 primary/backup 보존 | 같은 테스트에서 실제 파일 원문을 비교 |
+| 독립 새 세션, Windows 폴더 유지와 WSL `--distribution Ubuntu --cd ~` | 같은 테스트에서 session ID/객체·실행 인자 비교 |
+| WSL 누락·탐색 timeout·실행 파일 부재·launch 실패 격리, 없는 Windows metadata에서도 Linux 홈 정책 유지 | `WslRestoreIsolatesFailuresAndPreservesPrimaryAndBackup` |
+| 미지원 custom 프로필의 전체 저장 거부·대기 저장 취소·종료 flush 억제 | `UnsupportedProfileRejectsWholeSnapshotAndCancelsPendingFlushInRealStore` |
+| schema 1 읽기→schema 2 쓰기·정상 백업 유지, 미래 schema 발견 시 두 파일 보존 | `LegacySchemaMigratesToMixedSchemaAndFutureSchemaPreservesBothFiles` |
+| 명령·출력·환경·PID 비저장 | 실제 JSON 최상위/탭 필드 허용 목록 검사, 가짜 명령·출력 이후 동일한 최소 저장 형태 확인 |
+
+실제 Ubuntu 실행·WebView2 오류 화면·Windows 재부팅·새 로그인은 **Not run (manual)**이다.
+MAN-041b에서 Windows 2+Ubuntu 1의 이름·순서·선택 변경 뒤 정상 종료/재실행·재부팅·로그인을
+각각 수행해 화면 구성·새 PID·WSL `pwd`(Linux 홈)와 정상 파일 보존을 확인한다. 격리된
+계정/구성에서 배포판 누락도 확인하고 다른 탭 복원이 계속되는지 관찰한다. 자동 테스트의
+새 가짜 session 생성은 실제 ConPTY/Ubuntu 새 프로세스나 로그인 성공의 증거가 아니다.
+
+지정 SDK/argv의 최종 결과: Terminal 426/426, Integration 90/90, solution restore,
+Debug build(경고·오류 0), 전체 689/689 통과(Architecture 16, Terminal 426,
+DesktopIntegration 120, Preferences 37, Integration 90). WorkingTree 정렬·diff 검사 통과.
+최초 제한 안 Terminal 명령은 restore 뒤 정체되어 통과 근거로 사용하지 않았으며,
+.NET 성공 결과는 승인된 제한 밖 동일 지정 argv로 확보했다. 테스트의 읽기 전용 속성 할당과
+schema 기대값을 수정한 뒤 검증했다. 첫 Terminal 실행의 기존 pipe 종료 timeout은 재실행에서
+통과했고, 첫 전체 suite는 기존 GUI PowerShell bootstrap(`powershell-first-input-written`)
+timeout으로 688/689였다. `ConPtySession.Start` 직접 경로로 workspace/coordinator를 사용하지
+않으며 해당 두 bootstrap 단독 재검증과 동일 전체 argv 재실행에서 모두 통과했다.
+최초 timeout 원인은 미확정이다. 테스트 조건·timeout·ConPTY 구현은 변경하지 않았다.
+변경 10개 파일의 허용 경로를 대조했고 금지 경로 변경은 없다.
+
 ## 복원 프로필 보존 계약 (2026-10-20)
 
 - 자동 회귀: `TerminalTabRegistryTests.AddRestoredPreservesProfileInTabSnapshotAndDuplicate`는
@@ -955,7 +989,7 @@ interactive terminal UI를 조작하지 않고, WSL discovery는 읽기 전용 �
 | MAN-040 | portable update/rollback | 기존 설정 유지, startup 경로 변경과 이전 폴더 복귀 확인 | Out of scope — 업데이트 및 rollback은 이번 수동 배포 검증 범위에서 제외; 기존 이전→현재→이전 smoke 기록은 보존 |
 | MAN-041 | workspace restore UI | 복원 opt-in 뒤 재시작에서 탭 이름·순서·선택·시작 폴더가 보존되고 각 tab이 새 PID인지 확인 | Blocked (agent manual) — 2026-09-10 최초 확인 때는 `workspace.json`/`.bak`이 없고 설정 UI 조작도 불가했다. 2026-10-14 현재 저장 파일은 있으나 실제 탭 화면·PID와 저장 구성을 독립적으로 대조하지 못했다. 재부팅 후 사용자 제보는 MAN-041a에 기록한다. |
 | MAN-041a | 재부팅·로그인 후 workspace 복원 | 복원 옵션을 켜고 서로 다른 이름/시작 폴더의 3탭을 저장한 뒤 실제 Windows 재부팅·로그인 자동 실행에서 탭 개수·이름·순서·선택·폴더와 새 PID를 확인한다. 첫 자동 실행과 그 뒤 수동 재실행을 구분하고, 실패 탭이 있어도 정상 구성을 보존하는지 확인한다. | Failed (user-reported) — 2026-10-14 사용자는 재부팅 뒤 탭 이름·개수가 초기화됐다고 확인했다. 에이전트의 첫 로그인 자동 실행·화면·복원 단계 관찰 및 수정 후 실환경 재검증은 Not run (manual). [후속 계획](plans/2026-09-09-workspace-convenience.md#후속--windows-재부팅-후-탭-구성-복원-실패-2026-10-14)을 따른다. |
-| MAN-041b | Windows 셸·WSL 혼합 구성 저장과 재부팅 복원 | Windows 2탭+Ubuntu 1탭에서 이름·순서·선택 변경을 저장한 뒤 재부팅/로그인 자동 실행과 수동 재실행을 각각 확인한다. Windows 시작 폴더와 WSL 배포판·Linux 홈 시작, 새 세션, 배포판 누락 시 다른 탭 계속 복원을 관찰한다. | Failed (user-reported, 2026-10-19) — Ubuntu가 있는 화면과 10월 14일에 머문 저장 파일을 확인했고 WSL 탭이 전체 구성 저장을 거부하는 코드 경로를 찾았다. WSL 구성 복원 확장 및 실제 재부팅 검증은 미착수/Not run (manual). [후속 기획](plans/2026-09-09-workspace-convenience.md#2026-10-19-wsl-혼합-탭-저장-실패)을 따른다. |
+| MAN-041b | Windows 셸·WSL 혼합 구성 저장과 재부팅 복원 | Windows 2탭+Ubuntu 1탭에서 이름·순서·선택 변경을 저장한 뒤 재부팅/로그인 자동 실행과 수동 재실행을 각각 확인한다. Windows 시작 폴더와 WSL 배포판·Linux 홈 시작, 새 세션, 배포판 누락 시 다른 탭 계속 복원을 관찰한다. | Not run (manual, 수정 후) — 2026-10-19 사용자 제보와 당시 WSL 전체 저장 거부는 과거 실패 기록이다. 2026-10-20 Application 혼합 저장·복원을 연결했으며 실제 Ubuntu·재부팅·로그인 인수는 미수행이다. [현재 자동 검증](#혼합-프로필-연결-자동-검증-2026-10-20)을 따른다. |
 | MAN-042 | workspace IME and partial failure | 한글 IME 이름 편집, 없는/권한 없는 폴더 또는 shell 한 tab 실패가 다른 tab을 막지 않는지 확인 | Blocked — terminal UI 자동화 대상이 없어 한글 이름 편집 및 실패 tab을 만든 뒤 다른 tab의 계속 시작을 관찰할 수 없었음 |
 | MAN-043 | workspace opt-out | 옵션 해제 뒤 구성 파일 삭제와 다음 시작의 기본 tab 하나를 확인 | Blocked — 초기 workspace primary/backup 부재만 읽기 전용으로 확인했음; opt-out 저장으로 파일을 삭제하고 다음 시작 기본 tab을 확인하는 destructive UI 시나리오는 수행하지 못했음 |
 | MAN-044 | 저장한 탭 전체 UI 흐름 | 실제 WebView2에서 저장·취소·편집·삭제·선택·실패 재시도, 앱 재실행 유지와 workspace on/off 독립성 확인 | Not run — terminal UI 입력 자동화가 허용되지 않아 실제 menu/dialog 조작과 재실행을 수행하지 않았음 |
@@ -1349,8 +1383,9 @@ DesktopIntegration 120 / Preferences 37 / Integration 79), C# WorkingTree 정렬
 
 ## MIXED-PROFILE-01 혼합 프로필 작업공간 저장·복원 검증
 
-2026-10-20 재개. 사전 복구 완료는 사용자 확인 결과를 수용했다. 실제 구현과 검증 결과를
-아래에 기록하며, 과거 schema Task의 665개 통과를 이번 결과로 사용하지 않는다.
+아래는 프로필 보존 의존성이 해결되기 전의 2026-10-20 재개 기록이다. 현재 연결과 검증은
+상단 [혼합 프로필 연결 자동 검증](#혼합-프로필-연결-자동-검증-2026-10-20)을 따른다.
+과거 schema Task의 665개 통과를 이번 결과로 사용하지 않는다.
 
 | 항목 | 실제 방법 | 상태 |
 |---|---|---|
