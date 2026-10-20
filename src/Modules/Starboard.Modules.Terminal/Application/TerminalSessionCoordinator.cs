@@ -1339,9 +1339,17 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         resolutionFailure = null;
         try
         {
-            var resolved = configuration.ShellKind == TerminalShellKind.Automatic
+            // This restore entry point only resolves built-in shells; never run its automatic
+            // fallback for a WSL identity while mixed-profile restore is not yet connected.
+            if (configuration.LaunchProfileId.IsBuiltInShell == false)
+            {
+                throw new NotSupportedException("Workspace restore requires a WSL profile resolver.");
+            }
+
+            var shellKind = configuration.LaunchProfileId.ToShellKind();
+            var resolved = shellKind == TerminalShellKind.Automatic
                 ? automaticShell
-                : shellResolver(configuration.ShellKind);
+                : shellResolver(shellKind);
             restoredShell = resolved with { WorkingDirectory = configuration.StartingDirectory };
         }
         catch (Exception exception) when (IsRecoverableRestoreException(exception) == true)

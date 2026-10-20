@@ -8,9 +8,13 @@
 ## 혼합 프로필 재개 상태 — 2026-10-20
 
 `workspace-mixed-profile-restore`는 미완료다. 사전 복구 확인 뒤 허용 범위 내 저장 순서·전체
-snapshot 거부·백업 보존 회귀를 보완했다. `Domain/TerminalTabRegistry.cs: AddRestored`가
-WSL 식별자를 내장 프로필로 바꾸지만 이 파일은 현재 허용 범위에 없어 혼합 복원 연결은
-차단이다. validator·global.json·기준·허용 범위는 변경하지 않았다.
+snapshot 거부·백업 보존 회귀를 보완했다. 후속 `workspace-restored-profile-contract`에서
+Domain `AddRestored`의 프로필 보존 경계를 수정했다. registry·snapshot·복제가 같은 프로필을
+사용하며 내장 셸 전용 복원은 WSL을 실패 탭으로 남긴다. 실제 WSL 복원 실행기 연결은 후속 범위다.
+validator·schema·global.json은 변경하지 않는다.
+프로필 계약은 구현 완료, 전체 자동 검증은 미완료다. Terminal 426개·Architecture 16개와
+지정 restore/Debug build는 통과했으나 전체 681개 중 기존 ConPTY GUI 다중 탭 테스트 1건이
+timeout으로 실패했고 단독 재실행도 실패했다. [인수 결과](2026-09-09-workspace-convenience.md#프로필-계약-인수-결과)를 따른다.
 [현재 검증](../test-plan.md#mixed-profile-01-혼합-프로필-작업공간-저장복원-검증)을 따른다.
 아래 과거 통과 기록은 이번 실행 결과와 구분한다.
 

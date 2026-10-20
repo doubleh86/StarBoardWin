@@ -7,6 +7,38 @@ namespace Starboard.Modules.Terminal.Tests;
 public sealed class TerminalTabRegistryTests
 {
     [TestMethod]
+    [DataRow("shell:automatic", TerminalShellKind.Automatic)]
+    [DataRow("shell:pwsh", TerminalShellKind.Pwsh)]
+    [DataRow("shell:powershell", TerminalShellKind.PowerShell)]
+    [DataRow("shell:cmd", TerminalShellKind.Cmd)]
+    [DataRow("wsl:Ubuntu", null)]
+    [DataRow("wsl:Ubuntu-24.04", null)]
+    public void AddRestoredPreservesProfileInTabSnapshotAndDuplicate(string profileValue, TerminalShellKind? shellKind)
+    {
+        var registry = CreateRegistry(3);
+        var profileId = new TerminalLaunchProfileId(profileValue);
+        var configuration = new TerminalWorkspaceTabConfiguration(TerminalTabConfigurationId.CreateNew(),
+                                                                  "복원 탭", 0, "C:\\Work", profileId);
+
+        var restored = registry.AddRestored(configuration);
+        var duplicate = registry.Duplicate(restored);
+        Assert.IsTrue(registry.SelectConfiguration(configuration.ConfigurationId));
+        var snapshot = registry.CreateSnapshot();
+
+        Assert.AreEqual(profileId, restored.LaunchProfile!.ProfileId);
+        Assert.AreEqual(shellKind, restored.ShellKind);
+        Assert.AreEqual(configuration.ConfigurationId, restored.ConfigurationId);
+        Assert.AreEqual("복원 탭", snapshot.Tabs[0].Name);
+        Assert.AreEqual("복원 탭 (2)", snapshot.Tabs[1].Name);
+        Assert.AreEqual(restored.SessionId, snapshot.ActiveSessionId);
+        Assert.AreSame(restored.LaunchProfile, snapshot.Tabs[0].LaunchProfile);
+        Assert.AreSame(restored.LaunchProfile, duplicate.LaunchProfile);
+        Assert.AreEqual(shellKind, duplicate.ShellKind);
+        Assert.AreNotEqual(restored.ConfigurationId, duplicate.ConfigurationId);
+        Assert.AreNotEqual(restored.SessionId, duplicate.SessionId);
+    }
+
+    [TestMethod]
     public void AddFirstAndSubsequentTabsAssignsUniqueIdentifiersAndPredictableNames()
     {
         var registry = CreateRegistry(3);

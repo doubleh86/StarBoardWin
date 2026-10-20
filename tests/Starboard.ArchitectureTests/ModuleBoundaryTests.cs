@@ -38,6 +38,15 @@ public sealed class ModuleBoundaryTests
                                            .Select(property => property.Name).ToArray());
         Assert.AreEqual(typeof(TerminalLaunchProfileId),
                         typeof(TerminalWorkspaceTabConfiguration).GetProperty("LaunchProfileId")!.PropertyType);
+
+        var terminalAssembly = typeof(TerminalModule).Assembly;
+        var tabType = terminalAssembly.GetType("Starboard.Modules.Terminal.Domain.TerminalTab", throwOnError: true)!;
+        var snapshotType = terminalAssembly.GetType("Starboard.Modules.Terminal.Domain.TerminalWorkspaceSnapshot",
+                                                    throwOnError: true)!;
+        Assert.IsFalse(tabType.IsPublic);
+        Assert.IsFalse(snapshotType.IsPublic);
+        Assert.AreEqual(typeof(TerminalLaunchProfile), tabType.GetProperty("LaunchProfile")!.PropertyType);
+        Assert.AreEqual(typeof(IReadOnlyList<>).MakeGenericType(tabType), snapshotType.GetProperty("Tabs")!.PropertyType);
     }
 
     [TestMethod]

@@ -125,9 +125,13 @@ internal sealed class TerminalTabRegistry
             throw new InvalidOperationException("The restored terminal configuration identifier must be unique.");
         }
 
+        var profileId = configuration.LaunchProfileId;
+        var profile = profileId.IsBuiltInShell == true
+            ? CreateBuiltInProfile(profileId.ToShellKind())
+            : TerminalLaunchProfile.CreateWsl(profileId.WslDistributionName!);
         var tab = new TerminalTab(sessionId, configuration.ConfigurationId, configuration.Name,
-                                  configuration.StartingDirectory, configuration.ShellKind,
-                                  CreateBuiltInProfile(configuration.ShellKind), TerminalSessionState.Starting, null);
+                                  configuration.StartingDirectory, profile.ShellKind,
+                                  profile, TerminalSessionState.Starting, null);
         tabs.Add(tab);
         ActiveSessionId = sessionId;
 

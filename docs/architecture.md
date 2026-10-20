@@ -417,9 +417,12 @@ schema 2의 실제 실행 대상은 LaunchProfileId이고, 설치 여부는 후�
 snapshot의 탭 열거 순서로 0부터 연속된 저장 순서를 만든다. 미지원 프로필이 하나라도 있으면
 전체 snapshot 저장을 거부하고 대기 중 저장도 취소한다. 초기 복원 중에는 저장을 억제하며,
 변경 없이 종료하면 로드한 파일을 다시 저장해 정상 백업을 교체하지 않는다.
-혼합 복원 연결은 현재 허용 범위 밖 `Domain/TerminalTabRegistry.cs`의 `AddRestored`가
-WSL profile을 내장 셸로 바꾸는 의존성 때문에 차단이다. 이 경계를 수정하거나 우회하지 않았고
-validator와 자동 저장 schema 1을 유지했다. 저장한 탭 즐겨찾기의 WSL 범위도 그대로다.
+`TerminalTabRegistry.AddRestored`는 `LaunchProfileId`로 기존 `TerminalLaunchProfile`을
+재구성한다. WSL 배포판은 nullable `ShellKind`와 함께 탭·snapshot·구성 복제에 동일 식별자로
+유지하며 별도 프로필 상태 저장소를 두지 않는다. 현재 내장 셸 전용 coordinator 복원 진입점은
+WSL을 실패 탭으로 격리하고 내장 셸을 대신 실행하지 않는다. 실패 탭 복제도 기존 profile resolver에
+원래 프로필을 전달한다. 실제 WSL 복원 실행기 연결은 후속 혼합 복원 범위이며 미완료다.
+validator와 자동 저장 schema 1, 저장한 탭 즐겨찾기의 WSL 범위는 유지한다.
 
 workspace 저장은 64 KiB 상한과 strict validation을 거친 뒤 같은 directory의 flush된
 `.tmp` file을 `File.Replace`(최초 저장은 move)로 교체한다. 유효한 primary만 `.bak`으로

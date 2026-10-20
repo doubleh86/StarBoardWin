@@ -599,3 +599,42 @@ schema 1을 유지한다. 실제 Ubuntu·재부팅·새 로그인은 미수행�
 - 실제 재부팅: Not run. 새 로그인: Not run. 수동 앱 재실행: Not run.
   실제 화면/로그인 실패 원인은 미확정이며 자동 protocol 검증을 화면 인수로 취급하지 않는다.
   commit/merge/push/배포는 수행하지 않았다.
+
+### 복원 탭 프로필 보존 계약 (2026-10-20)
+
+- Task: `workspace-restored-profile-contract`. 상태: 구현 완료, 전체 자동 검증 미완료.
+  아래 Domain 범위를 제품 코드 변경 전에 기록했으며 후속 결과는 아래 인수 기록을 따른다.
+- Domain 수정 범위: `TerminalTabRegistry.AddRestored`가 저장된 `LaunchProfileId`로
+  기존 `TerminalLaunchProfile`을 재구성하고 그 `ShellKind`를 탭에 유지한다.
+  별도 프로필 상태 저장소나 새 계약을 만들지 않는다. 이름·삽입 순서·선택·구성 ID는 유지한다.
+- Application 수정 범위: 기존 내장 셸 전용 복원 호출부에서 WSL을 Automatic으로 실행하지
+  않도록 실패 탭으로 격리한다. 복제는 기존 `LaunchProfile`과 resolver 경로를 사용한다.
+  실제 WSL 복원 실행기 연결은 후속 혼합 복원 Task 범위다.
+- 영향 파일: 지정 Domain/TerminalSessionCoordinator, Terminal/Architecture tests,
+  이 계획·목록·architecture·test-plan. 기존 schema·validator·Infrastructure·Presentation은 변경하지 않는다.
+- 위험: WSL을 내장 셸로 실행하거나 실패 탭 복제에 잘못된 프로필을 재사용하는 회귀.
+  registry/snapshot/복제 및 내장 셸 네 종류와 혼합 탭 이름·순서·선택을 자동 검증한다.
+- 검증: 지정 SDK Terminal 집중 test → solution restore/Debug build/전체 test,
+  WorkingTree C# 정렬 검사와 diff 검사. 실제 Ubuntu·로그인·재부팅은 Not run (manual)이다.
+
+#### 프로필 계약 인수 결과
+
+- 기존 탭의 `LaunchProfile`을 유일한 프로필 상태로 사용한다. WSL 복원 입력의 배포판 ID와
+  nullable `ShellKind`가 registry/snapshot/복제에 보존된다. 내장 셸 네 종류와 탭 이름·순서·선택
+  계약을 회귀로 확인했다. 내장 셸 전용 복원에서 WSL은 실패 탭으로 격리하며 복제 resolver에는
+  원래 배포판 프로필을 전달한다. 실제 WSL 복원 실행 연결은 후속 Task다.
+- 지정 SDK/argv로 Terminal 426개, solution restore, Debug build(경고·오류 0)가 통과했다.
+  전체 suite는 681개 중 680 통과/1 실패: Architecture 16, Terminal 426, DesktopIntegration 120,
+  Preferences 37 통과 및 Integration 81 통과/1 실패다. 프로필 회귀 7건은 모두 통과했다.
+- 실패는 기존 `GuiHostKeepsConPtyTabsIndependentThroughExitRestartAndClose`의 30초 취소다.
+  복원 입력을 쓰지 않는 기존 `StartAsync`/`AddAsync` 경로임을 확인하고 코드 변경 없이 해당
+  테스트만 재실행했으나 `SECOND_READY` 10초 timeout으로 다시 실패했다. 원인은 미확정이며
+  범위 밖 host/ConPTY 구현이나 timeout을 변경하지 않았다. 전체 suite 통과로 기록하지 않는다.
+- 최초 제한 안 Terminal 명령은 NuGet 보안 데이터 조회 NU1900으로 실패했다. 제한 밖 재실행에서
+  추가 테스트의 CA1861을 수정한 뒤 기존 renderer bridge의 esbuild 누락 1건을 확인했다.
+  기존 고정 버전 0.28.2를 root의 무시된 node_modules에만 준비한 뒤 지정 Terminal 명령이 통과했다.
+  manifest/lock/Presentation 변경은 없다. 제한 안 build는 경고·오류 0인데 exit 1로 종료했고,
+  제한 밖 동일 지정 명령은 통과했다. 최초 build 실패 원인은 미확정이다.
+- 실제 Ubuntu·재부팅·로그인은 Not run (manual). commit/merge/push/배포는 수행하지 않았다.
+- WorkingTree C# 정렬 검사와 `git diff --check` 통과. 시작 worktree는 clean이었으며
+  변경 9개 파일은 모두 지정 경로다. 금지 경로 변경·미추적 파일은 없다.

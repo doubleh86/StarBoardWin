@@ -1,5 +1,26 @@
 # Windows용 Starboard 테스트 계획
 
+## 복원 프로필 보존 계약 (2026-10-20)
+
+- 자동 회귀: `TerminalTabRegistryTests.AddRestoredPreservesProfileInTabSnapshotAndDuplicate`는
+  네 내장 셸과 두 WSL 배포판의 registry/snapshot/복제 식별자·nullable shell kind,
+  이름·순서·선택·새 ID를 확인한다.
+- `TerminalWorkspaceRestoreTests.RestoreWslPreservesIdentityAndDuplicateResolvesOriginalProfile`는
+  혼합 복원 입력의 이름·순서·선택, WSL 실패 격리와 내장 셸 대체 실행 방지,
+  실패 탭 복제 시 원래 WSL 프로필 resolver 사용을 가짜 session으로 검증한다.
+- Architecture는 기존 모듈 경계 및 Terminal 내부 탭/snapshot의 프로필 소유권을 검증한다.
+  schema·validator 변경은 없다.
+- 지정 SDK 결과: Terminal 426개 통과, solution restore와 Debug build 통과(경고·오류 0).
+  전체 suite는 681개 중 680 통과/1 실패다. Architecture 16, Terminal 426,
+  DesktopIntegration 120, Preferences 37 및 Integration 81개가 통과했다.
+  기존 `GuiHostKeepsConPtyTabsIndependentThroughExitRestartAndClose`는 30초 취소로 실패했고,
+  코드 변경 없이 단독 재실행해도 `SECOND_READY` 10초 timeout으로 실패했다. 복원 입력을
+  사용하지 않는 기존 ConPTY 경로이며 원인은 미확정이다. 이번 프로필 회귀는 모두 통과했으나
+  전체 자동 검증은 미완료다. 범위 밖 구현이나 timeout은 수정하지 않았다.
+- WorkingTree C# 정렬 검사와 `git diff --check` 통과. 변경은 지정된 9개 파일에 한정된다.
+- 실제 Ubuntu 실행·재부팅·로그인 복원: Not run (manual). 이 계약 보완은 WSL 복원 실행기
+  연결 완료를 뜻하지 않는다. 후속 혼합 복원에서 기존 MAN-041b를 수행한다.
+
 ## 목적
 
 persistent terminal, taskbar geometry와 focus 정책을 반복 가능한 방식으로

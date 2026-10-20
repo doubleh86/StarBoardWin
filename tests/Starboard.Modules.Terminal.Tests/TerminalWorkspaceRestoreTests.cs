@@ -11,6 +11,66 @@ public sealed class TerminalWorkspaceRestoreTests
 {
     private static readonly ShellLaunchSpec _testShell = new("pwsh.exe", ["-NoLogo"], "C:\\Work");
     private static readonly string[] _restoredTabNames = ["첫 탭", "실패 탭", "마지막 탭"];
+    private static readonly string[] _mixedTabNames = ["첫 탭", "Ubuntu 작업", "마지막 탭"];
+
+    [TestMethod]
+    public async Task RestoreWslPreservesIdentityAndDuplicateResolvesOriginalProfile()
+    {
+        var factory = new RecordingSessionFactory();
+        await using var coordinator = new TerminalSessionCoordinator(factory, new NullDiagnosticLog());
+        var firstId = TerminalTabConfigurationId.CreateNew();
+        var wslId = TerminalTabConfigurationId.CreateNew();
+        var lastId = TerminalTabConfigurationId.CreateNew();
+        var profileId = TerminalLaunchProfileId.FromWslDistribution("Ubuntu-24.04");
+        var configuration = new TerminalWorkspaceConfiguration(2,
+                                                               [
+                                                                   new(firstId, "첫 탭", 0, "C:\\Work", TerminalShellKind.Pwsh),
+                                                                   new(wslId, "Ubuntu 작업", 1, "C:\\Work", profileId),
+                                                                   new(lastId, "마지막 탭", 2, "C:\\Work", TerminalShellKind.Cmd),
+                                                               ], wslId);
+        var resolvedShells = new List<TerminalShellKind>();
+
+        _ = await coordinator.StartAsync(_testShell, TerminalShellKind.Automatic, configuration,
+                                         kind =>
+                                         {
+                                             resolvedShells.Add(kind);
+                                             return _testShell;
+                                         }, 80, 24, CancellationToken.None);
+
+        var snapshot = coordinator.Snapshot;
+        var restored = snapshot.Tabs[1];
+        CollectionAssert.AreEqual(new[] { firstId, wslId, lastId },
+                                  snapshot.Tabs.Select(tab => tab.ConfigurationId).ToArray());
+        CollectionAssert.AreEqual(_mixedTabNames,
+                                  snapshot.Tabs.Select(tab => tab.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { TerminalShellKind.Pwsh, TerminalShellKind.Cmd }, resolvedShells);
+        Assert.AreEqual(restored.SessionId, snapshot.ActiveSessionId);
+        Assert.AreEqual(TerminalSessionState.Failed, restored.State);
+        Assert.IsNull(restored.ShellKind);
+        Assert.AreEqual(profileId, restored.LaunchProfile!.ProfileId);
+        Assert.AreEqual("Ubuntu-24.04", restored.LaunchProfile.WslDistributionName);
+        Assert.AreEqual(TerminalSessionState.Running, snapshot.Tabs[0].State);
+        Assert.AreEqual(TerminalSessionState.Running, snapshot.Tabs[2].State);
+        Assert.AreEqual(2, factory.StartRequests.Count);
+
+        var sourceReference = coordinator.NewOutputState.States.Single(state => state.Session.SessionId == restored.SessionId.Value).Session;
+        var request = new TerminalTabDuplicateRequest(new TerminalTabRequestId(CreateGuid(800)), sourceReference);
+        TerminalLaunchProfile? resolvedProfile = null;
+        var wslShell = new ShellLaunchSpec("wsl.exe", ["--distribution", "Ubuntu-24.04", "--cd", "~"], "C:\\Work");
+        var result = await coordinator.DuplicateAsync(request,
+                                                      profile =>
+                                                      {
+                                                          resolvedProfile = profile;
+                                                          return wslShell;
+                                                      }, CancellationToken.None);
+
+        Assert.AreEqual(TerminalTabLaunchStatus.Started, result.Status);
+        Assert.AreSame(restored.LaunchProfile, resolvedProfile);
+        Assert.AreEqual(profileId, result.Tab!.LaunchProfile!.ProfileId);
+        Assert.IsNull(result.Tab.ShellKind);
+        Assert.AreEqual("Ubuntu 작업 (2)", result.Tab.Name);
+        Assert.AreEqual(wslShell, factory.StartRequests[2]);
+    }
 
     [TestMethod]
     public async Task RestoreCreatesFreshSessionsSequentiallyAndIsolatesShellFailure()
