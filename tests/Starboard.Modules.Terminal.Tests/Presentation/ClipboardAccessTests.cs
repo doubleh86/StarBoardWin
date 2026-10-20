@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using Starboard.Modules.Terminal.Presentation;
+using Starboard.Modules.Terminal.Contracts;
+using Starboard.Modules.Terminal.Domain;
 
 #pragma warning disable CA2201 // Inject the exact native exception types produced by WPF Clipboard.
 
@@ -163,9 +165,11 @@ public sealed class ClipboardAccessTests
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task ExecuteAsyncRealDispatcherDelayClipboardAdapterStaysOnSta(bool invalidateDuringDelay)
+    [DataRow("current")]
+    [DataRow("tab")]
+    [DataRow("generation")]
+    [DataRow("renderer")]
+    public async Task ExecuteAsyncRealDispatcherDelayClipboardAdapterStaysOnSta(string boundary)
     {
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
@@ -177,7 +181,13 @@ public sealed class ClipboardAccessTests
                 try
                 {
                     var attempts = 0;
-                    var current = true;
+                    var sessionId = TerminalSessionId.CreateNew();
+                    var instance = Guid.NewGuid();
+                    var generation = 10L;
+                    var epoch = 20L;
+                    var request = new ClipboardRequestLifetime(generation, instance, epoch,
+                                                               new TerminalSessionReference(sessionId.Value, 7));
+                    var invalidateDuringDelay = boundary != "current";
                     var verifications = 0;
                     var observations = 0;
                     var access = new ClipboardAccess(() =>
@@ -190,7 +200,20 @@ public sealed class ClipboardAccessTests
                         var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                         _ = dispatcher.InvokeAsync(() =>
                         {
-                            current = invalidateDuringDelay == false;
+                            dispatcher.VerifyAccess();
+                            if (boundary == "tab")
+                            {
+                                // Even returning to the same tab must invalidate the captured request.
+                                epoch += 2;
+                            }
+                            else if (boundary == "generation")
+                            {
+                                generation++;
+                            }
+                            else if (boundary == "renderer")
+                            {
+                                instance = Guid.NewGuid();
+                            }
                             pending.SetResult();
                         });
                         await Task.Delay(10, token);
@@ -206,7 +229,8 @@ public sealed class ClipboardAccessTests
                         }
 
                         return "snapshot";
-                    }, () => current, _ => observations++, CancellationToken.None);
+                    }, () => request.CanApply(generation, instance, epoch, sessionId, true, true, false),
+                       _ => observations++, CancellationToken.None);
                     Assert.AreEqual(invalidateDuringDelay == true ? ClipboardAccessStatus.Stale : ClipboardAccessStatus.Completed,
                                     result.Status);
                     Assert.AreEqual(invalidateDuringDelay == true ? 1 : 2, attempts);

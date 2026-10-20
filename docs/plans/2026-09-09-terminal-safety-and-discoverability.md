@@ -455,3 +455,19 @@ ClipboardAccess/ClipboardRequestLifetime/TerminalView 및 renderer 동작은 변
 [이번 검증 기록](../test-plan.md#입력-진단-dispatcher-재검증-2026-10-15)에 남겼다.
 기존 완료 구현·610개 성공은 보존하며 **이번 자동 검증은 미완료**다. 실제 자발 종료 원인과
 CLIP-MAN-01~05의 미수행 상태는 유지한다.
+
+
+### 2026-10-20 후속 회귀 검증 재개
+
+기존 구현은 보존하고 테스트만 보강했다. 입력 288개 조합의 정확한 23자/실제 파일 7열,
+STA await 중 실제 수명 객체의 탭 왕복·세대·renderer 무효화, dispatcher 종료 뒤 worker
+요청 차단을 검사한다. 기존 revision 병합·중복/역순·5회/5초 예산 테스트와 CA1707 수정된
+메서드 이름은 유지한다. 제품 코드와 renderer package manifest/lock 변경은 없다.
+
+SDK 10.0.301 조회·선택과 npm ci/정렬/diff는 성공했으나 renderer test/build는 이번
+esbuild spawn EPERM으로 실패했다. .NET restore/build는 하위 MSBuild 실패(exit 1),
+집중/전체 테스트는 완료 출력 미확인으로 **Blocked (environment)**다. 새 C# 컴파일/실행과
+전체 Debug 성공은 주장하지 않는다. 권한/worker 옵션 변경이나 다른 프로세스 종료는 없다.
+과거 610·620·630개 성공을 이번 근거로 사용하지 않는다. 실제 clipboard·IME·RDP·장기 실행은
+Not run (manual), 자발 종료 원인은 미확정이다. 구체 명령·최초 오류·진단 결과와 재실행
+범위는 [현재 검증 기록](../test-plan.md#입력레이아웃-회귀-재개-검증-2026-10-20)을 따른다.

@@ -517,3 +517,19 @@ PC를 잠갔다가 해제한 뒤 가끔 패널의 탭 바와 terminal viewport/�
 - **Not run (manual):** 실제 WTS/RDP 전환·100/125/150/200% 및 mixed-DPI·실제 WebView2
   scrollbar/foreground·활성 탭·shell PID·작업 디렉터리·입력·scrollback 인수는 미수행이다.
   RDP-MAN-01~07 및 MAN-056의 수동 상태와 이전 실행 이력은 보존한다.
+
+
+### 2026-10-20 후속 회귀 검증 재개
+
+기존 구현은 보존하고 테스트만 보강했다. 입력 288개 조합의 정확한 23자/실제 파일 7열,
+STA await 중 실제 수명 객체의 탭 왕복·세대·renderer 무효화, dispatcher 종료 뒤 worker
+요청 차단을 검사한다. 기존 revision 병합·중복/역순·5회/5초 예산 테스트와 CA1707 수정된
+메서드 이름은 유지한다. 제품 코드와 renderer package manifest/lock 변경은 없다.
+
+SDK 10.0.301 조회·선택과 npm ci/정렬/diff는 성공했으나 renderer test/build는 이번
+esbuild spawn EPERM으로 실패했다. .NET restore/build는 하위 MSBuild 실패(exit 1),
+집중/전체 테스트는 완료 출력 미확인으로 **Blocked (environment)**다. 새 C# 컴파일/실행과
+전체 Debug 성공은 주장하지 않는다. 권한/worker 옵션 변경이나 다른 프로세스 종료는 없다.
+과거 610·620·630개 성공을 이번 근거로 사용하지 않는다. 실제 clipboard·IME·RDP·장기 실행은
+Not run (manual), 자발 종료 원인은 미확정이다. 구체 명령·최초 오류·진단 결과와 재실행
+범위는 [현재 검증 기록](../test-plan.md#입력레이아웃-회귀-재개-검증-2026-10-20)을 따른다.

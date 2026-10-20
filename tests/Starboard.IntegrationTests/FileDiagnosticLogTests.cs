@@ -50,7 +50,7 @@ public sealed class FileDiagnosticLogTests
             Assert.IsTrue(parse(json, out var operation));
             var expectedOperation = $"Input.R{payload["route"]}.S{payload["selection"]}.F{payload["focus"]}.M{payload["modal"]}.U{payload["suppressed"]}.C{payload["capture"]}";
             Assert.AreEqual(expectedOperation, operation);
-            Assert.IsTrue(operation.Length <= 64);
+            Assert.AreEqual(23, operation.Length);
             Assert.IsTrue(expected.Add(expectedOperation));
             log.Write(DiagnosticLevel.Information, "Terminal", operation, privateContent, exception);
 
@@ -70,6 +70,11 @@ public sealed class FileDiagnosticLogTests
         log.Write(DiagnosticLevel.Warning, "Terminal", "unsafe/path", privateContent, exception);
         var lines = File.ReadAllLines(fixture.LogPath);
         Assert.HasCount(290, lines);
+        foreach (var line in lines)
+        {
+            Assert.HasCount(7, line.Split('\t'), "Only the fixed metadata columns may be persisted.");
+        }
+
         CollectionAssert.AreEquivalent(expected.ToArray(), lines.Take(288).Select(line => line.Split('\t')[3]).ToArray());
         Assert.AreEqual("redacted", lines[288].Split('\t')[3]);
         Assert.AreEqual("redacted", lines[289].Split('\t')[3]);

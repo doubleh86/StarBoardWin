@@ -137,6 +137,7 @@ public sealed class RendererLayoutRequestDispatcherTests
             requests.Request(1);
             dispatcher.InvokeShutdown();
             requests.Request(2);
+            Task.Run(() => Parallel.For(3, 103, revision => requests.Request(revision))).GetAwaiter().GetResult();
             Assert.AreEqual(0, calls);
             return Task.CompletedTask;
         });

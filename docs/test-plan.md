@@ -1379,3 +1379,53 @@ solution restore와 Debug build(경고/오류 0)는 단일 작업자 옵션에�
 전체 suite의 sandbox esbuild `spawn EPERM` 1건은 승인된 제한 밖 재실행에서 통과했다.
 WorkingTree 정렬·diff 검사 통과. 상세 실패/재시도 기록은 workspace-convenience 계획의
 2026-10-20 완료 인수를 따른다.
+
+
+## 입력·레이아웃 회귀 재개 검증 (2026-10-20)
+
+Run `20261019-062951-413652-6e34e988`, Task `input-layout-regression-completion`의
+현재 실행 기록이다. 과거 610·620·630개 통과는 이번 변경의 성공 근거가 아니다.
+기존 기능과 package.json/package-lock.json은 수정하지 않았다.
+
+- `FileDiagnosticLogTests`의 기존 parser→실제 임시 파일 288개 조합에 정확한 23자와
+  고정 7개 metadata 열 검사를 추가했다. 원문·예외 메시지·실제 throw의 stack 배제와
+  65자/unsafe metadata redaction 검사는 보존했다. 이번 테스트 실행 통과는 아직 미확인이다.
+- 실제 STA Dispatcher await 테스트는 boolean 대신 `ClipboardRequestLifetime.CanApply`를
+  사용한다. 정상 대조군, 탭 왕복(epoch), renderer generation, renderer instance 변경에서
+  재시도 횟수와 Stale/null 반환을 검사한다. OS clipboard 대신 모의 adapter를 사용한다.
+- 기존 최신 revision 병합·중복/역순 무시·5회/5초 예산 유지·취소 watermark 회귀를 보존했다.
+  dispatcher 종료 뒤 worker 100개 요청도 callback을 발생시키지 않는 검사를 보강했다.
+  layout 테스트 메서드에는 underscore가 없는 이름을 사용 중이다(CA1707 회피 수정 존재).
+  실제 최신 컴파일/analyzer/test 통과를 확인한 것은 아니다.
+
+| 이번 명령 | 관찰 결과 |
+|---|---|
+| 지정 dotnet.exe `--info` | exit 0, global.json의 SDK 10.0.301 선택 성공 |
+| renderer `npm ci` | exit 0, 취약점 0; esbuild postinstall 차단 안내, 승인/설정 변경 없음 |
+| renderer `npm test` | exit 1, 3 통과/4 파일 실패; 최초 실패는 rendererHarness.mjs:9의 esbuild `spawn EPERM` |
+| renderer `npm run build` | exit 1, build.mjs:10의 esbuild `spawn EPERM`; 지워진 dist는 실행 전 내용/줄바꿈으로 복구 |
+| Terminal Debug test | restore 최신 출력 뒤 실행 결과/정상 종료 미확인 |
+| Architecture Debug test | restore 확인 출력 뒤 실행 결과/정상 종료 미확인 |
+| solution restore | exit 1, 기본 출력 없음 |
+| solution Debug build `--no-restore` | exit 1, SharedKernel 출력 뒤 경고 0/오류 0; 컴파일 성공으로 해석하지 않음 |
+| solution Debug test `--no-build --no-restore` | 호출했으나 출력/정상 종료 미확인; 선행 restore/build 실패 및 이전 binary 가능성으로 이번 변경 검증 근거로 사용할 수 없음 |
+| Integration Debug `--filter FullyQualifiedName~FileDiagnosticLogTests` | restore 확인 출력 뒤 실행 결과/정상 종료 미확인 |
+| C# WorkingTree 정렬 / `git diff --check` | 통과 |
+
+18:35 KST 기준 집중/전체 테스트는 완료 결과 없이 대기 중이다. 세션을 성공이나 테스트
+실패로 집계하지 않는다. 지정 executable 외 SDK, worker pool/병렬 옵션 변경, 권한·ACL·속성
+변경, 다른 프로세스 종료, 테스트 제외 또는 analyzer 완화는 사용하지 않았다.
+
+실패 조사로 동일 SDK에 `--verbosity diagnostic`만 추가했다. restore는
+`_FilterRestoreGraphProjectInputItems`의 MSBuild 작업 실패, build는 Terminal의
+`_GetProjectReferenceTargetFrameworkProperties` 하위 MSBuild 실패로 끝나며 요약은 모두
+경고/오류 0이다. 구체 실패 원인과 잠금/동시 build 여부는 미확정이다. DefaultSdkResolver의
+MSB4276 뒤 Workload resolver fallback 성공도 보여 이를 SDK 선택 실패로 단정하지 않는다.
+진단 로그는 `%TEMP%/starboard-input-layout-{restore,build}-20261020.txt`에 남겼다.
+과거 접근 거부나 worker 오류를 이번 원인으로 재사용하지 않는다.
+
+**Blocked (environment):** 최신 테스트 컴파일·실행 및 전체 Debug 검증 완료. 실행 환경이
+정상화되면 지정 명령을 동일 SDK로 재실행해야 한다. **Not run (manual):** 실제 clipboard,
+한글 IME, RDP/mixed DPI, Windows/WebView2 장기 실행(CLIP-MAN-01~05, RDP-MAN-01~07).
+실제 자발 종료 throw 지점과 사용자 증상의 공통 원인은 미확정이다. 기능을 재구현하거나
+수동 검증을 완료로 처리하지 않았다. commit/merge/push/deploy는 수행하지 않았다.

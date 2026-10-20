@@ -149,3 +149,10 @@ solution restore는 18:01 exit 1이며 원인은 미확정이다. 생성물 쓰�
 단계·개수 진단, 임시 settings/workspace/backup 및 가짜 session 기반 통합 회귀를 추가했다.
 실제 재부팅·새 로그인·수동 재실행은 각각 Not run이며 실제 실패 원인은 미확정이다.
 상세 검증 결과는 [시작 복원 회귀 방어](2026-09-09-workspace-convenience.md#시작-복원-회귀-방어-2026-10-20)를 따른다.
+
+
+2026-10-20 `input-layout-regression-completion`: 기존 입력/레이아웃 구현을 보존하고
+실제 파일 23자/7열, STA 수명 무효화와 종료 뒤 worker 요청 회귀를 보강했다.
+검증 완료 상태는 **Blocked (environment)**이며 SDK 선택 성공과 이후 MSBuild 실패를
+구분한다. 과거 suite 성공은 이번 증거가 아니다.
+[현재 검증 기록](../test-plan.md#입력레이아웃-회귀-재개-검증-2026-10-20)을 따른다.
