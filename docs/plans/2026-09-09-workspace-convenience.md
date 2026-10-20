@@ -638,3 +638,23 @@ schema 1을 유지한다. 실제 Ubuntu·재부팅·새 로그인은 미수행�
 - 실제 Ubuntu·재부팅·로그인은 Not run (manual). commit/merge/push/배포는 수행하지 않았다.
 - WorkingTree C# 정렬 검사와 `git diff --check` 통과. 시작 worktree는 clean이었으며
   변경 9개 파일은 모두 지정 경로다. 금지 경로 변경·미추적 파일은 없다.
+
+#### 자동 교정 1차 재검증 (2026-10-20)
+
+- 교정 계획: 기존 `2c5abd3` 구현과 회귀를 보존하고 실패 테스트의 호출 경로를 대조한 뒤
+  지정 SDK/argv 전체를 재검증한다. 복원 경계 결함이 확인될 때만 허용된 Domain/Application을
+  수정하며 schema·validator·테스트 조건·timeout은 유지한다.
+- 조사 결과: 실패한 GUI host의 `tabs` 시나리오는 workspace configuration 없이
+  `StartAsync(shell, ...)`와 `AddAsync`를 사용한다. 이번에 변경한 `AddRestoredTab`과
+  `TerminalTabRegistry.AddRestored`를 실행하지 않는다. 프로필 보존 소스의 추가 수정 근거는 없다.
+- 지정 SDK/argv로 Terminal 426개, solution restore와 Debug build(경고·오류 0)가 통과했다.
+  전체 suite는 681개 중 679 통과/2 실패다. Architecture 16, Terminal 426,
+  DesktopIntegration 120, Preferences 37, Integration 80개가 통과했다.
+- 실패: `GuiHostKeepsConPtyTabsIndependentThroughExitRestartAndClose`는 30초 뒤
+  `TaskCanceledException`(stage `starting`), PowerShell bootstrap의 `powershell-bootstrap-pwsh`는
+  16초 뒤 같은 예외(stage `powershell-first-input-written`)로 실패했다. 원인은 미확정이다.
+  전체 검증은 계속 미완료이며, 범위 밖 GUI host/ConPTY 수정으로 우회하지 않았다.
+- 제한 안 restore는 출력 없이 exit 1, Terminal test는 restore 뒤 진행이 멈췄다.
+  위 통과 및 전체 실패 결과는 제한 밖 동일 지정 명령의 결과이며 검증 옵션 변경은 없다.
+- 제품 코드·테스트 변경 없음. 이번 교정은 계획·목록·test-plan의 검증 기록만 갱신한다.
+  실제 Ubuntu·로그인·재부팅은 Not run (manual)이며 commit/merge/push/배포는 수행하지 않는다.

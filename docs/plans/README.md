@@ -14,7 +14,11 @@ Domain `AddRestored`의 프로필 보존 경계를 수정했다. registry·snaps
 validator·schema·global.json은 변경하지 않는다.
 프로필 계약은 구현 완료, 전체 자동 검증은 미완료다. Terminal 426개·Architecture 16개와
 지정 restore/Debug build는 통과했으나 전체 681개 중 기존 ConPTY GUI 다중 탭 테스트 1건이
-timeout으로 실패했고 단독 재실행도 실패했다. [인수 결과](2026-09-09-workspace-convenience.md#프로필-계약-인수-결과)를 따른다.
+timeout으로 실패했고 단독 재실행도 실패했다. 자동 교정 1차에서도 제품 소스 변경 없이
+Terminal 426개·restore·Debug build는 통과했으나 전체 679/681 통과로 ConPTY 다중 탭 및
+PowerShell bootstrap 취소 2건이 남는다. 원인은 미확정이다.
+[인수 결과](2026-09-09-workspace-convenience.md#프로필-계약-인수-결과)와
+[재검증](2026-09-09-workspace-convenience.md#자동-교정-1차-재검증-2026-10-20)을 따른다.
 [현재 검증](../test-plan.md#mixed-profile-01-혼합-프로필-작업공간-저장복원-검증)을 따른다.
 아래 과거 통과 기록은 이번 실행 결과와 구분한다.
 

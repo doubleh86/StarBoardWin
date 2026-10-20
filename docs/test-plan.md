@@ -20,6 +20,13 @@
 - WorkingTree C# 정렬 검사와 `git diff --check` 통과. 변경은 지정된 9개 파일에 한정된다.
 - 실제 Ubuntu 실행·재부팅·로그인 복원: Not run (manual). 이 계약 보완은 WSL 복원 실행기
   연결 완료를 뜻하지 않는다. 후속 혼합 복원에서 기존 MAN-041b를 수행한다.
+- 자동 교정 1차: 제품 소스를 보존한 채 지정 SDK/argv Terminal 426개·restore·Debug build
+  (경고·오류 0) 통과. 전체 681개 중 679 통과/2 실패(Integration 80/82)다.
+  기존 ConPTY 다중 탭 테스트는 stage `starting`에서 30초 뒤, PowerShell bootstrap의
+  `powershell-bootstrap-pwsh`는 stage `powershell-first-input-written`에서 16초 뒤
+  `TaskCanceledException`으로 실패했다. 두 경로 모두 복원 구성을 사용하지 않는다.
+  원인은 미확정이며 전체 검증은 미완료다. 테스트/timeout/검증 옵션을 변경하지 않았다.
+  상세는 [재검증 기록](plans/2026-09-09-workspace-convenience.md#자동-교정-1차-재검증-2026-10-20)을 따른다.
 
 ## 목적
 
