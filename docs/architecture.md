@@ -959,3 +959,20 @@ portable update는 파일을 제자리 교체하거나 시작 프로그램 경�
 - [xterm.js 6.0.0](https://github.com/xtermjs/xterm.js/releases/tag/6.0.0)
 - [xterm.js search addon 0.16.0](https://www.npmjs.com/package/@xterm/addon-search/v/0.16.0)
 - [xterm.js web-links addon 0.12.0](https://www.npmjs.com/package/@xterm/addon-web-links/v/0.12.0)
+
+### 시작 복원 관측 경계 (2026-10-20)
+
+Windows 셸 시작은 `TerminalWorkspaceStartup`을 통해 renderer 준비(저장한 탭 초기화
+포함) → workspace load → 순차 session 복원 → persistence 복원 완료 순서를 유지한다.
+View는 같은 진입점을 사용한다. host는 로드한 설정의 복원 옵션을 그대로 전달한다.
+기존 schema와 저장 정책은 변경하지 않았다. 실제 로그인 복원 실패의 원인은 미확정이다.
+
+로컬 진단 operation에는 `Startup.RestoreEnabled/RestoreDisabled`,
+`Startup.RendererWaiting/RendererReady`, `Startup.Load.<고정 상태>.N<개수>`,
+`Startup.Restored.N<개수>.F<실패 수>`, `Startup.RendererSynced.N<개수>`만 추가한다.
+메시지는 비어 있으며 탭 이름·경로·명령·출력·환경값을 넣지 않는다.
+기존 FileDiagnosticLog는 메시지/stack 대신 제한된 메타데이터만 기록한다.
+RendererSynced는 host의 sync-complete 전송 경계이며 화면 표시 완료 ACK가 아니다.
+
+통합 테스트는 임시 settings/workspace/backup/log와 가짜 session으로 production 시작
+경계와 renderer snapshot 직렬화를 검증한다. WebView2 화면·실제 로그인 인수를 대신하지 않는다.

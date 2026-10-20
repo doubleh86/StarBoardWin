@@ -1356,3 +1356,26 @@ DesktopIntegration 120 / Preferences 37 / Integration 79), C# WorkingTree 정렬
 - **Task 전체는 미완료:** 녹색 suite는 위 저장 순서·보존 회귀의 근거다. 혼합 profile을
   정상 저장하고 다시 WSL로 실행하는 인수 테스트의 성공을 뜻하지 않는다. 허용 범위 밖
   registry의 profile 보존 의존성 해결이 필요하며, scope 확대나 validator 완화로 우회하지 않았다.
+
+### 시작 복원 회귀 방어 (2026-10-20)
+
+`WorkspaceStartupIntegrationTests`는 임시 파일과 가짜 session으로 설정 로드→host 옵션→
+renderer 준비 지연→workspace load→탭 복원→renderer sync protocol을 검증한다.
+정상 Windows 셸 3탭과 중간 셸 실패, 복원 옵션 꺼짐을 각각 실행한다.
+탭 수·이름·순서·선택·시작 폴더 및 실패 격리, 종료 후 primary/backup 원문 보존,
+내용 없는 단계·개수 진단을 검사한다. 실제 사용자 파일이나 실행 중인 셸에 접근하지 않는다.
+화면 동기화 검증은 snapshot/protocol 자동 검증이며 실제 WebView2 표시는 포함하지 않는다.
+
+| 실제 시나리오 | 이번 결과 | 재현 방법 |
+| --- | --- | --- |
+| 재부팅 | Not run (manual) | 별도 테스트 계정에서 Windows 셸 3탭·이름·순서·선택·서로 다른 폴더를 저장하고 재부팅 후 비교 |
+| 새 로그인 | Not run (manual) | 같은 격리 계정에서 로그아웃/로그인 후 자동 시작과 sync 진단·화면을 비교 |
+| 수동 재실행 | Not run (manual) | 격리 계정 앱을 정상 종료 후 다시 실행하고 탭별 실패·정상 탭·저장 파일 보존을 비교 |
+
+WSL 저장 정책과 별개로 Windows 셸 경로를 검사했으며 실제 로그인 실패 원인은 미확정이다.
+
+이번 자동 검증 결과: 집중 Integration 82개, 전체 .NET 672개 통과.
+solution restore와 Debug build(경고/오류 0)는 단일 작업자 옵션에서 통과했다.
+전체 suite의 sandbox esbuild `spawn EPERM` 1건은 승인된 제한 밖 재실행에서 통과했다.
+WorkingTree 정렬·diff 검사 통과. 상세 실패/재시도 기록은 workspace-convenience 계획의
+2026-10-20 완료 인수를 따른다.

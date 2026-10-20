@@ -117,8 +117,6 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
         try
         {
-            await InitializeRendererAsync(cancellationToken);
-            await InitializeSavedTabsAsync(cancellationToken);
             await StartWorkspaceAsync(terminalOptions.RestoreWorkspaceOnLaunch, cancellationToken);
             ShowTerminal();
         }
@@ -415,14 +413,13 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     {
         var shell = defaultShell
             ?? throw new InvalidOperationException("The terminal shell has not been configured.");
-        var loadResult = await workspacePersistence.InitializeAsync(restoreEnabled, cancellationToken);
-        var configuration = loadResult.Status is TerminalWorkspaceLoadStatus.Loaded or
-                                                 TerminalWorkspaceLoadStatus.RecoveredFromBackup
-            ? loadResult.Configuration
-            : null;
-        await sessionCoordinator.StartAsync(shell, defaultShellKind, configuration, ShellResolver.Resolve,
-                                            columns, rows, cancellationToken);
-        workspacePersistence.CompleteRestore();
+        var startup = new TerminalWorkspaceStartup(workspacePersistence, sessionCoordinator, diagnosticLog);
+        await startup.StartAsync(restoreEnabled, shell, defaultShellKind, ShellResolver.Resolve,
+                                 async token =>
+                                 {
+                                     await InitializeRendererAsync(token);
+                                     await InitializeSavedTabsAsync(token);
+                                 }, columns, rows, cancellationToken);
     }
 
     private async Task InitializeSavedTabsAsync(CancellationToken cancellationToken)
@@ -1853,6 +1850,8 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         if (rendererFailed == false)
         {
             PostRendererMessage(RendererProtocol.SerializeWorkspaceSyncMessage("workspace-sync-complete", rendererWorkspace));
+            diagnosticLog.Write(DiagnosticLevel.Information, "Terminal",
+                                $"Startup.RendererSynced.N{snapshot.Tabs.Count}", "");
             rendererSessionIds.Clear();
             rendererSessionIds.UnionWith(currentSessionIds);
             SyncNewOutputState(sessionCoordinator.NewOutputState);

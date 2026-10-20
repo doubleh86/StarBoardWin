@@ -566,3 +566,36 @@ schema 1을 유지한다. 실제 Ubuntu·재부팅·새 로그인은 미수행�
   필요하므로 변경 경로 인수 조건 전체를 통과로 기록하지 않는다. 현재 build/test는 이 기존
   변경을 포함한 worktree 기준이다. 분리 후 통합 검증은 오케스트레이터가 수행해야 한다.
   혼합 복원·즐겨찾기 WSL 연결과 실제 Windows 재부팅/로그인·Ubuntu 인수는 미완료다.
+
+### 시작 복원 회귀 방어 (2026-10-20)
+
+- 상태: 구현·자동 검증 완료, 실제 로그인 인수 대기. Windows 셸 복원을 WSL 저장 거부와 분리해 조사했다.
+- 범위: 기존 시작 순서를 공용 internal 시작 경계로 추출하고 host 옵션, renderer 준비,
+  작업공간 로드·탭 복원·화면 동기화의 상태와 개수만 진단한다. 스키마 계약은 변경하지 않는다.
+- 영향: Composition, Terminal Application/Presentation, IntegrationTests와 관련 문서.
+- 위험: 지연 중 부분 구성 저장, 탭 실패 전파, 진단 내용 노출. 격리된 임시 파일과 가짜
+  session만 사용하며 사용자 작업공간·실행 중인 셸에는 접근하지 않는다.
+- 검증: 설정 파일→host 옵션→지연 renderer→실제 파일 store→coordinator→renderer protocol,
+  탭 실패와 primary/backup 보존, 집중 통합 및 지정 solution/정렬/diff 검사.
+- 실제 재부팅·새 로그인·수동 재실행은 각각 Not run이며 자동 테스트로 대체하지 않는다.
+
+#### 완료 인수 (2026-10-20)
+
+- 실제 View가 사용하는 `TerminalWorkspaceStartup`을 추출해 기존 순서를 보존했다.
+  확인된 복원 불일치는 재현되지 않아 schema·복원 정책·WSL 저장 동작은 변경하지 않았다.
+- `WorkspaceStartupIntegrationTests` 3개 시나리오를 포함한 집중 Integration 82개 통과.
+  임시 설정과 실제 file store, 가짜 shell, renderer protocol snapshot을 연결했다.
+  내부 접근은 IntegrationTests friend assembly로 제한하며 public 계약을 추가하지 않았다.
+- 지정 SDK로 solution restore, Debug build(경고/오류 0), 전체 672개 통과:
+  Architecture 16, Terminal 417, DesktopIntegration 120, Preferences 37, Integration 82.
+- 지정 기본 test는 restore 또는 출력 없이 대기해 성공 근거로 사용하지 않았다.
+  지정 기본 restore는 exit 1(출력 없음), 기본 build는 exit 1(경고/오류 0)이었다.
+  기존 계획의 SDK 하위 작업 실패와 같은 현상이나 이번 최초 원인은 확정하지 못했다.
+  restore/build/집중 test/전체 test는 `--disable-build-servers -m:1`로 완료했다.
+- sandbox 전체 test는 기존 renderer bridge의 esbuild `spawn EPERM` 1건으로 실패했다
+  (671 통과/1 실패). 코드 변경 없이 승인된 제한 밖 동일 전체 명령에서 672개 통과했다.
+- WorkingTree C# 정렬 검사와 `git diff --check` 통과. 변경 9개 파일은 모두 지정 경로다.
+  시작 worktree는 clean이었으며 사용자 데이터·실행 중인 셸·외부 checkout을 수정하지 않았다.
+- 실제 재부팅: Not run. 새 로그인: Not run. 수동 앱 재실행: Not run.
+  실제 화면/로그인 실패 원인은 미확정이며 자동 protocol 검증을 화면 인수로 취급하지 않는다.
+  commit/merge/push/배포는 수행하지 않았다.

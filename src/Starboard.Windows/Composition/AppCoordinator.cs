@@ -78,6 +78,8 @@ internal sealed class AppCoordinator : IDisposable
         desktopIntegrationModule.Attach(windowHandle, new PanelOptions(settings.CollapsedHeightDip));
 
         var terminalOptions = SettingsApplicationService.ToTerminalOptions(settings);
+        diagnosticLog.Write(DiagnosticLevel.Information, "Host",
+                            terminalOptions.RestoreWorkspaceOnLaunch ? "Startup.RestoreEnabled" : "Startup.RestoreDisabled", "");
         mainWindow.SetTerminalContent(terminalModule.Surface);
         await terminalModule.StartAsync(terminalOptions, cancellationToken);
 

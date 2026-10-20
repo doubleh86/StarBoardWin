@@ -144,3 +144,8 @@ solution restore는 18:01 exit 1이며 원인은 미확정이다. 생성물 쓰�
 - 폐기된 초안은 삭제하지 말고 `docs/plans/archive/`로 옮기고 대체 계획을
   링크한다.
 - secret, local path credential, 개인 설정은 계획에 기록하지 않는다.
+
+2026-10-20 `workspace-startup-restore-regression`: 공용 internal 시작 경계와 내용 없는
+단계·개수 진단, 임시 settings/workspace/backup 및 가짜 session 기반 통합 회귀를 추가했다.
+실제 재부팅·새 로그인·수동 재실행은 각각 Not run이며 실제 실패 원인은 미확정이다.
+상세 검증 결과는 [시작 복원 회귀 방어](2026-09-09-workspace-convenience.md#시작-복원-회귀-방어-2026-10-20)를 따른다.
