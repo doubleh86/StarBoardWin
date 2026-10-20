@@ -58,8 +58,11 @@ Starboard의 작업표시줄 위 경량 terminal 성격을 유지하면서 다�
   조회 timeout은 PowerShell/CMD 사용을 방해하지 않는다.
 - WSL 탭도 ConPTY가 소유한 하나의 지속 `wsl.exe` process로 다룬다. 배포판 내부 shell을 명령마다
   다시 실행하지 않으며 앱이 Linux 배포판 설치나 업데이트를 시도하지 않는다.
-- 작업공간 복원과 저장한 탭 schema에 WSL profile을 영속화하는 것은 첫 범위에서 제외한다.
-  종료 후에는 WSL 탭이 기존 builtin 기본 탭으로 대체될 수 있음을 설정과 복원 안내에 명시한다.
+- 첫 범위에서는 작업공간과 저장한 탭 schema의 WSL 영속화를 제외했다.
+  후속 `workspace-profile-schema`는 schema 1·2 저장 계약만 완료했다. 혼합 저장·복원 연결은
+  `workspace-mixed-profile-restore`에서 진행 중이며, 2026-10-20 현재 허용 범위 밖 registry의
+  복원 profile 보존 의존성 때문에 차단이다. 자동 저장은 schema 1을 유지한다.
+- 저장한 탭 즐겨찾기의 WSL 지원은 계속 제외한다. 실제 Ubuntu·재부팅·새 로그인은 미검증이다.
 
 ## 기능 B — 축소 패널 높이 직접 조절
 

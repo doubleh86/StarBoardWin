@@ -27,6 +27,7 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
     private bool hasInspectedStoredSchema;
     private bool isRestoreInProgress;
     private bool isFutureSchemaSuspended;
+    private bool hasPendingChanges;
     private bool isDisposing;
     private bool isDisposed;
 
@@ -268,14 +269,9 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
             debounceCancellation?.Dispose();
             debounceCancellation = null;
             pending = pendingSave;
-            configuration = isEnabled == true && isFutureSchemaSuspended == false
+            configuration = isEnabled == true && isFutureSchemaSuspended == false && hasPendingChanges == true
                 ? latestConfiguration
                 : null;
-        }
-
-        if (configuration is null && isEnabled == true && isFutureSchemaSuspended == false)
-        {
-            _ = TryCreateConfiguration(sessionCoordinator.Snapshot, out configuration);
         }
 
         var shutdownTask = FlushForShutdownAsync(pending, configuration);
@@ -334,6 +330,8 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
                     isFutureSchemaSuspended == false && isDisposing == false && isDisposed == false)
                 {
                     latestConfiguration = null;
+                    hasPendingChanges = false;
+                    debounceCancellation?.Cancel();
                     publishFailure = true;
                 }
             }
@@ -362,6 +360,7 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
             }
 
             latestConfiguration = configuration;
+            hasPendingChanges = true;
             debounceCancellation?.Cancel();
             debounceCancellation?.Dispose();
             saveCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCancellation.Token);
@@ -517,18 +516,29 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
 
     private static TerminalWorkspaceConfiguration CreateConfiguration(TerminalWorkspaceSnapshot snapshot)
     {
-        if (snapshot.Tabs.Any(tab => tab.ShellKind is null) == true)
+        var tabs = new List<TerminalWorkspaceTabConfiguration>(snapshot.Tabs.Count);
+        TerminalTabConfigurationId? activeConfigurationId = null;
+        foreach (var tab in snapshot.Tabs)
         {
-            throw new NotSupportedException("The terminal workspace contains a custom shell executable.");
+            var launchProfileId = tab.LaunchProfile?.ProfileId;
+            if (launchProfileId is null && tab.ShellKind is { } shellKind)
+            {
+                launchProfileId = TerminalLaunchProfileId.FromShell(shellKind);
+            }
+
+            if (launchProfileId is null)
+            {
+                throw new NotSupportedException("The terminal tab launch profile cannot be persisted.");
+            }
+
+            tabs.Add(new TerminalWorkspaceTabConfiguration(tab.ConfigurationId, tab.Name, tabs.Count,
+                                                           tab.StartingDirectory, launchProfileId));
+            if (tab.SessionId == snapshot.ActiveSessionId)
+            {
+                activeConfigurationId = tab.ConfigurationId;
+            }
         }
 
-         var tabs = snapshot.Tabs
-             .Select(tab => new TerminalWorkspaceTabConfiguration(tab.ConfigurationId, tab.Name, tab.Order,
-                                                                   tab.StartingDirectory, tab.ShellKind!.Value))
-             .ToArray();
-        var activeConfigurationId = snapshot.ActiveSessionId is { } activeSessionId
-            ? snapshot.Tabs.FirstOrDefault(tab => tab.SessionId == activeSessionId)?.ConfigurationId
-            : null;
         var configuration = new TerminalWorkspaceConfiguration(TerminalWorkspaceConfigurationValidator.CurrentSchemaVersion,
                                                                tabs, activeConfigurationId);
         TerminalWorkspaceConfigurationValidator.Validate(configuration);

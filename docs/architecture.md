@@ -414,6 +414,13 @@ schema 1은 shellKind만, schema 2는 launchProfileId만 직렬화하며 잘못�
 WSL의 계약상 ShellKind는 기존 호출 호환용 Automatic 값이며 실행 대상을 뜻하지 않는다.
 schema 2의 실제 실행 대상은 LaunchProfileId이고, 설치 여부는 후속 실행 시 discovery로 확인해야 한다.
 
+snapshot의 탭 열거 순서로 0부터 연속된 저장 순서를 만든다. 미지원 프로필이 하나라도 있으면
+전체 snapshot 저장을 거부하고 대기 중 저장도 취소한다. 초기 복원 중에는 저장을 억제하며,
+변경 없이 종료하면 로드한 파일을 다시 저장해 정상 백업을 교체하지 않는다.
+혼합 복원 연결은 현재 허용 범위 밖 `Domain/TerminalTabRegistry.cs`의 `AddRestored`가
+WSL profile을 내장 셸로 바꾸는 의존성 때문에 차단이다. 이 경계를 수정하거나 우회하지 않았고
+validator와 자동 저장 schema 1을 유지했다. 저장한 탭 즐겨찾기의 WSL 범위도 그대로다.
+
 workspace 저장은 64 KiB 상한과 strict validation을 거친 뒤 같은 directory의 flush된
 `.tmp` file을 `File.Replace`(최초 저장은 move)로 교체한다. 유효한 primary만 `.bak`으로
 승격한다. primary가 손상되면 valid backup으로 복구하고, 미래 schema가 발견되면 primary와

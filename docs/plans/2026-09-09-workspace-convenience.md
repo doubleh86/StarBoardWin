@@ -490,6 +490,24 @@ gate 통과 후 공통 계약 파일은 동결한다. 변경이 필요하면 wor
   프로필 실패와 정상 파일 보존도 포함한다. 실제 Windows 재부팅/로그인 자동 실행 및
   설치된 Ubuntu의 새 세션 인수는 Not run (manual)이며 MAN-041b로 추적한다.
 
+#### 2026-10-20 재개 범위와 차단
+
+2026-10-20 재개: 사전 복구는 사용자 확인 결과를 수용했다. 기준 `16b65a78`의 실제 diff에는
+허용 파일만 있고 검증기 blob은 `011abe1ce18deeb33f62957a5ca7297302e38438`이다.
+snapshot 열거 순서 저장, 미지원 탭의 부분 저장 금지, 종료 flush/복원 억제 회귀와
+잘못된 테스트 API·정렬·완료 문구 수정을 수행했다. schema 1·2와 검증기는 수정하지 않았다.
+혼합 복원 연결은 **차단**이다. 허용 범위 밖 `Domain/TerminalTabRegistry.cs: AddRestored`가
+`LaunchProfileId`를 버리고 `ShellKind`로 내장 프로필을 생성한다. Application만에서 WSL을
+실행하도록 바꾸면 snapshot·복제·즐겨찾기에 잘못된 내장 프로필이 전달된다. 이 경계를 우회하는
+별도 상태 저장소를 추가하지 않으며, 오케스트레이터가 이 의존성을 해결하기 전에는 자동 저장
+schema 1을 유지한다. 실제 Ubuntu·재부팅·새 로그인은 미수행이다.
+
+현재 검증: Terminal 집중 417개(단일 작업자 재실행), Integration 집중 79개,
+지정 solution restore·Debug build(경고/오류 0)·전체 669개가 통과했다. WorkingTree 정렬과
+`git diff --check`도 통과했다. 로컬 범위 대조는 허용 8개 경로·미추적 없음·위반 없음이다.
+[상세 결과](../test-plan.md#mixed-profile-01-혼합-프로필-작업공간-저장복원-검증)의
+차단된 혼합 복원 인수와 오케스트레이터 최종 gate를 구현 완료로 취급하지 않는다.
+
 ### workspace-profile-schema 범위와 검증 (2026-10-19)
 
 - 진행 상태: 저장 스키마 준비·자동 검증 완료, Task 결과의 기존 Application 변경 분리는 오케스트레이터 대기. 실패한 시도의 계약·schema·validator·file store 변경을 기준

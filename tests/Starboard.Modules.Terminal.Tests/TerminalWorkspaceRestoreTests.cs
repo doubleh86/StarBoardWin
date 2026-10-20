@@ -548,6 +548,118 @@ public sealed class TerminalWorkspaceRestoreTests
         }
     }
 
+    [TestMethod]
+    public async Task SaveUsesSnapshotEnumerationForContiguousOrderAndSelection()
+    {
+        var store = new RecordingWorkspaceStore();
+        var factory = new RecordingSessionFactory();
+        await using var coordinator = new TerminalSessionCoordinator(factory, new NullDiagnosticLog());
+        var persistence = new TerminalWorkspacePersistence(store, coordinator, new NullDiagnosticLog(),
+                                                           TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(1));
+        _ = await persistence.InitializeAsync(true, CancellationToken.None);
+        var first = await coordinator.StartAsync(_testShell, 80, 24, CancellationToken.None);
+        var second = await coordinator.AddAsync(CancellationToken.None);
+        var third = await coordinator.AddAsync(CancellationToken.None);
+        Assert.IsTrue(coordinator.Rename(first.SessionId, "첫 탭"));
+        Assert.IsTrue(coordinator.Rename(second.SessionId, "둘째 탭"));
+        Assert.IsTrue(coordinator.Rename(third.SessionId, "셋째 탭"));
+        Assert.IsTrue(coordinator.MoveLeft(third.SessionId));
+        Assert.IsTrue(coordinator.MoveLeft(third.SessionId));
+        Assert.IsTrue(coordinator.Select(second.SessionId));
+
+        await persistence.DisposeAsync();
+
+        Assert.HasCount(1, store.SavedConfigurations);
+        var configuration = store.SavedConfigurations[0];
+        TerminalWorkspaceConfigurationValidator.Validate(configuration);
+        for (var index = 0; index < configuration.Tabs.Count; index++)
+        {
+            Assert.AreEqual(index, configuration.Tabs[index].Order);
+            Assert.AreEqual(coordinator.Snapshot.Tabs[index].ConfigurationId, configuration.Tabs[index].ConfigurationId);
+            Assert.AreEqual(coordinator.Snapshot.Tabs[index].Name, configuration.Tabs[index].Name);
+        }
+
+        Assert.AreEqual(third.ConfigurationId, configuration.Tabs[0].ConfigurationId);
+        Assert.AreEqual(second.ConfigurationId, configuration.ActiveTabConfigurationId);
+    }
+
+    [TestMethod]
+    public async Task UnsupportedProfileCancelsPendingDefaultSaveAndShutdownFlush()
+    {
+        var store = new RecordingWorkspaceStore();
+        var factory = new RecordingSessionFactory();
+        await using var coordinator = new TerminalSessionCoordinator(factory, new NullDiagnosticLog());
+        var persistence = new TerminalWorkspacePersistence(store, coordinator, new NullDiagnosticLog(),
+                                                           TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(1));
+        _ = await persistence.InitializeAsync(true, CancellationToken.None);
+        _ = await coordinator.StartAsync(_testShell, 80, 24, CancellationToken.None);
+        _ = await coordinator.AddAsync(CancellationToken.None);
+        var profile = TerminalLaunchProfile.CreateWsl("Ubuntu");
+        var request = new TerminalNewTabRequest(TerminalTabRequestId.CreateNew(),
+                                                coordinator.RendererWorkspace.Order[0], profile.ProfileId);
+        var result = await coordinator.LaunchProfileAsync(request, profile,
+                                                          _ => new ShellLaunchSpec("wsl.exe", [], "C:\\Work"),
+                                                          CancellationToken.None);
+        Assert.AreEqual(TerminalTabLaunchStatus.Started, result.Status);
+
+        // Until the registry can retain restored WSL metadata, schema 1 must reject the whole snapshot.
+        var save = await persistence.SetEnabledAsync(true, CancellationToken.None);
+        await persistence.DisposeAsync();
+
+        Assert.AreEqual(TerminalWorkspacePersistenceStatus.Failed, save.Status);
+        Assert.HasCount(3, coordinator.Snapshot.Tabs);
+        Assert.IsEmpty(store.SavedConfigurations);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task RestoreFailuresPreservePrimaryAndBackupThroughShutdown(bool failAll)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"Starboard restore preservation {Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var path = Path.Combine(directory, "workspace.json");
+            var store = new Starboard.Modules.Terminal.Infrastructure.FileTerminalWorkspaceStore(path);
+            var firstId = new TerminalTabConfigurationId(CreateGuid(1));
+            var secondId = new TerminalTabConfigurationId(CreateGuid(2));
+            var configuration = new TerminalWorkspaceConfiguration(1,
+                                                                   [
+                                                                       new(firstId, "첫 탭", 0, directory, TerminalShellKind.Pwsh),
+                                                                       new(secondId, "둘째 탭", 1, directory, TerminalShellKind.Cmd),
+                                                                   ], firstId);
+            await store.SaveAsync(configuration, CancellationToken.None);
+            await store.SaveAsync(configuration with { ActiveTabConfigurationId = secondId }, CancellationToken.None);
+            var primary = await File.ReadAllTextAsync(path);
+            var backup = await File.ReadAllTextAsync(path + ".bak");
+            var factory = new RecordingSessionFactory();
+            await using var coordinator = new TerminalSessionCoordinator(factory, new NullDiagnosticLog());
+            var persistence = new TerminalWorkspacePersistence(store, coordinator, new NullDiagnosticLog(),
+                                                               TimeSpan.FromMilliseconds(5), TimeSpan.FromSeconds(1));
+            var load = await persistence.InitializeAsync(true, CancellationToken.None);
+            _ = await coordinator.StartAsync(_testShell, TerminalShellKind.Automatic, load.Configuration,
+                                             kind => failAll == true || kind == TerminalShellKind.Cmd
+                                                 ? throw new FileNotFoundException("Simulated shell resolution failure.")
+                                                 : _testShell,
+                                             80, 24, CancellationToken.None);
+            await Task.Delay(30);
+            persistence.CompleteRestore();
+            await persistence.DisposeAsync();
+
+            Assert.HasCount(2, coordinator.Snapshot.Tabs);
+            Assert.AreEqual(failAll ? 2 : 1, coordinator.Snapshot.Tabs.Count(tab => tab.State == TerminalSessionState.Failed));
+            var currentPrimary = await File.ReadAllTextAsync(path);
+            var currentBackup = await File.ReadAllTextAsync(path + ".bak");
+            Assert.AreEqual(primary, currentPrimary);
+            Assert.AreEqual(backup, currentBackup);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private sealed class NullDiagnosticLog : IDiagnosticLog
     {
         public void Write(DiagnosticLevel level, string subsystem, string operation, string message,

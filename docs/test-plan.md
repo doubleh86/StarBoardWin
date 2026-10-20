@@ -1315,4 +1315,44 @@ DesktopIntegration 120 / Preferences 37 / Integration 79), C# WorkingTree 정렬
 기본 SDK 병렬 argv는 진행 대기 또는 상세 원인 없는 exit 1 뒤 `-m:1 -nr:false`로 통과했다.
 기존 renderer bridge의 sandbox esbuild EPERM 한 건은 승인된 제한 밖 Terminal/전체 suite에서
 재실행해 통과했다. 중간 호스트 fixture resource·종료 hook 오류와 정렬 실패도 수정 후 재검증했다.
+
 정확한 범위·시행착오·worker 옵션은 [호스트 인수 기록](plans/2026-09-29-unlock-panel-width-recovery.md#실제-호스트-연결-완료-인수-2026-10-15)을 따른다.
+
+
+## MIXED-PROFILE-01 혼합 프로필 작업공간 저장·복원 검증
+
+2026-10-20 재개. 사전 복구 완료는 사용자 확인 결과를 수용했다. 실제 구현과 검증 결과를
+아래에 기록하며, 과거 schema Task의 665개 통과를 이번 결과로 사용하지 않는다.
+
+| 항목 | 실제 방법 | 상태 |
+|---|---|---|
+| snapshot 열거 순서·이름·선택과 종료 flush | `SaveUsesSnapshotEnumerationForContiguousOrderAndSelection`, fake session/store | Passed (automated) |
+| 미지원 profile이 부분·기본 구성을 저장하지 않음 | `UnsupportedProfileCancelsPendingDefaultSaveAndShutdownFlush`, fake WSL session/store | Passed (automated) |
+| 초기 복원 억제, 일부/전체 셸 실패 시 primary와 서로 다른 backup 보존 | `RestoreFailuresPreservePrimaryAndBackupThroughShutdown`, 실제 임시 파일 + fake session | Passed (automated) |
+| Windows 2탭+Ubuntu 1탭 저장 후 같은 구성을 새 세션으로 복원 | registry `AddRestored`의 profile 보존이 필요하나 허용 범위 밖 | Blocked (scope) |
+| 삭제된 배포판·탐색 실패의 탭별 격리와 Linux 홈 | 위 혼합 복원 연결 뒤 fake discovery/runner로 확인 필요 | Blocked (scope) |
+| 실제 Ubuntu 실행, Windows 재부팅·새 로그인 | MAN-041b 절차: 정상 혼합 3탭과 실패 1탭 구성에서 이름·순서·선택·새 PID·파일 보존 관찰 | Not run (manual) |
+
+지정 실행 파일의 SDK 목록과 선택은 현재 모두 exit 0이며 10.0.301이다. `global.json`은
+변경하지 않았다. 최초 지정 Terminal test는 restore 성공 출력 뒤 대기해 종료했으며 통과로
+기록하지 않는다. 이번 실행 결과:
+
+- Terminal 집중: 지정 argv는 restore 출력 뒤 정체되어 해당 Task 프로세스만 종료했다.
+  `--disable-build-servers -m:1` 추가 재검증에서 417/417 통과했다. SDK 미설치나 컴파일 실패로
+  분류하지 않는다. 실패 시도에 남아 있던 맞지 않는 테스트 API·CA1707 이름과 잘못된
+  0탭/부분 저장 기대를 제거하고 실제 회귀 4건을 추가했다.
+- Integration 집중: 지정 argv에서 79/79 통과했다.
+- solution restore: 지정 argv exit 0. Debug build `--no-restore`: 지정 argv exit 0,
+  경고·오류 0개. 전체 `--no-build --no-restore`: 지정 argv exit 0, 669/669 통과
+  (Terminal 417 / DesktopIntegration 120 / Preferences 37 / Integration 79 / Architecture 16).
+- WorkingTree C# 정렬: 새 호출의 1칸 오차를 수정한 뒤 exit 0. `git diff --check`: exit 0.
+  .NET 성공 결과는 승인된 제한 밖 실행에서 확보했다.
+- 기준 `16b65a78e38ed60c366668faaa69c641500daac9`의 `git diff --name-only`와
+  `git ls-files --others --exclude-standard`를 실제 실행했다. 미추적 파일은 없고, 변경은
+  문서 6개 + Application persistence + Terminal tests의 허용 8개 경로뿐이다.
+  명시된 literal/prefix 경로 비교는 `violations=[]`로 통과했다. validator blob
+  `011abe1ce18deeb33f62957a5ca7297302e38438` 보존, `STATUS.txt` 없음과 `global.json`
+  무변경도 대조했다. 오케스트레이터 자체 최종 gate와 commit은 수행하지 않았다.
+- **Task 전체는 미완료:** 녹색 suite는 위 저장 순서·보존 회귀의 근거다. 혼합 profile을
+  정상 저장하고 다시 WSL로 실행하는 인수 테스트의 성공을 뜻하지 않는다. 허용 범위 밖
+  registry의 profile 보존 의존성 해결이 필요하며, scope 확대나 validator 완화로 우회하지 않았다.

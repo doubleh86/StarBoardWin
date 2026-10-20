@@ -5,6 +5,15 @@
 단계가 아니다. 작성 대상과 질문 기준은 [개발 작업 규칙](../development-workflow.md)을
 따른다.
 
+## 혼합 프로필 재개 상태 — 2026-10-20
+
+`workspace-mixed-profile-restore`는 미완료다. 사전 복구 확인 뒤 허용 범위 내 저장 순서·전체
+snapshot 거부·백업 보존 회귀를 보완했다. `Domain/TerminalTabRegistry.cs: AddRestored`가
+WSL 식별자를 내장 프로필로 바꾸지만 이 파일은 현재 허용 범위에 없어 혼합 복원 연결은
+차단이다. validator·global.json·기준·허용 범위는 변경하지 않았다.
+[현재 검증](../test-plan.md#mixed-profile-01-혼합-프로필-작업공간-저장복원-검증)을 따른다.
+아래 과거 통과 기록은 이번 실행 결과와 구분한다.
+
 ## 현재 작업 상태 — 2026-10-19
 
 2026-10-15 `terminal-clipboard-shortcut-regression` 입력 진단 후속은 **구현 보완·자동 검증 미완료**다.
