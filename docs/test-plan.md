@@ -1,5 +1,13 @@
 # Windows용 Starboard 테스트 계획
 
+## 배포 후 탭 복원 사용자 확인 (2026-10-21)
+
+`937ebfa` / `v0.2.2-20261021` 배포 뒤 사용자가 "우분투는 모르겠는데 탭 복원 잘 됐다"고
+확인했고, 같은 날 "우분투도 복구 잘 된다"고 추가 확인했다. 일반 탭과 Ubuntu/WSL 복원은
+모두 정상 (user-confirmed)이다. 탭별 세부 값·새 PID·Linux 시작 폴더·배포판 누락과
+재부팅/새 로그인/수동 재실행을 각각 측정한 전체 인수 결과는 아니다.
+MAN-041a와 MAN-041b에 사용자 부분 확인으로 반영하고 세부 인수는 남긴다.
+
 ## 혼합 프로필 연결 자동 검증 (2026-10-20)
 
 `WorkspaceMixedProfileIntegrationTests`는 실제 임시 파일 store와 가짜 WSL runner/session을
@@ -16,7 +24,8 @@
 | schema 1 읽기→schema 2 쓰기·정상 백업 유지, 미래 schema 발견 시 두 파일 보존 | `LegacySchemaMigratesToMixedSchemaAndFutureSchemaPreservesBothFiles` |
 | 명령·출력·환경·PID 비저장 | 실제 JSON 최상위/탭 필드 허용 목록 검사, 가짜 명령·출력 이후 동일한 최소 저장 형태 확인 |
 
-실제 Ubuntu 실행·WebView2 오류 화면·Windows 재부팅·새 로그인은 **Not run (manual)**이다.
+당시 실제 Ubuntu 실행·WebView2 오류 화면·Windows 재부팅·새 로그인은 **Not run (manual)**이었다.
+이후 일반 탭·Ubuntu 복원의 실사용 결과는 [2026-10-21 사용자 확인](#배포-후-탭-복원-사용자-확인-2026-10-21)을 따른다.
 MAN-041b에서 Windows 2+Ubuntu 1의 이름·순서·선택 변경 뒤 정상 종료/재실행·재부팅·로그인을
 각각 수행해 화면 구성·새 PID·WSL `pwd`(Linux 홈)와 정상 파일 보존을 확인한다. 격리된
 계정/구성에서 배포판 누락도 확인하고 다른 탭 복원이 계속되는지 관찰한다. 자동 테스트의
@@ -988,8 +997,8 @@ interactive terminal UI를 조작하지 않고, WSL discovery는 읽기 전용 �
 | MAN-039 | portable WebView2/terminal UI | 새 폴더에서 실제 WebView2 Runtime 초기화, local renderer와 interactive shell 확인 | Out of scope — portable Release 실행은 이번 수동 배포 검증 범위에서 제외; 기존 renderer/ConHost/pwsh 및 실패 격리 관찰 기록은 보존 |
 | MAN-040 | portable update/rollback | 기존 설정 유지, startup 경로 변경과 이전 폴더 복귀 확인 | Out of scope — 업데이트 및 rollback은 이번 수동 배포 검증 범위에서 제외; 기존 이전→현재→이전 smoke 기록은 보존 |
 | MAN-041 | workspace restore UI | 복원 opt-in 뒤 재시작에서 탭 이름·순서·선택·시작 폴더가 보존되고 각 tab이 새 PID인지 확인 | Blocked (agent manual) — 2026-09-10 최초 확인 때는 `workspace.json`/`.bak`이 없고 설정 UI 조작도 불가했다. 2026-10-14 현재 저장 파일은 있으나 실제 탭 화면·PID와 저장 구성을 독립적으로 대조하지 못했다. 재부팅 후 사용자 제보는 MAN-041a에 기록한다. |
-| MAN-041a | 재부팅·로그인 후 workspace 복원 | 복원 옵션을 켜고 서로 다른 이름/시작 폴더의 3탭을 저장한 뒤 실제 Windows 재부팅·로그인 자동 실행에서 탭 개수·이름·순서·선택·폴더와 새 PID를 확인한다. 첫 자동 실행과 그 뒤 수동 재실행을 구분하고, 실패 탭이 있어도 정상 구성을 보존하는지 확인한다. | Failed (user-reported) — 2026-10-14 사용자는 재부팅 뒤 탭 이름·개수가 초기화됐다고 확인했다. 에이전트의 첫 로그인 자동 실행·화면·복원 단계 관찰 및 수정 후 실환경 재검증은 Not run (manual). [후속 계획](plans/2026-09-09-workspace-convenience.md#후속--windows-재부팅-후-탭-구성-복원-실패-2026-10-14)을 따른다. |
-| MAN-041b | Windows 셸·WSL 혼합 구성 저장과 재부팅 복원 | Windows 2탭+Ubuntu 1탭에서 이름·순서·선택 변경을 저장한 뒤 재부팅/로그인 자동 실행과 수동 재실행을 각각 확인한다. Windows 시작 폴더와 WSL 배포판·Linux 홈 시작, 새 세션, 배포판 누락 시 다른 탭 계속 복원을 관찰한다. | Not run (manual, 수정 후) — 2026-10-19 사용자 제보와 당시 WSL 전체 저장 거부는 과거 실패 기록이다. 2026-10-20 Application 혼합 저장·복원을 연결했으며 실제 Ubuntu·재부팅·로그인 인수는 미수행이다. [현재 자동 검증](#혼합-프로필-연결-자동-검증-2026-10-20)을 따른다. |
+| MAN-041a | 재부팅·로그인 후 workspace 복원 | 복원 옵션을 켜고 서로 다른 이름/시작 폴더의 3탭을 저장한 뒤 실제 Windows 재부팅·로그인 자동 실행에서 탭 개수·이름·순서·선택·폴더와 새 PID를 확인한다. 첫 자동 실행과 그 뒤 수동 재실행을 구분하고, 실패 탭이 있어도 정상 구성을 보존하는지 확인한다. | Partial (user-confirmed, 2026-10-21) — 배포 뒤 일반 탭 복원 정상이라는 사용자 확인을 받았다. 2026-10-14 초기화 제보는 과거 실패 이력이다. 세부 값·새 PID와 각 시작 방식의 개별 인수는 미확인이다. [사용자 확인](#배포-후-탭-복원-사용자-확인-2026-10-21)을 따른다. |
+| MAN-041b | Windows 셸·WSL 혼합 구성 저장과 재부팅 복원 | Windows 2탭+Ubuntu 1탭에서 이름·순서·선택 변경을 저장한 뒤 재부팅/로그인 자동 실행과 수동 재실행을 각각 확인한다. Windows 시작 폴더와 WSL 배포판·Linux 홈 시작, 새 세션, 배포판 누락 시 다른 탭 계속 복원을 관찰한다. | Partial (user-confirmed, 2026-10-21) — 배포 뒤 Ubuntu/WSL 복원 정상이라는 사용자 확인을 받았다. 2026-10-19 제보와 당시 WSL 전체 저장 거부는 과거 실패 기록이다. 세부 값·새 PID·Linux 시작 폴더·배포판 누락과 각 시작 방식의 개별 인수는 미확인이다. [사용자 확인](#배포-후-탭-복원-사용자-확인-2026-10-21)을 따른다. |
 | MAN-042 | workspace IME and partial failure | 한글 IME 이름 편집, 없는/권한 없는 폴더 또는 shell 한 tab 실패가 다른 tab을 막지 않는지 확인 | Blocked — terminal UI 자동화 대상이 없어 한글 이름 편집 및 실패 tab을 만든 뒤 다른 tab의 계속 시작을 관찰할 수 없었음 |
 | MAN-043 | workspace opt-out | 옵션 해제 뒤 구성 파일 삭제와 다음 시작의 기본 tab 하나를 확인 | Blocked — 초기 workspace primary/backup 부재만 읽기 전용으로 확인했음; opt-out 저장으로 파일을 삭제하고 다음 시작 기본 tab을 확인하는 destructive UI 시나리오는 수행하지 못했음 |
 | MAN-044 | 저장한 탭 전체 UI 흐름 | 실제 WebView2에서 저장·취소·편집·삭제·선택·실패 재시도, 앱 재실행 유지와 workspace on/off 독립성 확인 | Not run — terminal UI 입력 자동화가 허용되지 않아 실제 menu/dialog 조작과 재실행을 수행하지 않았음 |

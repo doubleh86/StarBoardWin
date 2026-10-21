@@ -8,7 +8,8 @@
 ## 혼합 프로필 재개 상태 — 2026-10-20
 
 `workspace-mixed-profile-restore`는 완료된 schema 2·프로필 보존 계약을 사용해 Application
-저장·복원을 연결했고 자동 검증을 완료했다. 실제 Ubuntu·재부팅·로그인은 Not run이다.
+저장·복원을 연결했고 자동 검증을 완료했다. 당시 실제 Ubuntu·재부팅·로그인은 Not run이었다.
+2026-10-21 일반 탭·Ubuntu 복원의 사용자 확인은 아래 현재 상태 표를 따른다.
 준비된 schema 2로 저장하고 schema 1 읽기, 전체 snapshot 거부, 정상 백업·미래 파일 보존과
 기존 시작 수명을 유지한다. WSL은 기존 catalog discovery/Resolve와 Linux 홈 정책을 사용하며
 누락·탐색 실패는 해당 탭에 격리한다. Contracts/Domain/Infrastructure/Presentation/global.json은
@@ -49,7 +50,7 @@ restore 단계 출력 뒤 실행 결과가 없고, 18:12 KST solution restore는
 | 구분 | 현재 상태와 정본 |
 |---|---|
 | 긴급 입력·종료 회귀 (2026-10-14) | [Ctrl+C/Ctrl+V 불능·자발 종료](2026-09-09-terminal-safety-and-discoverability.md#2026-10-14-복사붙여넣기-불능과-앱-자동-종료): `terminal-clipboard-shortcut-regression` P0 재개 수정·자동 검증 완료. 기존 local 편집/STA 재시도/원문 없는 진단을 보존하고 OLE 실패 뒤 수명 검사, 편집 종료 키 억제·IME 보호와 source/dist 동기화를 보강했다. Node 103·.NET 610 통과. 기본 build 접근 거부 후 실행별 worker pool에서 동일 argv의 restore/build/test가 통과했으며 최초 거부 원인은 미확정이다. 실제 사용자 증상·자발 종료의 공통 원인은 미확정이며 CLIP-MAN-01~05 장기 실행·IME·RDP는 Not run (manual)이다. |
-| 재부팅 후 탭 복원 회귀 (2026-10-14/19) | [WSL 혼합 구성 추가 진단](2026-09-09-workspace-convenience.md#2026-10-19-wsl-혼합-탭-저장-실패): WSL 1탭이 전체 구성 저장을 거부하게 만드는 코드 경로를 확인했고 실제 저장 파일도 10월 14일 구성에 머문다. `workspace-profile-schema` 저장 계약·schema 2 준비 및 자동 검증 완료 (Terminal 413·Architecture 16·전체 665, 단일 작업자 Debug build 경고/오류 0). 기존 Application 변경의 Task 결과 분리는 오케스트레이터 대기. `workspace-mixed-profile-restore`의 persistence/coordinator 연결과 저장한 탭 즐겨찾기 WSL 지원은 미완료. WSL 외 재부팅 실패 원인은 미확정이며 실제 Windows 로그인·재부팅 인수도 남아 있다. |
+| 탭 복원 회귀 (2026-10-21 현재) | `workspace-mixed-profile-restore`의 저장·복원 연결은 `937ebfa`에 반영했고 자동 검증 689개 및 릴리즈 배포를 완료했다. [배포 후 사용자 확인](2026-09-09-workspace-convenience.md#2026-10-21-배포-후-사용자-탭-복원-확인): 일반 탭과 Ubuntu/WSL 복원 모두 정상 (user-confirmed). 세부 인수는 미확인이며 저장한 탭 즐겨찾기의 WSL 지원은 별도 미지원 범위다. 과거 저장 거부·초기화 제보는 계획의 이력으로 보존한다. |
 | 탭 드래그 정렬 | [계획과 인수 기록](2026-10-13-tab-drag-reorder.md): contract/runtime/workspace-sync/renderer 구현 및 integration 자동 검증 완료. 실제 WebView2·IME·focus·DPI 화면 인수는 수동 검증 대기다. |
 | 탭 드래그 시각 피드백 | [계획과 완료 기록](2026-10-13-tab-drag-reorder.md#후속--탭-드래그-시각-피드백-보강-2026-10-13): `tab-drag-visual-feedback` 구현·자동 검증 완료 (2026-10-14). 이동 탭 강조, 3px 삽입선·끝 표시와 이름 미리보기 및 source/dist 동기화를 완료했다. 실제 WebView2·네 theme·DPI 화면 인수는 수동 검증 대기다. |
 | RDP 호스트 복구 연결 (2026-10-15) | [실제 호스트 인수](2026-09-29-unlock-panel-width-recovery.md#실제-호스트-연결-완료-인수-2026-10-15): `panel-rdp-width-recovery` 구현·자동 검증 완료. MainWindow 이벤트/dispatcher 병합, 최신 client/window DPI↔WPF root 보정과 AppCoordinator→Terminal 공개 점검을 같은 revision으로 연결했다. root 5회/5초, 중복·역순·주기 요청의 예산 재시작 금지, 숨김·종료 정리를 검증했다. DesktopWindow 18, DesktopIntegration 120, Terminal 379, 전체 .NET 630 통과. 기본 SDK 병렬 exit 1 뒤 단일 worker, esbuild EPERM 뒤 승인된 제한 밖 suite로 통과했다. 기존 WTS/Terminal 내부·실행 이력은 보존하며 실제 RDP-MAN-01~07은 Not run (manual)이다. |
