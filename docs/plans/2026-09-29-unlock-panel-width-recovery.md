@@ -533,3 +533,19 @@ esbuild spawn EPERM으로 실패했다. .NET restore/build는 하위 MSBuild 실
 과거 610·620·630개 성공을 이번 근거로 사용하지 않는다. 실제 clipboard·IME·RDP·장기 실행은
 Not run (manual), 자발 종료 원인은 미확정이다. 구체 명령·최초 오류·진단 결과와 재실행
 범위는 [현재 검증 기록](../test-plan.md#입력레이아웃-회귀-재개-검증-2026-10-20)을 따른다.
+
+### 2026-10-22 입력·레이아웃 회귀 현재 실행
+
+Run `20261021-171059-471505-e2c0f235`: 기존 288개/23자/실제 로그 7열·privacy와
+revision 병합·중복/역순·5회/5초·종료 뒤 worker 회귀를 대조했다. 실제 STA await 테스트의
+renderer generation과 별개인 session generation 무효화 사례만 추가했다. CA1707 이름 수정,
+제품 구현과 일반 탭·Ubuntu/혼합 프로필 복원은 보존했다.
+
+**Blocked (environment)**: npm ci·C# 정렬은 통과했으나 renderer test/build는 이번 최초
+esbuild 서비스 spawn EPERM이다. Terminal 집중 test는 NU1900(NuGet 프록시 연결 실패),
+solution restore는 하위 MSBuild 실패, build는 MSB5021 취소이며 diagnostic에 컴파일러
+named pipe 접근 거부가 있다. Architecture/전체/로그 집중 test는 정상 종료·결과 미확인이다.
+과거 통과 수치로 대체하지 않으며 권한·worker·analyzer·테스트·의존성 변경은 없다.
+명령과 진단, pending 세션, 재개 조건은
+[이번 검증 기록](../test-plan.md#입력레이아웃-회귀-현재-실행-2026-10-22)을 따른다.
+실제 clipboard·IME·RDP·장기 실행은 Not run (manual), 자발 종료 원인은 미확정이다.

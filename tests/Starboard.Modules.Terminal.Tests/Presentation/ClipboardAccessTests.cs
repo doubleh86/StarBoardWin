@@ -168,6 +168,7 @@ public sealed class ClipboardAccessTests
     [DataRow("current")]
     [DataRow("tab")]
     [DataRow("generation")]
+    [DataRow("sessionGeneration")]
     [DataRow("renderer")]
     public async Task ExecuteAsyncRealDispatcherDelayClipboardAdapterStaysOnSta(string boundary)
     {
@@ -184,6 +185,7 @@ public sealed class ClipboardAccessTests
                     var sessionId = TerminalSessionId.CreateNew();
                     var instance = Guid.NewGuid();
                     var generation = 10L;
+                    var sessionGeneration = 7L;
                     var epoch = 20L;
                     var request = new ClipboardRequestLifetime(generation, instance, epoch,
                                                                new TerminalSessionReference(sessionId.Value, 7));
@@ -210,6 +212,10 @@ public sealed class ClipboardAccessTests
                             {
                                 generation++;
                             }
+                            else if (boundary == "sessionGeneration")
+                            {
+                                sessionGeneration++;
+                            }
                             else if (boundary == "renderer")
                             {
                                 instance = Guid.NewGuid();
@@ -229,7 +235,8 @@ public sealed class ClipboardAccessTests
                         }
 
                         return "snapshot";
-                    }, () => request.CanApply(generation, instance, epoch, sessionId, true, true, false),
+                    }, () => request.CanApply(generation, instance, epoch, sessionId,
+                                              request.Session.Generation == sessionGeneration, true, false),
                        _ => observations++, CancellationToken.None);
                     Assert.AreEqual(invalidateDuringDelay == true ? ClipboardAccessStatus.Stale : ClipboardAccessStatus.Completed,
                                     result.Status);

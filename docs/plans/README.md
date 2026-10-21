@@ -162,3 +162,11 @@ solution restore는 18:01 exit 1이며 원인은 미확정이다. 생성물 쓰�
 검증 완료 상태는 **Blocked (environment)**이며 SDK 선택 성공과 이후 MSBuild 실패를
 구분한다. 과거 suite 성공은 이번 증거가 아니다.
 [현재 검증 기록](../test-plan.md#입력레이아웃-회귀-재개-검증-2026-10-20)을 따른다.
+
+2026-10-22 `input-layout-regression-completion` 현재 실행: **Blocked (environment)** 유지.
+기존 회귀 범위를 대조하고 실제 STA await의 session generation 사례만 추가했다.
+npm ci/정렬 통과, esbuild spawn EPERM·NU1900·하위 MSBuild 실패/컴파일러 pipe 접근 거부를
+현재 오류로 기록했다. Architecture/전체/로그 집중 test는 완료 결과 미확인이다.
+제품 구현과 일반 탭·Ubuntu/혼합 프로필 복원은 보존하며 수동 clipboard·IME·RDP·장기 실행은
+미수행, 자발 종료 원인은 미확정이다.
+[이번 명령·결과와 재개 조건](../test-plan.md#입력레이아웃-회귀-현재-실행-2026-10-22)을 따른다.

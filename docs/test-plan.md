@@ -1501,3 +1501,75 @@ MSB4276 뒤 Workload resolver fallback 성공도 보여 이를 SDK 선택 실패
 한글 IME, RDP/mixed DPI, Windows/WebView2 장기 실행(CLIP-MAN-01~05, RDP-MAN-01~07).
 실제 자발 종료 throw 지점과 사용자 증상의 공통 원인은 미확정이다. 기능을 재구현하거나
 수동 검증을 완료로 처리하지 않았다. commit/merge/push/deploy는 수행하지 않았다.
+
+## 입력·레이아웃 회귀 현재 실행 (2026-10-22)
+
+Run `20261021-171059-471505-e2c0f235`, Task `input-layout-regression-completion`.
+**Blocked (environment)** — 아래는 이번 worktree의 실행 증거이며 이전 통과 수치를 재사용하지 않는다.
+
+코드 대조 결과와 변경 범위:
+
+- `FileDiagnosticLogTests.WriteParsedInputStatesPreservesEveryCategoryWithoutPrivateContent`는
+  parser→실제 임시 로그의 288개 허용 조합, literal로 구성한 정확한 23자 코드, 고유성 및
+  실제 7열을 검사한다. 명령·출력·clipboard·탭 이름·경로와 throw된 예외 message/stack이
+  없는지 검사하며, 별도 clipboard 예외 Data 및 unsafe/65자 redaction 검사도 존재한다.
+  이번에는 테스트를 중복 추가하지 않았다. 실행 통과는 아직 확인하지 못했다.
+- `ClipboardAccessTests.ExecuteAsyncRealDispatcherDelayClipboardAdapterStaysOnSta`는 실제
+  STA Dispatcher/Task.Delay/pump와 모의 clipboard adapter를 사용한다. 기존 `generation`은
+  renderer generation이다. 세션 generation 변경은 별도 `sessionGeneration` DataRow로
+  추가하고 캡처 세대 비교를 `CanApply`의 sessionIsCurrent에 전달했다. production은
+  `TerminalView.IsClipboardRequestCurrent`→coordinator의 정확한 session reference 비교를
+  사용하며, coordinator의 restart/remove/dispose 테스트도 기존에 존재한다.
+  탭 왕복 epoch·renderer instance·정상 대조군과 stale 시 1회만 호출/null 반환 검사를 유지한다.
+  이는 OS clipboard 직접 검증이 아니다. 새 사례 컴파일/실행은 미확인이다.
+- `RendererLayoutRequestDispatcherTests`의 최신 revision 병합·중복/역순 거부·진행 중 관측
+  폐기·취소 watermark·종료 뒤 worker 100개 차단과 `RendererLayoutRecoveryTests`의 독립적인
+  5회 제한 및 4,999/5,000ms 경계 검사가 이미 존재한다. CA1707 수정 이름을 유지한다.
+- 제품 구현, renderer source/dist, 의존성, analyzer 및 정상 확인된 일반 탭·Ubuntu/혼합
+  프로필 복원은 변경하지 않았다. 수정은 위 집중 테스트와 지정 문서에 한정한다.
+
+모든 .NET 호출의 실행 파일은 `C:\Users\round1studio_14\.dotnet\dotnet.exe`다.
+아래 표에서 `SDK`는 이 절대 경로이며 PATH의 dotnet을 사용하지 않았다.
+
+| 이번 명령 | 결과 |
+|---|---|
+| `npm --prefix src/Modules/Starboard.Modules.Terminal/Presentation/Renderer ci` | exit 0, 6 packages, vulnerabilities 0. esbuild postinstall 차단 안내를 보존하고 approve/설정 변경 없음 |
+| `npm --prefix src/Modules/Starboard.Modules.Terminal/Presentation/Renderer test` | exit 1, 3 pass/4 파일 load 실패. 최초 clipboardShortcuts.test.mjs→rendererHarness.mjs:9→esbuild main.js:2272 `spawn EPERM` (-4048) |
+| `npm --prefix src/Modules/Starboard.Modules.Terminal/Presentation/Renderer run build` | exit 1, build.mjs:10→같은 esbuild 서비스 spawn EPERM, Node v24.18.0. 실행 전 dist를 임시 디렉터리에 바이트 복사하고 실패 후 복원; Git상 dist 차이 없음 |
+| `SDK test tests/Starboard.Modules.Terminal.Tests/Starboard.Modules.Terminal.Tests.csproj --configuration Debug` | exit 1, 최초 NU1900: api.nuget.org/v3/index.json 서비스 인덱스/취약성 데이터 조회 실패(경고를 오류로 처리). Terminal/test project restore 실패, 테스트 미실행 |
+| `SDK test tests/Starboard.ArchitectureTests/Starboard.ArchitectureTests.csproj --configuration Debug` | restore 시작 뒤 정상 종료/테스트 결과 미확인(session 40408). Ctrl+C 전달 후에도 완료 응답 없음. 성공·테스트 실패로 집계하지 않음 |
+| `SDK restore Starboard.Windows.sln` | exit 1, 기본 출력 없음. diagnostic 추가 실행도 exit 1, `_FilterRestoreGraphProjectInputItems`의 MSBuild 작업 ID 5 실패, 요약 오류 0 |
+| `SDK build Starboard.Windows.sln --configuration Debug --no-restore` | exit 1, SharedKernel Csc 취소 MSB5021, 경고 1/오류 0. restore 실패 후에도 지정 명령 호출 요구에 따라 실행한 진단이며 유효한 완료 검증이 아님 |
+| `SDK test Starboard.Windows.sln --configuration Debug --no-build --no-restore` | 호출 후 출력/정상 종료 미확인(session 69591). restore/build가 실패했으므로 어떤 기존 binary 결과도 이번 변경 검증으로 사용하지 않음 |
+| `SDK test tests/Starboard.IntegrationTests/Starboard.IntegrationTests.csproj --configuration Debug --filter FullyQualifiedName~FileDiagnosticLogTests` | restore 시작 뒤 정상 종료/테스트 결과 미확인(session 7071); 288개 실제 파일 회귀 통과를 주장하지 않음 |
+| `pwsh -NoProfile -File scripts/Test-CSharpAlignment.ps1 -WorkingTree` | exit 0, C# multiline alignment check passed |
+| `git diff --check` | exit 0; 최종 문서 diff에서도 확인 |
+
+최초 오류 조사:
+
+- esbuild의 win32-x64 실행 파일은 존재한다. 실패 stack은 main.js:2272의 pipe 기반
+  서비스 `child_process.spawn`이다. 파일 부재나 postinstall 안내만을 원인으로 단정하지 않는다.
+  권한 변경, install-script 승인, 실행 정책/worker 변경, 다른 실행 경로로의 우회는 하지 않았다.
+- `curl.exe --head --connect-timeout 5 --max-time 10 https://api.nuget.org/v3/index.json`도
+  exit 1: proxy 127.0.0.1을 통한 443 연결 실패(curl 7). 이번 NU1900의 네트워크 제약을
+  뒷받침하며 프록시/인증서 설정을 수정하거나 audit를 끄지 않았다.
+- build diagnostic에서 VBCSCompiler process 생성 후 named pipe 연결 중
+  `UnauthorizedAccessException: Access to the path is denied`를 확인했다. 이어 fallback
+  compiler 출력과 MSB5021 취소가 있다. 이를 하위 MSBuild 실패의 유일 원인으로 단정하지 않는다.
+  restore는 하위 MSBuild 실패 이상의 구체 원인이 출력되지 않았다. MSB4276 뒤 workload
+  resolver 성공이 있어 SDK 선택 실패로 분류하지 않는다. 다른 실행과의 잠금/충돌도 미확정이다.
+- 진단은 동일 SDK/argv에 `--verbosity diagnostic`만 추가했다. 로그는
+  `%TEMP%/starboard-input-layout-restore-20261022.txt`와
+  `%TEMP%/starboard-input-layout-build-20261022.txt`다. 최초 diagnostic 시도는 저장 디렉터리
+  `artifacts` 부재로 명령 실행 전 redirection 실패했고, 임시 경로에서 실제 실행했다.
+  프로세스 command line의 read-only CIM 조회도 접근 거부여서 소유권을 추측해 종료하지 않았다.
+
+재개 조건: 환경에서 NuGet 조회와 esbuild 서비스 생성, MSBuild/컴파일러 pipe 및 정상 종료가
+가능해진 뒤 위 명령을 동일 SDK로 다시 실행한다. pending 세션의 종료/결과를 먼저 확인하고
+공유 산출물에 겹쳐 검증하지 않는다. restore 성공→Debug build 성공→전체 no-build test 순서가
+확보돼야 자동 인수를 완료로 바꾼다. analyzer 완화·테스트 제외·의존성 교체로 해결하지 않는다.
+
+**Not run (manual):** 실제 clipboard, 한글 IME, RDP/mixed DPI, Windows/WebView2 장기 실행
+(CLIP-MAN-01~05, RDP-MAN-01~07). 실제 자발 종료 throw 지점/사용자 증상 공통 원인은
+미확정이다. 일반 탭·Ubuntu 복원에 대한 기존 사용자 정상 확인과 이번 자동/수동 미검증을
+구분하며 복원을 재구현하지 않았다. commit/merge/push/deploy는 수행하지 않았다.
