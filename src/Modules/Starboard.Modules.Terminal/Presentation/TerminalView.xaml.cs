@@ -1537,9 +1537,19 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
 
             if (pending.Kind == ConfirmationKind.Paste)
             {
-                var applied = await sessionCoordinator.ApplyPasteConfirmationAsync(response, lifetimeCancellation.Token);
+                var sessionId = new TerminalSessionId(response.Token.Session.SessionId);
+                var request = CreateClipboardRequest(sessionId);
+                var data = await sessionCoordinator.TakeConfirmedPasteAsync(response, lifetimeCancellation.Token);
+                var canDeliver = data is not null && request is not null &&
+                                 request.Session == response.Token.Session && IsClipboardRequestCurrent(request) == true;
+                if (canDeliver == true)
+                {
+                    SendSessionMessage("paste", sessionId,
+                                       new { data, sessionGeneration = response.Token.Session.Generation });
+                }
+
                 diagnosticLog.Write(DiagnosticLevel.Information, "Terminal",
-                                    applied == true ? "Paste.ConfirmedDelivered" : "Paste.ConfirmationDiscarded",
+                                    canDeliver == true ? "Paste.ConfirmedRouted" : "Paste.ConfirmationDiscarded",
                                     "Paste confirmation state only.");
                 return;
             }

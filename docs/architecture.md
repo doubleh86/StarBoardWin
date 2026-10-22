@@ -235,7 +235,10 @@ generation을 포함한 확인 요청으로 바꾼다. renderer가 같은 세대
 제거·restart와 늦은 응답은 취소로 처리하므로 다른 tab 또는 새 session을 닫을 수 없다.
 
 clipboard text에 CR 또는 LF가 있으면 host는 한 번 읽은 snapshot만 같은 확인 경계에
-넣는다. 승인 후 clipboard를 다시 읽지 않고 coordinator가 snapshot을 transport에 한 번 전달하며,
+넣는다. 승인 후 clipboard를 다시 읽지 않고 coordinator가 token을 단회 소비해 snapshot을
+반환한다. host는 await 전후 renderer/탭/세션 수명을 검사하고 기존 `paste` 메시지로 renderer에
+보낸다. 단일 줄과 여러 줄 모두 xterm의 CRLF/LF→CR 정규화 및 현재 bracketed-paste 모드를
+거쳐 셸로 한 번 전달하며 coordinator가 여러 줄 원문을 transport에 직접 쓰지 않는다.
 preview와 token은 log, settings, workspace 또는 package에 쓰지 않는다. 비활성 tab의
 non-empty output은 session generation별 in-memory `new output` state로 표시한다. 이는
 command completion 판단이나 activation 요청이 아니며, tab 선택·restart·remove에서 지운다.
@@ -257,7 +260,7 @@ ClipboardAccess는 WPF Dispatcher의 STA context에서만 clipboard API를 실�
 빈/비텍스트는 입력하지 않고 접근 실패는 renderer 상태 안내와 다음 요청으로 복구한다.
 요청 전·clipboard OLE 재진입 후·await 후에 renderer instance/generation, workspace epoch,
 활성 session과 실제 session generation, 확인창을 재검사한다. 탭을 바꿨다가 돌아온 경우도
-epoch 변경으로 취소한다. single-line paste 응답에도 generation을 싣고 renderer에서 확인한다.
+epoch 변경으로 취소한다. 단일 줄·승인된 여러 줄 paste 응답 모두 generation을 싣고 renderer에서 확인한다.
 CR/LF snapshot 승인·취소 및 단일 전달의 기존 coordinator 계약은 유지한다.
 OLE 호출 실패의 catch에서도 수명을 재검사한다. 마지막 시도에 탭·세대·확인창·renderer가
 바뀌거나 취소되면 Unavailable 대신 Stale을 반환해 교체된 화면에 실패 안내를 보내지 않는다.

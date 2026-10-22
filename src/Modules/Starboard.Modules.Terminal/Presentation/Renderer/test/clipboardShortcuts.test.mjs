@@ -68,6 +68,36 @@ function confirmation(h) {
   return h.document.body.children.find(e => e.className === "confirmation-dialog");
 }
 
+for (const lineEnding of ["\r\n", "\n", "\r"]) {
+  for (const trailingNewline of [false, true]) {
+    for (const bracketedPasteMode of [false, true]) {
+      test(`confirmed multiline paste preserves order through actual xterm clipboard: ${JSON.stringify(lineEnding)}, trailing=${trailingNewline}, bracketed=${bracketedPasteMode}`, () => {
+        const { h, entry } = setup();
+        const first = "Write-Output '첫째 FIRST'";
+        const second = "Write-Output '둘째 SECOND'";
+        const snapshot = first + lineEnding + second + (trailingNewline ? lineEnding : "");
+        entry.terminal.bracketedPasteMode = bracketedPasteMode;
+        h.deliver({ version: 2, type: "confirmation-request", sessionId: id,
+          payload: { requestId: other, sessionGeneration: 7, kind: "paste", sessionName: "tab", clipboardText: snapshot } });
+        const dialog = h.document.body.children.find(e => e.className === "confirmation-dialog");
+        const preview = dialog.querySelector(".confirmation-preview").textContent;
+        assert.ok(preview.indexOf("FIRST") < preview.indexOf("SECOND"));
+        assert.equal(h.posted.some(m => m.type === "input"), false);
+        h.dispatch("click", dialog.querySelector(".confirmation-primary"));
+        const responses = h.posted.filter(m => m.type === "confirmation-response");
+        assert.equal(responses.length, 1);
+        assert.equal(responses[0].payload.result, "confirmed");
+
+        // Host returns the approved snapshot to the same path used by single-line paste.
+        h.deliver({ version: 2, type: "paste", sessionId: id, payload: { data: snapshot, sessionGeneration: 7 } });
+        const normalized = first + "\r" + second + (trailingNewline ? "\r" : "");
+        const expected = bracketedPasteMode ? "\u001b[200~" + normalized + "\u001b[201~" : normalized;
+        assert.deepEqual(h.posted.filter(m => m.type === "input").map(m => m.payload.data), [expected]);
+      });
+    }
+  }
+}
+
 test("modal editing keys retain defaults and delayed paste/input cannot reach shell", () => {
   const { h, entry, key } = setup();
   const dialog = confirmation(h);

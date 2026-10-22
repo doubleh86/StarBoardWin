@@ -574,12 +574,15 @@ public sealed class TerminalSessionCoordinatorTests
     }
 
     [TestMethod]
-    public async Task PasteConfirmationConfirmedWritesCapturedSnapshotExactlyOnce()
+    [DataRow("\r\n")]
+    [DataRow("\n")]
+    [DataRow("\r")]
+    public async Task PasteConfirmationConfirmedReturnsSnapshotOnceWithoutBypassingRenderer(string lineEnding)
     {
         var factory = new FakeTerminalSessionFactory();
         await using var coordinator = CreateCoordinator(factory);
         var tab = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
-        const string clipboardSnapshot = "Set-Location C:\\temp\r\nGet-Location\r\n";
+        var clipboardSnapshot = "Write-Output 'FIRST'" + lineEnding + "Write-Output 'SECOND'" + lineEnding;
 
         var request = coordinator.RequestPasteConfirmation(tab.SessionId, clipboardSnapshot);
         var duplicateRequest = coordinator.RequestPasteConfirmation(tab.SessionId, "ignored\n");
@@ -588,12 +591,12 @@ public sealed class TerminalSessionCoordinatorTests
         Assert.IsNull(duplicateRequest);
         Assert.AreEqual(clipboardSnapshot, request.ClipboardText);
         var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Confirmed);
-        var firstApplied = await coordinator.ApplyPasteConfirmationAsync(response, CancellationToken.None);
-        var secondApplied = await coordinator.ApplyPasteConfirmationAsync(response, CancellationToken.None);
+        var firstSnapshot = await coordinator.TakeConfirmedPasteAsync(response, CancellationToken.None);
+        var secondSnapshot = await coordinator.TakeConfirmedPasteAsync(response, CancellationToken.None);
 
-        Assert.IsTrue(firstApplied);
-        Assert.IsFalse(secondApplied);
-        CollectionAssert.AreEqual(new[] { clipboardSnapshot }, factory.Sessions[0].Writes);
+        Assert.AreEqual(clipboardSnapshot, firstSnapshot);
+        Assert.IsNull(secondSnapshot);
+        Assert.AreEqual(0, factory.Sessions[0].Writes.Count);
     }
 
     [TestMethod]
@@ -608,9 +611,9 @@ public sealed class TerminalSessionCoordinatorTests
 
         Assert.IsTrue(coordinator.Select(first.SessionId));
         var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Confirmed);
-        var applied = await coordinator.ApplyPasteConfirmationAsync(response, CancellationToken.None);
+        var snapshot = await coordinator.TakeConfirmedPasteAsync(response, CancellationToken.None);
 
-        Assert.IsFalse(applied);
+        Assert.IsNull(snapshot);
         Assert.AreEqual(0, factory.Sessions[0].Writes.Count);
         Assert.AreEqual(0, factory.Sessions[1].Writes.Count);
     }
@@ -626,9 +629,9 @@ public sealed class TerminalSessionCoordinatorTests
 
         await coordinator.RestartAsync(tab.SessionId, CancellationToken.None);
         var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Confirmed);
-        var applied = await coordinator.ApplyPasteConfirmationAsync(response, CancellationToken.None);
+        var snapshot = await coordinator.TakeConfirmedPasteAsync(response, CancellationToken.None);
 
-        Assert.IsFalse(applied);
+        Assert.IsNull(snapshot);
         Assert.AreEqual(0, factory.Sessions[0].Writes.Count);
         Assert.AreEqual(0, factory.Sessions[1].Writes.Count);
     }
@@ -644,16 +647,16 @@ public sealed class TerminalSessionCoordinatorTests
 
         var cancelledResponse = new TerminalConfirmationResponse(cancelledRequest.Token,
                                                                  TerminalConfirmationResult.Cancelled);
-        var cancelledApplied = await coordinator.ApplyPasteConfirmationAsync(cancelledResponse,
-                                                                             CancellationToken.None);
+        var cancelledSnapshot = await coordinator.TakeConfirmedPasteAsync(cancelledResponse,
+                                                                          CancellationToken.None);
         var resetRequest = coordinator.RequestPasteConfirmation(tab.SessionId, "reset\n");
         Assert.IsNotNull(resetRequest);
         coordinator.CancelPendingConfirmation();
         var resetResponse = new TerminalConfirmationResponse(resetRequest.Token, TerminalConfirmationResult.Confirmed);
-        var resetApplied = await coordinator.ApplyPasteConfirmationAsync(resetResponse, CancellationToken.None);
+        var resetSnapshot = await coordinator.TakeConfirmedPasteAsync(resetResponse, CancellationToken.None);
 
-        Assert.IsFalse(cancelledApplied);
-        Assert.IsFalse(resetApplied);
+        Assert.IsNull(cancelledSnapshot);
+        Assert.IsNull(resetSnapshot);
         Assert.AreEqual(0, factory.Sessions[0].Writes.Count);
     }
 
@@ -670,9 +673,9 @@ public sealed class TerminalSessionCoordinatorTests
         factory.Sessions[1].RaiseExit(0);
         Assert.IsTrue(await coordinator.CloseAsync(target.SessionId, CancellationToken.None));
         var response = new TerminalConfirmationResponse(request.Token, TerminalConfirmationResult.Confirmed);
-        var applied = await coordinator.ApplyPasteConfirmationAsync(response, CancellationToken.None);
+        var snapshot = await coordinator.TakeConfirmedPasteAsync(response, CancellationToken.None);
 
-        Assert.IsFalse(applied);
+        Assert.IsNull(snapshot);
         Assert.AreEqual(0, factory.Sessions[1].Writes.Count);
     }
 

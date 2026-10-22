@@ -1,5 +1,27 @@
 # Windows용 Starboard 테스트 계획
 
+## 여러 줄 붙여넣기 줄 순서 회귀 (2026-10-22)
+
+Task `terminal-multiline-paste-order-regression`은 **구현·자동 검증 완료**다. 사용자는 Windows
+PowerShell의 여러 줄 미리보기는 정상인데 승인 뒤 본문에서 두 줄이 역전된다고 확인했고
+두 화면을 제공했다. 실제 입력 버퍼/실행 역전인지 화면 재표시 오류인지는 미확정이다.
+승인된 여러 줄의 xterm paste 우회 경로를 제거했고 실환경 재현은 하지 않았다.
+[수정 계획](plans/2026-09-09-terminal-safety-and-discoverability.md#2026-10-22-여러-줄-붙여넣기-본문-순서-역전)을 따른다.
+
+| ID | 검증 | 현재 상태 |
+|---|---|---|
+| PASTE-ORDER-01 | 무해한 A/B fixture의 CRLF/LF/CR·끝 줄바꿈 유무·한글, bracketed-paste ON/OFF에서 실제 xterm paste → renderer input 순서/단회 전달, coordinator snapshot 반환과 raw transport 쓰기 금지 및 host 연결 검사 | Passed (automated, 단계별). 실제 upstream Clipboard.ts의 12개 조합, coordinator 3개 개행 조합, 정적 host 연결 검사. 실제 WebView2→ConPTY 전체 UI 인수는 아님 |
+| PASTE-ORDER-02 | 취소·중복 승인·탭 전환/제거/재시작·renderer 교체·종료에서 전달 차단, 단일 줄·복사·interrupt 회귀 | Passed (automated). coordinator/clipboard lifetime/renderer 기존 회귀 포함; 실제 WSL paste는 수동 대기 |
+| PASTE-ORDER-MAN-01 | Windows PowerShell 5.1/pwsh에서 확인창·본문·최종 입력/출력 순서를 구분하고 Windows Terminal과 비교; 긴 줄·기존 입력 위치·WSL paste·실제 개행·OS/PSReadLine 버전을 확인 | Not run (manual, 수정 후). 수정 전 본문 표시 역전은 Failed (user-reported) 이력으로 보존 |
+
+지정 SDK 10.0.301 solution restore·Debug build(경고·오류 0), 전체 693개 및 renderer 115개,
+C# 정렬·diff 검사가 통과했다. 최초 Terminal 427/429의 기존 PowerShell pipe fallback·renderer
+drag 왕복 timeout은 분리 11개와 이후 동일 설정 전체 suite에서 통과했다. 최초 원인은
+미확정이며 timeout 완화나 테스트 제외는 하지 않았다. renderer source/dist 변경은 없다.
+
+제보의 Windows 기능 활성화 명령은 실행하지 않는다. 무해한 `Write-Output` fixture만
+사용하고 사용자 clipboard/명령/출력 원문을 진단 로그로 저장하지 않는다.
+
 ## 배포 후 탭 복원 사용자 확인 (2026-10-21)
 
 `937ebfa` / `v0.2.2-20261021` 배포 뒤 사용자가 "우분투는 모르겠는데 탭 복원 잘 됐다"고

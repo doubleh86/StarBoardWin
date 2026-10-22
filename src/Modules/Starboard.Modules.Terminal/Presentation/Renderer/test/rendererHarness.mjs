@@ -4,7 +4,7 @@ import vm from "node:vm";
 import { build } from "esbuild";
 
 // Execute the production message listener, DOM reconciliation and activation code.
-// Only browser layout and xterm are simulated; no production functions are replaced.
+// Browser layout and the terminal surface are simulated; paste uses xterm's actual clipboard code.
 const source = await readFile(new URL("../src/index.ts", import.meta.url), "utf8");
 const bundle = await build({
   stdin: {
@@ -32,6 +32,16 @@ const bundle = await build({
     },
   }],
 });
+
+const clipboardSource = await readFile(new URL("../node_modules/@xterm/xterm/src/browser/Clipboard.ts", import.meta.url), "utf8");
+const clipboardBundle = await build({
+  stdin: { contents: clipboardSource, loader: "ts" },
+  bundle: true,
+  write: false,
+  format: "iife",
+  globalName: "xtermClipboard",
+});
+const { paste: pasteWithXterm } = vm.runInNewContext(`${clipboardBundle.outputFiles[0].text}\nxtermClipboard;`);
 
 export function createHarness() {
   const frames = new Map();
@@ -176,6 +186,7 @@ export function createHarness() {
     focusCount = 0;
     disposeCount = 0;
     resetCount = 0;
+    bracketedPasteMode = false;
     loadAddon(addon) { addon.terminal = this; }
     selection = "";
     hasSelection() { return this.selection.length > 0; }
@@ -197,7 +208,12 @@ export function createHarness() {
     attachCustomKeyEventHandler(callback) { this.keyHandler = callback; }
     focus() { this.focusCount++; this.textarea.focus(); }
     write(data) { this.writes.push(data); }
-    paste(data) { this.onInput(data); }
+    paste(data) {
+      pasteWithXterm(data, this.textarea, {
+        decPrivateModes: { bracketedPasteMode: this.bracketedPasteMode },
+        triggerDataEvent: (value) => this.onInput(value),
+      }, { rawOptions: { ignoreBracketedPasteMode: false } });
+    }
     reset() { this.resetCount++; }
     dispose() { this.disposeCount++; }
   }

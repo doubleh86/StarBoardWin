@@ -487,3 +487,92 @@ named pipe 접근 거부가 있다. Architecture/전체/로그 집중 test는 �
 명령과 진단, pending 세션, 재개 조건은
 [이번 검증 기록](../test-plan.md#입력레이아웃-회귀-현재-실행-2026-10-22)을 따른다.
 실제 clipboard·IME·RDP·장기 실행은 Not run (manual), 자발 종료 원인은 미확정이다.
+
+## 2026-10-22 여러 줄 붙여넣기 본문 순서 역전
+
+### 사용자 확인과 현재 상태
+
+- **구현·자동 검증 완료 / 실제 제보 환경 재확인 대기**, Task `terminal-multiline-paste-order-regression`.
+  사용자가 직접 코드 수정, 커밋·푸시, 릴리즈 빌드와 바탕화면 ZIP 교체를 요청했다.
+- 사용자가 두 줄을 복사했지만 Windows PowerShell 본문에는 둘째 줄이 먼저, 첫째 줄이
+  `>>` 뒤에 표시된다고 제보했다. 추가 답변과 캡처에서 **붙여넣기 확인창의 미리보기는
+  원래 순서가 맞고 승인 뒤 본문에서만 역전**되는 것을 확인했다.
+- 실제 셸 입력 버퍼/실행 순서까지 바뀐 것인지 PSReadLine/ConPTY 재표시만 꼬인 것인지는
+  미확정이다. Windows 10 Pro 실행 문제와 같은 원인이라고 단정하지 않는다.
+- 제보의 Windows 기능 활성화 명령은 실행하지 않았다. 재현에는 아래 무해한 입력을 사용한다.
+
+```powershell
+Write-Output 'SB_PASTE_FIRST'
+Write-Output 'SB_PASTE_SECOND'
+```
+
+### 코드에서 확인한 경로 차이와 원인 후보
+
+- `TerminalView.RequestPasteFromClipboardAsync`에서 줄바꿈 없는 내용은 renderer의
+  `paste` 메시지와 `terminal.paste`를 거친다. 여러 줄은 승인 뒤
+  `TerminalSessionCoordinator.ApplyPasteConfirmationAsync`가 캡처한 원문을
+  `WriteAsync` → `ConPtySession.WriteAsync`로 직접 보낸다.
+- 현재 xterm.js 6의 `Clipboard.ts`는 CRLF/LF를 CR로 정규화하고 셸이 켠
+  bracketed-paste 모드에 따라 시작/끝 sequence를 붙인다. 승인된 여러 줄 경로는
+  이 처리를 우회한다. **붙여넣기 경로 불일치는 확인된 결함 후보**지만 이것이 본문 역전의
+  실제 원인인지는 무해한 실환경 재현으로 확인해야 한다. 줄을 역순으로 나열하는 코드는
+  조사한 경로에 없으며 ConPTY 쓰기는 UTF-8 변환과 입력 lock을 사용한다.
+- 기존 `PasteConfirmationConfirmedWritesCapturedSnapshotExactlyOnce`는 가짜 세션에
+  원문이 한 번 전달되는지만 검사한다. renderer harness의 `paste(data)`도 그대로
+  `onInput`을 호출하므로 실제 xterm 줄바꿈·bracketed-paste 처리와 PSReadLine 표시를
+  검증하지 못한다. 과거 테스트 통과를 이번 증상의 해결 근거로 사용하지 않는다.
+
+### 수정 방향과 영향 범위
+
+1. 확인 전 snapshot과 승인 시점의 전달 bytes/순서를 무해한 fixture로 대조해 실제 입력
+   역전과 화면 재표시 오류를 구분한다. 사용자 clipboard/명령/출력 원문은 진단 로그에 남기지 않는다.
+2. 승인된 snapshot도 단일 줄과 같은 기존 xterm paste 처리를 사용하게 전달 경계를
+   정리한다. renderer와 host 양쪽에서 동시에 쓰지 않으며 token 단회 소비, 대상 session
+   reference/generation, 활성 탭·renderer instance와 취소/종료 검사를 유지한다.
+3. 줄별 분할 전송, 임의 지연, 줄 역순 보정, Enter 추가, PSReadLine 설정/버전 강제 변경은
+   해결책으로 넣지 않는다. 줄 내용·순서를 유지하고 줄바꿈/bracketed paste는 xterm에 맡긴다.
+4. `TerminalView.xaml.cs`, `TerminalSessionCoordinator.cs`, renderer `src/index.ts`와
+   필요한 protocol/confirmation 계약 및 직접 관련 테스트가 영향 범위다. renderer 변경 시
+   기존 빌드로 배포 asset을 동기화한다. 관련 없는 입력·레이아웃·탭 복원 변경은 하지 않는다.
+
+구현 선택: coordinator의 `TakeConfirmedPasteAsync`는 기존 operation/state lock과 token
+단회 소비를 유지하며 승인된 snapshot만 반환하고 transport에 쓰지 않는다. host는 await 전후
+`ClipboardRequestLifetime`으로 renderer/탭/세션 수명을 검사한 뒤 기존 `paste` 메시지로
+전달한다. renderer production 경로/공개 protocol을 새로 만들지 않고 현재 `terminal.paste`를
+재사용한다. 실제 upstream `Clipboard.ts`를 실행하는 renderer 테스트로 CRLF/LF와
+bracketed-paste 처리를 검증하고, host 연결과 coordinator 취소/중복 소비를 함께 검사한다.
+
+### 완료 기준과 검증
+
+- CRLF/LF/CR, 마지막 줄바꿈 유무, 두 줄/세 줄, 긴 줄/한글, 기존 입력의 앞·중간·끝에서
+  미리보기와 실제 입력 순서가 일치한다. 기존 clipboard snapshot을 다시 읽지 않는다.
+- 실제 xterm의 bracketed-paste 모드 ON/OFF를 검사하고 변환 후 셸 입력이 정확히 한 번
+  전달되는 통합 회귀를 추가한다. 취소·중복 승인·탭 전환/제거/재시작·renderer 교체는 0회다.
+- Windows PowerShell 5.1과 pwsh에서 무해한 A/B 입력으로 본문 표시와 최종 입력/출력
+  순서를 구분해 확인하고 Windows Terminal에서도 비교한다. WSL paste·단일 줄·복사·interrupt를
+  회귀 확인한다. 실제 세부 환경/PSReadLine 버전을 기록하며 미수행은 Not run으로 남긴다.
+- 구현 후 관련 renderer/.NET 테스트부터 solution restore/build/전체 테스트까지 수행한다.
+  최초 조사는 문서·읽기 전용 코드 확인만 했고 이후 사용자의 직접 수정 요청에 따라 아래
+  구현과 자동 검증을 완료했다. 시스템 변경 명령은 실행하지 않았다.
+  [검증 항목](../test-plan.md#여러-줄-붙여넣기-줄-순서-회귀-2026-10-22)을 따른다.
+
+### 2026-10-22 수정과 자동 검증 결과
+
+- coordinator는 승인 snapshot을 한 번만 반환하며 transport에 직접 쓰지 않는다. host는
+  clipboard 수명과 응답의 정확한 session reference를 확인한 뒤 기존 renderer `paste`로
+  전달한다. `Paste.ConfirmedRouted`는 renderer 전달 요청이며 실제 shell 수신 성공으로
+  해석하지 않는다. protocol·renderer production source·배포 asset·의존성은 변경하지 않았다.
+- renderer 테스트는 설치된 xterm.js 6의 실제 `Clipboard.ts`를 번들해 사용한다. CRLF/LF/CR,
+  마지막 줄바꿈 유무, bracketed-paste ON/OFF와 한글 두 줄의 12가지 조합에서 순서와
+  변환 후 단회 입력을 확인했다. 전체 renderer **115개 통과**.
+- C#은 coordinator의 snapshot 단회 소비·취소·탭 전환/재시작/제거와 host 수명 재검사
+  연결을 검증했다. 지정 SDK 10.0.301, 격리된 `out/verification/multiline-paste-20261022`에서
+  solution restore, Debug build(경고·오류 0), 전체 **693개 통과**
+  (Architecture 16, Terminal 429, DesktopIntegration 120, Preferences 37, Integration 91).
+- 최초 Terminal 실행은 기존 PowerShell pipe fallback 및 renderer drag 왕복에서 timeout으로
+  427/429였다. 해당 두 항목과 paste 집중 재실행 11개 및 이후 동일 설정의 전체 suite가
+  통과했다. 최초 timeout 원인은 미확정이며 timeout·테스트 제외·analyzer는 변경하지 않았다.
+- C# 정렬·diff 검사 통과. 실제 Windows 10/PSReadLine/WebView2 화면과 WSL paste 재현은
+  **Not run (manual, 수정 후)**이다. 단계별 자동 검증을 실제 원격 PC의 증상 해소로 확대하지 않는다.
+- 요청된 커밋·푸시 뒤 현재 commit을 metadata에 포함한 기존 경량 portable 패키징을 수행한다.
+  새 ZIP 검증 뒤 바탕화면의 이전 ZIP/체크섬만 삭제하며 실행 폴더·설정·실행 중 앱은 유지한다.

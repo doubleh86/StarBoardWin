@@ -824,8 +824,8 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
-    internal async Task<bool> ApplyPasteConfirmationAsync(TerminalConfirmationResponse response,
-                                                          CancellationToken cancellationToken)
+    internal async Task<string?> TakeConfirmedPasteAsync(TerminalConfirmationResponse response,
+                                                         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(response);
         await operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -837,18 +837,18 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
                 ThrowIfUnavailable();
                 if (TryConsumeConfirmationLocked(response, ConfirmationKind.Paste, out clipboardText) == false)
                 {
-                    return false;
+                    return null;
                 }
             }
 
             if (response.Result == TerminalConfirmationResult.Cancelled)
             {
-                return false;
+                return null;
             }
 
-            var sessionId = new TerminalSessionId(response.Token.Session.SessionId);
-            await WriteAsync(sessionId, clipboardText!, cancellationToken).ConfigureAwait(false);
-            return true;
+            // xterm owns line-ending normalization and the shell's bracketed-paste mode.
+            // Return the approved snapshot for that path; never write raw multiline text here.
+            return clipboardText;
         }
         finally
         {

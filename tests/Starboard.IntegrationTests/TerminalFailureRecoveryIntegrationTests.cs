@@ -6,6 +6,26 @@ namespace Starboard.IntegrationTests;
 public sealed class TerminalFailureRecoveryIntegrationTests
 {
     [TestMethod]
+    public void ConfirmedPasteUsesRendererPasteAndRevalidatesClipboardLifetime()
+    {
+        // Native WebView2 dispatch is not exercised by this host wiring guard.
+        var source = ReadRepositoryFile("src", "Modules", "Starboard.Modules.Terminal", "Presentation",
+                                        "TerminalView.xaml.cs");
+        var start = source.IndexOf("if (pending.Kind == ConfirmationKind.Paste)", StringComparison.Ordinal);
+        var end = source.IndexOf("if (pending.Kind == ConfirmationKind.UrlOpen)", start, StringComparison.Ordinal);
+        var paste = source[start..end];
+        var capture = paste.IndexOf("CreateClipboardRequest(sessionId)", StringComparison.Ordinal);
+        var consume = paste.IndexOf("await sessionCoordinator.TakeConfirmedPasteAsync(", StringComparison.Ordinal);
+        var revalidate = paste.IndexOf("IsClipboardRequestCurrent(request) == true", StringComparison.Ordinal);
+        var deliver = paste.IndexOf("SendSessionMessage(\"paste\"", StringComparison.Ordinal);
+
+        Assert.IsTrue(capture >= 0 && capture < consume && consume < revalidate && revalidate < deliver);
+        StringAssert.Contains(paste, "request.Session == response.Token.Session");
+        StringAssert.Contains(paste, "sessionGeneration = response.Token.Session.Generation");
+        Assert.IsFalse(paste.Contains("WriteInputAsync(", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void ReorderHostWiringGuardsSenderAndDelimitsOneCurrentWorkspaceSnapshot()
     {
         // Static wiring guard complements the executable renderer/coordinator round trip.
