@@ -1474,6 +1474,20 @@ internal sealed class TerminalSessionCoordinator : IAsyncDisposable
         }
     }
 
+    internal void SetOutputPaused(TerminalSessionReference session, bool paused)
+    {
+        lock (stateLock)
+        {
+            var sessionId = new TerminalSessionId(session.SessionId);
+            if (isDisposed == false && sessions.TryGetValue(sessionId, out var entry) == true &&
+                entry.SessionReference == session)
+            {
+                // This only toggles an async read gate; it never waits for process or renderer I/O.
+                entry.Session.SetOutputPaused(paused);
+            }
+        }
+    }
+
     private void OnOutputReceived(SessionEntry expectedEntry, string data)
     {
         TerminalNewOutputStateSnapshot? outputSnapshot = null;

@@ -30,6 +30,7 @@ type GlobalRendererMessageType =
   | "cancel-saved-tab-launch";
 
 type SessionRendererMessageType =
+  | "output-ack"
   | "new-tab"
   | "duplicate-tab"
   | "select-session"
@@ -2807,7 +2808,17 @@ function handleHostMessage(value: unknown): void {
     isSessionGeneration(payload.sessionGeneration) === true &&
     payload.sessionGeneration === entry.sessionGeneration
   ) {
-    entry.terminal.write(payload.data);
+    const generation = entry.sessionGeneration;
+    const sequence = payload.sequence;
+    entry.terminal.write(payload.data, () => {
+      // Only parsing completion releases host capacity; queued WebView delivery is not completion.
+      if (sessions.get(sessionId) === entry && entry.sessionGeneration === generation &&
+        Number.isSafeInteger(sequence) && (sequence as number) > 0) {
+        postSession("output-ack", sessionId, {
+          rendererInstanceId: RendererInstanceId, sessionGeneration: generation, sequence,
+        });
+      }
+    });
     if (payload.data.length > 0 && activeSessionId !== sessionId) {
       setNewOutputState(entry, true);
     }

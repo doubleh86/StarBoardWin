@@ -24,6 +24,7 @@ internal sealed class ConPtySession : ITerminalSession
     private readonly FileStream outputStream;
     private readonly CancellationTokenSource lifetimeCancellation = new();
     private readonly SemaphoreSlim inputLock = new(1, 1);
+    private readonly TerminalOutputReadGate _outputReadGate = new();
     private readonly TaskCompletionSource shellOutputStarted =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -57,6 +58,11 @@ internal sealed class ConPtySession : ITerminalSession
     public event Action<uint>? Exited;
 
     public event Action<TerminalSessionCommandSignal>? CommandLifecycleChanged;
+
+    public void SetOutputPaused(bool paused)
+    {
+        _outputReadGate.SetPaused(paused);
+    }
 
     internal static ConPtySession Start(ShellLaunchSpec shell, int columns, int rows, IDiagnosticLog diagnosticLog)
     {
@@ -232,6 +238,7 @@ internal sealed class ConPtySession : ITerminalSession
 
             while (cancellationToken.IsCancellationRequested == false)
             {
+                await _outputReadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 var count = await reader
                     .ReadAsync(buffer.AsMemory(), cancellationToken)
                     .ConfigureAwait(false);

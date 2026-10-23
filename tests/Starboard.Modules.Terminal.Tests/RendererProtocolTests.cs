@@ -381,6 +381,75 @@ public sealed class RendererProtocolTests
     }
 
     [TestMethod]
+    [DataRow('x')]
+    [DataRow('\\')]
+    [DataRow('\0')]
+    [DataRow('한')]
+    public void MaximumClipboardPayloadFitsEscapedEnvelopeAndBracketedPaste(char character)
+    {
+        var data = "\u001b[200~" + new string(character, 1_048_576) + "\u001b[201~";
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = 2,
+                                                sessionId = SessionId.ToString(),
+                                                type = "input",
+                                                payload = new { data },
+                                            });
+
+        Assert.IsTrue(RendererProtocol.TryParse(json, out var message));
+        Assert.IsNotNull(message);
+        Assert.AreEqual(data, message.Data);
+    }
+
+    [TestMethod]
+    public void SmallEncodedEnvelopeDoesNotBypassDecodedInputLimit()
+    {
+        var json = JsonSerializer.Serialize(new
+                                            {
+                                                version = 2,
+                                                sessionId = SessionId.ToString(),
+                                                type = "input",
+                                                payload = new { data = new string('x', 1_048_576 + 13) },
+                                            });
+
+        Assert.IsTrue(json.Length < RendererProtocol.MaximumMessageLength);
+        Assert.IsFalse(RendererProtocol.TryParse(json, out _));
+    }
+
+    [TestMethod]
+    public void OutputAcknowledgementIncludesRendererSessionAndBatchIdentity()
+    {
+        const string json = """
+            {"version":2,"type":"output-ack","sessionId":"10000000000000000000000000000001",
+             "payload":{"rendererInstanceId":"20000000000000000000000000000001","sessionGeneration":3,"sequence":17}}
+            """;
+
+        Assert.IsTrue(RendererProtocol.TryParse(json, out var message));
+        Assert.IsNotNull(message);
+        Assert.AreEqual(RendererMessageType.OutputAcknowledged, message.Type);
+        Assert.AreEqual(3L, message.SessionGeneration);
+        Assert.AreEqual(17L, message.OutputSequence);
+        Assert.AreEqual(Guid.ParseExact("20000000000000000000000000000001", "N"), message.RendererInstanceId);
+    }
+
+    [TestMethod]
+    [DataRow("0")]
+    [DataRow("-1")]
+    [DataRow("1.5")]
+    [DataRow("9007199254740992")]
+    [DataRow("\"17\"")]
+    [DataRow("null")]
+    public void OutputAcknowledgementRejectsInvalidSequence(string sequence)
+    {
+        var json = """
+            {"version":2,"type":"output-ack","sessionId":"10000000000000000000000000000001",
+             "payload":{"rendererInstanceId":"20000000000000000000000000000001","sessionGeneration":3,"sequence":
+            """ + sequence + "}}";
+
+        Assert.IsFalse(RendererProtocol.TryParse(json, out _));
+    }
+
+    [TestMethod]
     public void TryParseWithOversizedInputRejectsMessage()
     {
         var data = new string('x', RendererProtocol.MaximumMessageLength + 1);

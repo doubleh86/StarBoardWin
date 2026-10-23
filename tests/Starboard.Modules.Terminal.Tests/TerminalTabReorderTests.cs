@@ -648,6 +648,8 @@ public sealed class TerminalTabReorderTests
         internal int ResizeCount { get; private set; }
         internal int DisposeCount { get; private set; }
 
+        public void SetOutputPaused(bool paused) { }
+
         public void BeginReading() { }
         public ValueTask WriteAsync(string data, CancellationToken cancellationToken)
         {

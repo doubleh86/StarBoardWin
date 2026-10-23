@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -20,8 +19,6 @@ namespace Starboard.Modules.Terminal.Presentation;
 internal partial class TerminalView : UserControl, IAsyncDisposable
 {
     private const string RendererHostName = "starboard.local";
-    private const int MaximumOutputBatchLength = 65_536;
-    private const int MaximumPendingOutputLength = 4 * 1024 * 1024;
 
     private readonly IDiagnosticLog diagnosticLog;
     private readonly TerminalSessionCoordinator sessionCoordinator;
@@ -33,7 +30,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private readonly TerminalUrlOpenService urlOpenService;
     private readonly TerminalLaunchProfileCatalog launchProfileCatalog;
     private readonly Lock outputLock = new();
-    private readonly Dictionary<TerminalSessionId, PendingSessionOutput> pendingOutput = [];
+    private readonly Dictionary<TerminalSessionId, TerminalOutputBuffer> pendingOutput = [];
     private readonly HashSet<TerminalSessionId> outputFlushScheduled = [];
     private readonly HashSet<TerminalSessionId> outputOverflowReported = [];
     private readonly HashSet<TerminalSessionId> rendererSessionIds = [];
@@ -56,6 +53,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private bool webViewRuntimeUnavailable;
     private bool launchProfileDiscoveryStarted;
     private bool isDisposed;
+    private bool _outputDeliveryAvailable;
     private Guid rendererInstanceId;
     private long rendererGeneration;
     private long collapsedHeightChangeSequence;
@@ -251,6 +249,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
 
         CancelPendingSafetyConfirmation(sendRendererCancellation: false);
+        SetOutputDeliveryAvailable(false);
         isDisposed = true;
         _layoutRequests.Dispose();
         StopLayoutObservation(null, new RoutedEventArgs());
@@ -740,6 +739,9 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 {
                     _ = WriteInputAsync(inputSessionId, message.Data ?? string.Empty);
                 }
+                break;
+            case RendererMessageType.OutputAcknowledged:
+                AcknowledgeOutput(message);
                 break;
             case RendererMessageType.Resize:
                 columns = message.Columns;
@@ -1282,6 +1284,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
 
         CancelLayoutChecks();
+        SetOutputDeliveryAvailable(false);
         collapsedHeightChangeSequence++;
         rendererGeneration++;
         rendererOperationCancellation.Cancel();
@@ -1915,7 +1918,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             if (rendererSessionGenerations.TryGetValue(sessionId, out var previousGeneration) == true &&
                 previousGeneration != state.Session.Generation)
             {
-                RemovePendingOutput(sessionId);
+                RemovePendingOutput(sessionId, previousGeneration);
             }
 
             rendererSessionGenerations[sessionId] = state.Session.Generation;
@@ -1928,11 +1931,21 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
     }
 
-    private void RemovePendingOutput(TerminalSessionId sessionId)
+    private void RemovePendingOutput(TerminalSessionId sessionId, long? expectedGeneration = null)
     {
         lock (outputLock)
         {
-            pendingOutput.Remove(sessionId);
+            if (expectedGeneration.HasValue == true && pendingOutput.TryGetValue(sessionId, out var current) == true &&
+                current.Generation != expectedGeneration.Value)
+            {
+                return;
+            }
+
+            if (pendingOutput.Remove(sessionId, out var buffer) == true)
+            {
+                sessionCoordinator.SetOutputPaused(new TerminalSessionReference(sessionId.Value, buffer.Generation), false);
+            }
+
             outputFlushScheduled.Remove(sessionId);
             outputOverflowReported.Remove(sessionId);
         }
@@ -1946,49 +1959,35 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
         }
 
         var sessionId = output.SessionId;
-        var data = output.Data;
         var reportOverflow = false;
-        var scheduleFlush = false;
 
         lock (outputLock)
         {
+            if (isDisposed == true || sessionCoordinator.IsCurrentSession(output.Session) == false)
+            {
+                return;
+            }
+
             if (pendingOutput.TryGetValue(sessionId, out var sessionOutput) == false ||
                 sessionOutput.Generation != output.Session.Generation)
             {
-                sessionOutput = new PendingSessionOutput(output.Session.Generation);
+                sessionOutput = new TerminalOutputBuffer(output.Session.Generation);
                 pendingOutput[sessionId] = sessionOutput;
             }
 
-            if (data.Length >= MaximumPendingOutputLength)
+            if (sessionOutput.Append(output.Data) == true)
             {
-                sessionOutput.Data.Clear();
-                sessionOutput.Data.Append(data.AsSpan(data.Length - MaximumPendingOutputLength));
                 reportOverflow = outputOverflowReported.Add(sessionId);
             }
-            else
-            {
-                var overflowLength = sessionOutput.Data.Length + data.Length - MaximumPendingOutputLength;
-                if (overflowLength > 0)
-                {
-                    sessionOutput.Data.Remove(0, overflowLength);
-                    reportOverflow = outputOverflowReported.Add(sessionId);
-                }
 
-                sessionOutput.Data.Append(data);
-            }
-
-            scheduleFlush = outputFlushScheduled.Add(sessionId);
+            UpdateOutputReadStateLocked(sessionId, sessionOutput);
+            ScheduleOutputFlushLocked(sessionId);
         }
 
         if (reportOverflow == true)
         {
             diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "OutputBacklog",
                                 $"Terminal session {sessionId} exceeded its bounded renderer backlog; the oldest data was discarded.");
-        }
-
-        if (scheduleFlush == true)
-        {
-            _ = Dispatcher.BeginInvoke(() => FlushOutput(sessionId));
         }
     }
 
@@ -2000,77 +1999,116 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
             return;
         }
 
-        if (rendererFailed == true || renderer.CoreWebView2 is null)
-        {
-            lock (outputLock)
-            {
-                outputFlushScheduled.Remove(sessionId);
-            }
-
-            return;
-        }
-
-        string output = string.Empty;
+        TerminalOutputBatch? batch;
         long generation;
-        bool hasMoreOutput;
 
         lock (outputLock)
         {
-            if (pendingOutput.TryGetValue(sessionId, out var sessionOutput) == false)
+            outputFlushScheduled.Remove(sessionId);
+            if (_outputDeliveryAvailable == false || rendererFailed == true || renderer.CoreWebView2 is null ||
+                pendingOutput.TryGetValue(sessionId, out var sessionOutput) == false)
             {
-                outputFlushScheduled.Remove(sessionId);
                 return;
             }
 
             generation = sessionOutput.Generation;
-            var length = Math.Min(sessionOutput.Data.Length, MaximumOutputBatchLength);
-            output = sessionOutput.Data.ToString(0, length);
-            sessionOutput.Data.Remove(0, length);
-            hasMoreOutput = sessionOutput.Data.Length > 0;
-            if (hasMoreOutput == false)
-            {
-                pendingOutput.Remove(sessionId);
-                outputFlushScheduled.Remove(sessionId);
-            }
-
-            if (sessionOutput.Data.Length < MaximumPendingOutputLength / 2)
-            {
-                outputOverflowReported.Remove(sessionId);
-            }
+            batch = sessionOutput.TakeBatch();
         }
 
         var session = new TerminalSessionReference(sessionId.Value, generation);
         var isCurrentGeneration = sessionCoordinator.IsCurrentSession(session);
         if (isCurrentGeneration == false)
         {
-            RemovePendingOutput(sessionId);
+            RemovePendingOutput(sessionId, generation);
             return;
         }
 
-        if (string.IsNullOrEmpty(output) == false)
+        if (batch is null)
         {
-            SendSessionMessage("output", sessionId, new { sessionGeneration = generation, data = output });
+            // A full in-flight window waits for an ACK; a split surrogate waits for its next fragment.
+            return;
         }
 
-        if (hasMoreOutput == true && isDisposed == false)
+        SendSessionMessage("output", sessionId,
+                           new { sessionGeneration = generation, sequence = batch.Sequence, data = batch.Data });
+        lock (outputLock)
         {
-            _ = Dispatcher.BeginInvoke(() => FlushOutput(sessionId));
+            ScheduleOutputFlushLocked(sessionId);
+        }
+    }
+
+    private void AcknowledgeOutput(RendererMessage message)
+    {
+        if (message.RendererInstanceId != rendererInstanceId || rendererInstanceId == Guid.Empty ||
+            message.SessionId is not { } sessionId)
+        {
+            return;
+        }
+
+        lock (outputLock)
+        {
+            if (_outputDeliveryAvailable == false ||
+                pendingOutput.TryGetValue(sessionId, out var buffer) == false ||
+                buffer.Generation != message.SessionGeneration || buffer.Acknowledge(message.OutputSequence) == false)
+            {
+                return;
+            }
+
+            UpdateOutputReadStateLocked(sessionId, buffer);
+            ScheduleOutputFlushLocked(sessionId);
+        }
+    }
+
+    private void UpdateOutputReadStateLocked(TerminalSessionId sessionId, TerminalOutputBuffer buffer)
+    {
+        var paused = buffer.ShouldPauseReading(_outputDeliveryAvailable);
+        sessionCoordinator.SetOutputPaused(new TerminalSessionReference(sessionId.Value, buffer.Generation), paused);
+        if (buffer.PendingLength < TerminalOutputBuffer.MaximumPendingLength / 2)
+        {
+            outputOverflowReported.Remove(sessionId);
+        }
+    }
+
+    private void ScheduleOutputFlushLocked(TerminalSessionId sessionId)
+    {
+        if (isDisposed == false && _outputDeliveryAvailable == true && outputFlushScheduled.Add(sessionId) == true)
+        {
+            // Leave input/layout ahead of sustained output; ACKs determine further transmission.
+            _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+                                       () => FlushOutput(sessionId));
+        }
+    }
+
+    private void SetOutputDeliveryAvailable(bool available)
+    {
+        lock (outputLock)
+        {
+            _outputDeliveryAvailable = available;
+            foreach (var (sessionId, buffer) in pendingOutput)
+            {
+                if (available == false)
+                {
+                    if (buffer.ResetDelivery() == true && outputOverflowReported.Add(sessionId) == true)
+                    {
+                        diagnosticLog.Write(DiagnosticLevel.Warning, "Terminal", "OutputBacklog",
+                                            "Renderer recovery exceeded the bounded backlog; oldest output was discarded.");
+                    }
+                }
+
+                UpdateOutputReadStateLocked(sessionId, buffer);
+            }
         }
     }
 
     private void SchedulePendingOutputFlushes()
     {
-        TerminalSessionId[] sessionIds;
+        SetOutputDeliveryAvailable(true);
         lock (outputLock)
         {
-            sessionIds = pendingOutput.Keys
-                .Where(sessionId => outputFlushScheduled.Add(sessionId) == true)
-                .ToArray();
-        }
-
-        foreach (var sessionId in sessionIds)
-        {
-            _ = Dispatcher.BeginInvoke(() => FlushOutput(sessionId));
+            foreach (var sessionId in pendingOutput.Keys)
+            {
+                ScheduleOutputFlushLocked(sessionId);
+            }
         }
     }
 
@@ -2208,7 +2246,7 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
                 }
 
                 var data = result.Value;
-                if (data.Length <= RendererProtocol.MaximumMessageLength)
+                if (data.Length <= RendererProtocol.MaximumDataLength)
                 {
                     var confirmation = sessionCoordinator.RequestPasteConfirmation(sessionId, data);
                     if (confirmation is null)
@@ -2515,16 +2553,4 @@ internal partial class TerminalView : UserControl, IAsyncDisposable
     private sealed record PendingSafetyConfirmation(TerminalConfirmationToken Token, ConfirmationKind Kind,
                                                     TerminalUrlOpenTarget? UrlTarget = null,
                                                     Guid RendererInstanceId = default);
-
-    private sealed class PendingSessionOutput
-    {
-        internal PendingSessionOutput(long generation)
-        {
-            Generation = generation;
-        }
-
-        internal long Generation { get; }
-
-        internal StringBuilder Data { get; } = new();
-    }
 }

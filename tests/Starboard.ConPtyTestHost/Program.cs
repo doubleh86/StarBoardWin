@@ -39,6 +39,12 @@ internal static class Program
                         await RunLifecycleScenarioAsync(cancellation.Token);
                     }
                     break;
+                case "output-flow":
+                    using (var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(12)))
+                    {
+                        await RunOutputFlowScenarioAsync(progress, cancellation.Token);
+                    }
+                    break;
                 case PowerShellBootstrapPwshMode:
                     using (var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
                     {
@@ -106,6 +112,56 @@ internal static class Program
         await session.WriteAsync($"if /I \"%CD%\"==\"%TEMP%\" echo {Marker}\r\n", cancellationToken);
 
         await WaitForSignalAsync(markerReceived.Task, "The lifecycle round-trip marker", cancellationToken);
+    }
+
+    private static async Task RunOutputFlowScenarioAsync(TestHostProgress progress, CancellationToken cancellationToken)
+    {
+        var markerPath = Path.Combine(Path.GetTempPath(), $"starboard-flow-{Guid.NewGuid():N}.txt");
+        var resolvedShell = ShellResolver.Resolve("cmd.exe");
+        var shell = new ShellLaunchSpec(resolvedShell.ExecutablePath, "/D /Q", resolvedShell.WorkingDirectory);
+        var output = new StringBuilder();
+        var markerReceived = CreateCompletionSource();
+        try
+        {
+            await using var session = ConPtySession.Start(shell, 80, 24, new NullDiagnosticLog());
+            session.OutputReceived += data =>
+            {
+                lock (output)
+                {
+                    output.Append(data);
+                    if (output.ToString().Contains("STARBOARD_FLOW_OUTPUT", StringComparison.Ordinal) == true)
+                    {
+                        markerReceived.TrySetResult();
+                    }
+                }
+            };
+            session.SetOutputPaused(true);
+            session.BeginReading();
+            await session.WriteAsync($"echo STARBOARD_FLOW_OUTPUT & echo ready>\"{markerPath}\"\r\n", cancellationToken);
+            // The isolated shell's marker proves execution progressed without releasing the output reader.
+            while (File.Exists(markerPath) == false)
+            {
+                await Task.Delay(10, cancellationToken);
+            }
+
+            lock (output)
+            {
+                Ensure(output.Length == 0, "ConPTY output bypassed its paused read gate.");
+            }
+
+            progress.MarkStage("output-paused-command-executed");
+            session.SetOutputPaused(false);
+            await WaitForSignalAsync(markerReceived.Task, "Resumed ConPTY output", cancellationToken);
+            session.SetOutputPaused(true);
+            progress.MarkStage("output-resumed-disposing-paused-session");
+        }
+        finally
+        {
+            if (File.Exists(markerPath) == true)
+            {
+                File.Delete(markerPath);
+            }
+        }
     }
 
     private static async Task RunPowerShellBootstrapScenarioAsync(TerminalShellKind shellKind,

@@ -179,6 +179,170 @@ public sealed class TerminalWorkspaceRestoreTests
     }
 
     [TestMethod]
+    public async Task DelayedWorkspaceEventCannotOverwriteNewerSavedName()
+    {
+        var store = new RecordingWorkspaceStore();
+        await using var coordinator = new TerminalSessionCoordinator(new RecordingSessionFactory(), new NullDiagnosticLog());
+        using var releaseOldEvent = new ManualResetEventSlim(false);
+        var oldEventEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        coordinator.WorkspaceChanged += snapshot =>
+        {
+            if (snapshot.Tabs.Count > 0 && snapshot.Tabs[0].Name == "Old")
+            {
+                oldEventEntered.TrySetResult();
+                Assert.IsTrue(releaseOldEvent.Wait(TimeSpan.FromSeconds(5)));
+            }
+        };
+        await using var persistence = new TerminalWorkspacePersistence(store, coordinator, new NullDiagnosticLog(),
+                                                                       TimeSpan.FromMilliseconds(5));
+        _ = await persistence.InitializeAsync(true, CancellationToken.None);
+        var tab = await coordinator.StartAsync(_testShell, 80, 24, CancellationToken.None);
+        var latestSaved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        persistence.StatusChanged += status =>
+        {
+            if (status.State == TerminalWorkspaceSaveState.Saved && store.SavedConfigurations.Last().Tabs[0].Name == "Latest")
+            {
+                latestSaved.TrySetResult();
+            }
+        };
+
+        var oldChange = Task.Run(() => coordinator.Rename(tab.SessionId, "Old"));
+        try
+        {
+            await oldEventEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.IsTrue(coordinator.Rename(tab.SessionId, "Latest"));
+            await latestSaved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            releaseOldEvent.Set();
+            await oldChange.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+
+        var count = store.SavedConfigurations.Count;
+        await persistence.DisposeAsync();
+        Assert.AreEqual("Latest", store.SavedConfigurations.Last().Tabs[0].Name);
+        Assert.AreEqual(count, store.SavedConfigurations.Count);
+    }
+
+    [TestMethod]
+    public async Task CompletedSaveIsNotWrittenAgainAtShutdown()
+    {
+        var store = new RecordingWorkspaceStore();
+        await using var coordinator = new TerminalSessionCoordinator(new RecordingSessionFactory(), new NullDiagnosticLog());
+        await using var persistence = new TerminalWorkspacePersistence(store, coordinator, new NullDiagnosticLog(),
+                                                                       TimeSpan.FromMilliseconds(5));
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        persistence.StatusChanged += status =>
+        {
+            if (status.State == TerminalWorkspaceSaveState.Saved)
+            {
+                completed.TrySetResult();
+            }
+        };
+        _ = await persistence.InitializeAsync(true, CancellationToken.None);
+        _ = await coordinator.StartAsync(_testShell, 80, 24, CancellationToken.None);
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await persistence.DisposeAsync();
+
+        Assert.AreEqual(1, store.SavedConfigurations.Count);
+    }
+
+    [TestMethod]
+    public async Task ChangeDuringSaveRemainsDirtyAndShutdownSavesOnlyLatest()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var store = new RecordingWorkspaceStore
+        {
+            BeforeSave = async (_, token) =>
+            {
+                entered.TrySetResult();
+                await release.Task.WaitAsync(token);
+            },
+        };
+        await using var coordinator = new TerminalSessionCoordinator(new RecordingSessionFactory(), new NullDiagnosticLog());
+        await using var persistence = new TerminalWorkspacePersistence(store, coordinator, new NullDiagnosticLog(),
+                                                                       TimeSpan.FromMilliseconds(5));
+        _ = await persistence.InitializeAsync(true, CancellationToken.None);
+        var tab = await coordinator.StartAsync(_testShell, 80, 24, CancellationToken.None);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.IsTrue(coordinator.Rename(tab.SessionId, "Intermediate"));
+        Assert.IsTrue(coordinator.Rename(tab.SessionId, "Latest"));
+        var shutdown = persistence.DisposeAsync().AsTask();
+        release.TrySetResult();
+        await shutdown.WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.AreEqual(2, store.SavedConfigurations.Count);
+        Assert.AreEqual("Latest", store.SavedConfigurations.Last().Tabs[0].Name);
+        Assert.AreEqual(1, store.MaximumConcurrentSaves);
+    }
+
+    [TestMethod]
+    public async Task WriterQueueRejectsSnapshotSupersededBeforeIoStarts()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var store = new RecordingWorkspaceStore
+        {
+            BeforeSave = async (_, token) =>
+            {
+                entered.TrySetResult();
+                await release.Task.WaitAsync(token);
+            },
+        };
+        await using var coordinator = new TerminalSessionCoordinator(new RecordingSessionFactory(), new NullDiagnosticLog());
+        await using var persistence = new TerminalWorkspacePersistence(store, coordinator, new NullDiagnosticLog(),
+                                                                       TimeSpan.FromMinutes(1));
+        _ = await persistence.InitializeAsync(false, CancellationToken.None);
+        var tab = await coordinator.StartAsync(_testShell, 80, 24, CancellationToken.None);
+        var firstSave = persistence.SetEnabledAsync(true, CancellationToken.None);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.IsTrue(coordinator.Rename(tab.SessionId, "Intermediate"));
+        var obsoleteSave = persistence.SetEnabledAsync(true, CancellationToken.None);
+        Assert.IsTrue(coordinator.Rename(tab.SessionId, "Latest"));
+        release.TrySetResult();
+        _ = await firstSave.WaitAsync(TimeSpan.FromSeconds(2));
+        var obsoleteResult = await obsoleteSave.WaitAsync(TimeSpan.FromSeconds(2));
+        await persistence.DisposeAsync();
+
+        Assert.AreEqual(TerminalWorkspacePersistenceStatus.Skipped, obsoleteResult.Status);
+        Assert.AreEqual(2, store.SavedConfigurations.Count);
+        Assert.AreEqual("Latest", store.SavedConfigurations.Last().Tabs[0].Name);
+        Assert.IsFalse(store.SavedConfigurations.Any(configuration => configuration.Tabs[0].Name == "Intermediate"));
+    }
+
+    [TestMethod]
+    public async Task FailedLatestSaveRemainsDirtyForShutdownRetry()
+    {
+        var attempts = 0;
+        var store = new RecordingWorkspaceStore
+        {
+            BeforeSave = (_, _) => Interlocked.Increment(ref attempts) == 1
+                ? Task.FromException(new System.IO.IOException("Simulated write failure."))
+                : Task.CompletedTask,
+        };
+        var failed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var coordinator = new TerminalSessionCoordinator(new RecordingSessionFactory(), new NullDiagnosticLog());
+        await using var persistence = new TerminalWorkspacePersistence(store, coordinator, new NullDiagnosticLog(),
+                                                                       TimeSpan.FromMilliseconds(5));
+        persistence.StatusChanged += status =>
+        {
+            if (status.State == TerminalWorkspaceSaveState.Failed)
+            {
+                failed.TrySetResult();
+            }
+        };
+        _ = await persistence.InitializeAsync(true, CancellationToken.None);
+        _ = await coordinator.StartAsync(_testShell, 80, 24, CancellationToken.None);
+        await failed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await persistence.DisposeAsync();
+
+        Assert.AreEqual(2, attempts);
+        Assert.AreEqual(1, store.SavedConfigurations.Count);
+    }
+
+    [TestMethod]
     public async Task DebounceSerializesWritesAndPersistsLatestWorkspaceOnly()
     {
         var store = new RecordingWorkspaceStore();
@@ -412,6 +576,8 @@ public sealed class TerminalWorkspaceRestoreTests
     {
         private int concurrentSaves;
 
+        internal Func<TerminalWorkspaceConfiguration, CancellationToken, Task>? BeforeSave { get; init; }
+
         internal TerminalWorkspaceLoadResult LoadResult { get; init; } =
             new(TerminalWorkspaceLoadStatus.NotFound, null, null);
 
@@ -440,6 +606,11 @@ public sealed class TerminalWorkspaceRestoreTests
             MaximumConcurrentSaves = Math.Max(MaximumConcurrentSaves, current);
             try
             {
+                if (BeforeSave is not null)
+                {
+                    await BeforeSave(configuration, cancellationToken);
+                }
+
                 await Task.Delay(5, cancellationToken);
                 SavedConfigurations.Add(configuration);
                 FirstSave.TrySetResult();
@@ -581,6 +752,8 @@ public sealed class TerminalWorkspaceRestoreTests
             add { }
             remove { }
         }
+
+        public void SetOutputPaused(bool paused) { }
 
         public void BeginReading()
         {

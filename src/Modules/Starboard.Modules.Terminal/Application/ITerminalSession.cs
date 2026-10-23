@@ -10,6 +10,8 @@ internal interface ITerminalSession : IAsyncDisposable
 
     void BeginReading();
 
+    void SetOutputPaused(bool paused);
+
     ValueTask WriteAsync(string data, CancellationToken cancellationToken);
 
     void Resize(int columns, int rows);

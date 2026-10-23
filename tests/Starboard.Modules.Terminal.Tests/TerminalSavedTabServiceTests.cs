@@ -346,6 +346,8 @@ public sealed class TerminalSavedTabServiceTests
 
         internal int DisposeCount { get; private set; }
 
+        public void SetOutputPaused(bool paused) { }
+
         public void BeginReading()
         {
         }

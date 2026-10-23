@@ -171,6 +171,7 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
             }
 
             isEnabled = enabled;
+            hasPendingChanges = enabled;
             debounceCancellation?.Cancel();
             debounceCancellation?.Dispose();
             debounceCancellation = null;
@@ -312,40 +313,8 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
 
     private void SessionCoordinator_WorkspaceChanged(TerminalWorkspaceSnapshot snapshot)
     {
-        lock (stateLock)
-        {
-            if (isInitialized == false || isEnabled == false || isRestoreInProgress == true ||
-                isFutureSchemaSuspended == true || isDisposing == true || isDisposed == true)
-            {
-                return;
-            }
-        }
-
-        if (TryCreateConfiguration(snapshot, out var configuration) == false)
-        {
-            var publishFailure = false;
-            lock (stateLock)
-            {
-                if (isInitialized == true && isEnabled == true && isRestoreInProgress == false &&
-                    isFutureSchemaSuspended == false && isDisposing == false && isDisposed == false)
-                {
-                    latestConfiguration = null;
-                    hasPendingChanges = false;
-                    debounceCancellation?.Cancel();
-                    publishFailure = true;
-                }
-            }
-
-            if (publishFailure == true)
-            {
-                PublishStatus(new TerminalWorkspaceSaveStatus(TerminalWorkspaceSaveState.Failed,
-                                                              "지원되는 실행 프로필만 작업공간에 저장할 수 있습니다."));
-            }
-
-            return;
-        }
-
-        CancellationTokenSource saveCancellation;
+        _ = snapshot;
+        var publishFailure = false;
         lock (stateLock)
         {
             if (isInitialized == false || isEnabled == false || isRestoreInProgress == true ||
@@ -354,18 +323,31 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
                 return;
             }
 
-            if (ConfigurationsEqual(latestConfiguration, configuration) == true)
+            // Events are published outside the coordinator lock and can arrive out of order.
+            // Read current state while serializing persistence decisions, never the event's old copy.
+            if (TryCreateConfiguration(sessionCoordinator.Snapshot, out var configuration) == false)
             {
-                return;
+                latestConfiguration = null;
+                hasPendingChanges = false;
+                debounceCancellation?.Cancel();
+                publishFailure = true;
             }
+            else if (ConfigurationsEqual(latestConfiguration, configuration) == false)
+            {
+                latestConfiguration = configuration;
+                hasPendingChanges = true;
+                debounceCancellation?.Cancel();
+                debounceCancellation?.Dispose();
+                var saveCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCancellation.Token);
+                debounceCancellation = saveCancellation;
+                pendingSave = SaveAfterDebounceAsync(configuration!, saveCancellation);
+            }
+        }
 
-            latestConfiguration = configuration;
-            hasPendingChanges = true;
-            debounceCancellation?.Cancel();
-            debounceCancellation?.Dispose();
-            saveCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCancellation.Token);
-            debounceCancellation = saveCancellation;
-            pendingSave = SaveAfterDebounceAsync(configuration!, saveCancellation);
+        if (publishFailure == true)
+        {
+            PublishStatus(new TerminalWorkspaceSaveStatus(TerminalWorkspaceSaveState.Failed,
+                                                          "지원되는 실행 프로필만 작업공간에 저장할 수 있습니다."));
         }
     }
 
@@ -394,7 +376,25 @@ internal sealed class TerminalWorkspacePersistence : IAsyncDisposable
             await writerLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                lock (stateLock)
+                {
+                    if (isDisposed == true || isEnabled == false || isFutureSchemaSuspended == true ||
+                        hasPendingChanges == false || ReferenceEquals(latestConfiguration, configuration) == false)
+                    {
+                        return new TerminalWorkspacePersistenceResult(operation,
+                                                                      TerminalWorkspacePersistenceStatus.Skipped, null);
+                    }
+                }
+
                 await store.SaveAsync(configuration, cancellationToken).ConfigureAwait(false);
+                lock (stateLock)
+                {
+                    // A newer change during I/O must remain dirty for its own save/shutdown flush.
+                    if (ReferenceEquals(latestConfiguration, configuration) == true)
+                    {
+                        hasPendingChanges = false;
+                    }
+                }
             }
             finally
             {

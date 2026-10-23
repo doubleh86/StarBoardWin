@@ -111,7 +111,8 @@ public sealed class RendererDistributionTests
         StringAssert.Contains(styles, ".tab-new-output");
         StringAssert.Contains(source, "payload.sessionGeneration === entry.sessionGeneration");
         StringAssert.Contains(source, "payload.sessionGeneration < entry.sessionGeneration");
-        StringAssert.Contains(hostSource, "new { sessionGeneration = generation, data = output }");
+        StringAssert.Contains(hostSource, "new { sessionGeneration = generation, sequence = batch.Sequence, data = batch.Data }");
+        StringAssert.Contains(hostSource, "buffer.Acknowledge(message.OutputSequence)");
         StringAssert.Contains(script, "sessionGeneration===r.sessionGeneration");
     }
 

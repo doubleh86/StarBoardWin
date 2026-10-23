@@ -207,7 +207,9 @@ export function createHarness() {
     onData(callback) { this.onInput = callback; }
     attachCustomKeyEventHandler(callback) { this.keyHandler = callback; }
     focus() { this.focusCount++; this.textarea.focus(); }
-    write(data) { this.writes.push(data); }
+    writeCallbacks = [];
+    write(data, callback) { this.writes.push(data); if (callback) { this.writeCallbacks.push(callback); } }
+    completeWrites() { while (this.writeCallbacks.length > 0) { this.writeCallbacks.shift()(); } }
     paste(data) {
       pasteWithXterm(data, this.textarea, {
         decPrivateModes: { bracketedPasteMode: this.bracketedPasteMode },

@@ -1,5 +1,27 @@
 # Windows용 Starboard 테스트 계획
 
+## 저장·출력 흐름·문자 경계 회귀 (2026-10-23)
+
+[수정 계획](plans/2026-10-23-terminal-reliability-and-flow-control.md)의 네 재현 문제를
+대상으로 한다. 사용자 앱·workspace 파일·clipboard·실행 중인 작업은 변경하지 않는다.
+
+| ID | 검증 | 현재 상태 |
+|---|---|---|
+| REL-01 | 역순 workspace 이벤트, writer 대기 중 변경, 저장 중 변경, 성공 후 중복 shutdown 쓰기 방지와 실패 후 재시도 | Passed (automated). barrier를 사용한 실제 coordinator/persistence + 가짜 store |
+| REL-02 | 256 Ki in-flight 제한, ACK 단회/순서 검사, 512/128 Ki pause/resume, renderer 장애·재연결 replay, generation 격리 | Passed (automated). production buffer/coordinator/gate; native WebView dispatch는 정적 연결 검사 |
+| REL-03 | 실제 GUI ConPTY read pause 중 무해한 명령 실행, resume 후 출력 수신, paused session 종료 | Passed (local integration). 별도 숨김 테스트 host와 임시 marker 파일만 사용 |
+| REL-04 | production renderer listener와 upstream xterm WriteBuffer로 총 52,428,800 code unit 처리, 최대 parser 대기량 262,144, ACK callback 연결 | Passed (simulated). host window·parser scheduling은 조절된 테스트 환경이며 실제 UI 처리속도 측정은 아님 |
+| REL-05 | 4,096/65,536 경계와 분리 fragment·overflow의 surrogate pair, 한글 출력 JSON 왕복 | Passed (automated) |
+| REL-06 | 원문 1,048,576 code unit + bracket wrapper, 역슬래시·제어문자·한글의 JSON escaping, decoded/envelope 상한 초과 거부 | Passed (automated). 실제 xterm paste와 renderer input 직렬화, C# parser를 각각 검증 |
+| REL-MAN-01 | 실제 WebView2에서 다중 탭 고출력 중 입력·탭 전환·숨김/표시·renderer 재연결, RDP/잠금 복귀 | Not run (manual) |
+| REL-MAN-02 | Windows 10/PSReadLine·WSL에서 긴 붙여넣기와 Unicode 표시, 재시작/재부팅 후 최신 탭 구성 복원 | Not run (manual). 이전 사용자 복원 확인과 이번 변경의 실환경 인수를 구분 |
+
+최종 검증: SDK 10.0.301 solution restore·Debug build(경고/오류 0), 전체 C# **721개**
+(Architecture 16, Terminal 455, DesktopIntegration 120, Preferences 37, Integration 93),
+renderer **120개**와 dist build, C# 정렬·diff 검사 통과. 최초 제한 안 NU1900·MSBuild
+하위 작업 실패, helper analyzer·정렬·기존 source-shape assertion 수정과 재실행 근거는
+위 수정 계획에 기록했다. 실제 화면/장비 인수를 자동 테스트 통과로 대체하지 않는다.
+
 ## 여러 줄 붙여넣기 줄 순서 회귀 (2026-10-22)
 
 Task `terminal-multiline-paste-order-regression`은 **구현·자동 검증 완료**다. 사용자는 Windows

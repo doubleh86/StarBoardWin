@@ -15,6 +15,28 @@ public sealed class TerminalSessionCoordinatorTests
     private static readonly ShellLaunchSpec UpdatedShell = new("powershell.exe", ["-NoLogo"], Path.GetTempPath());
 
     [TestMethod]
+    public async Task OutputPauseTargetsOnlyCurrentSessionGeneration()
+    {
+        var factory = new FakeTerminalSessionFactory();
+        await using var coordinator = CreateCoordinator(factory);
+        var first = await coordinator.StartAsync(TestShell, 80, 24, CancellationToken.None);
+        var firstReference = FindOutputState(coordinator.NewOutputState, first.SessionId).Session;
+        var second = await coordinator.AddAsync(CancellationToken.None);
+
+        coordinator.SetOutputPaused(firstReference, true);
+        Assert.IsTrue(factory.Sessions[0].OutputPaused);
+        Assert.IsFalse(factory.Sessions[1].OutputPaused);
+        coordinator.SetOutputPaused(firstReference, false);
+        Assert.IsFalse(factory.Sessions[0].OutputPaused);
+
+        await coordinator.RestartAsync(first.SessionId, CancellationToken.None);
+        coordinator.SetOutputPaused(firstReference, true);
+        Assert.IsFalse(factory.Sessions[2].OutputPaused);
+        Assert.IsFalse(factory.Sessions[1].OutputPaused);
+        Assert.IsNotNull(FindOutputState(coordinator.NewOutputState, second.SessionId));
+    }
+
+    [TestMethod]
     public async Task StartAsyncFirstTabStartsAndActivatesDedicatedSession()
     {
         var factory = new FakeTerminalSessionFactory();
@@ -1230,6 +1252,13 @@ public sealed class TerminalSessionCoordinatorTests
         internal Exception? ResizeException { get; set; }
 
         internal Exception? WriteException { get; set; }
+
+        internal bool OutputPaused { get; private set; }
+
+        public void SetOutputPaused(bool paused)
+        {
+            OutputPaused = paused;
+        }
 
         public void BeginReading()
         {

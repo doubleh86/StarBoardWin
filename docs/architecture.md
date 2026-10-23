@@ -185,7 +185,8 @@ Node.js나 network를 요구하지 않는다. npm은 renderer asset을 갱신할
 - Release에서는 DevTools, browser context menu, status bar와 accelerator를 끈다.
 - host object를 광범위하게 노출하지 않고 JSON web message만 사용한다.
 - renderer process failure를 관찰하고 session을 즉시 폐기하지 않은 채 surface를
-  다시 연결한다. 실패 중 session별 최신 출력은 4 MiB까지만 메모리에 보관하고 재연결 뒤 전달하며,
+  다시 연결한다. 실패 중 session별 최신 출력은 4 Mi UTF-16 code unit(문자 저장 공간 약 8 MiB,
+  객체 overhead 제외)까지만 메모리에 보관하고 재연결 뒤 전달하며,
   renderer가 이미 소유하던 scrollback은 복구 불가임을 사용자 문서에 명시한다.
 - native session output/exit event는 session generation을 포함한다. coordinator, WPF host와 renderer는
   restart/remove/shutdown 뒤 이전 generation의 callback·output·unread state를 폐기한다. dispatcher에
@@ -217,8 +218,17 @@ runtime을 사용하므로 장시간 실행 앱의 update 안내는 후속 배�
 - 알 수 없는 version/type, global message의 session ID, session message의 누락되거나
   잘못된 ID는 무시하고 diagnostics에 metadata만 남긴다.
 - input payload는 UTF-8로 encoding해 ConPTY input queue로 보낸다.
-- output은 host가 session별 bounded buffer와 최대 batch 크기로 묶어 대상 xterm에
-  보낸다. 느린 session의 backlog는 다른 session과 공유하지 않는다.
+- output은 session별 최대 65,536 UTF-16 code unit batch로 묶고, xterm `write` callback이
+  보낸 `output-ack` 전까지 in-flight 합계를 256 Ki code unit 이하로 제한한다. ACK는 renderer
+  instance ID·session generation·batch sequence가 일치할 때만 한 번 소비한다.
+- host pending+in-flight가 512 Ki code unit에 도달하면 해당 ConPTY의 다음 read를 비동기
+  gate에서 대기시키고 128 Ki 이하에서 재개한다. 입력/UI thread는 기다리지 않으며 다른
+  session의 budget은 독립적이다. dispatcher 출력은 Background priority로 양보한다.
+- renderer 수명 무효화는 gate를 해제한다. 새 renderer에는 미확인 batch를 pending 앞에
+  다시 넣어 전달하되 장애 중에는 기존 bounded backlog/oldest-drop 정책을 유지한다.
+  ACK 완료된 scrollback은 복원하지 않는다. 종료 token은 paused read도 취소한다.
+- batch·fragment·overflow 경계에서 UTF-16 surrogate pair를 분리하지 않는다. trailing
+  high surrogate는 다음 fragment까지 보관해 JSON serializer의 대체 문자 손실을 피한다.
 - host는 global `initialize`와 session별 `session-upsert`, `activate-session`,
   `output`, `paste`, `reset`, `remove-session`, `session-error`를 보내며 renderer
   source는 bundled local asset으로만 제공한다.
@@ -226,6 +236,9 @@ runtime을 사용하므로 장시간 실행 앱의 update 안내는 후속 배�
   `ResizePseudoConsole`에만 전달한다.
 - bridge log에는 payload text, command 또는 terminal output을 기록하지 않는다.
 - oversized/malformed message는 session을 종료하지 않고 거부한다.
+- clipboard 원문은 1,048,576 UTF-16 code unit로 제한한다. input은 xterm bracketed-paste
+  wrapper 12 code unit을 추가로 허용하고, JSON envelope는 input 상한의 6배+4,096로 제한한다.
+  최악의 JSON escaping과 envelope overhead를 포함하되 decoded payload 상한도 별도로 검사한다.
 
 ### 안전 확인과 새 출력 상태
 
@@ -421,6 +434,10 @@ schema 2의 실제 실행 대상은 LaunchProfileId이고, WSL 설치 여부는 
 snapshot의 탭 열거 순서로 0부터 연속된 저장 순서를 만든다. 미지원 프로필이 하나라도 있으면
 전체 snapshot 저장을 거부하고 대기 중 저장도 취소한다. 초기 복원 중에는 저장을 억제하며,
 변경 없이 종료하면 로드한 파일을 다시 저장해 정상 백업을 교체하지 않는다.
+이벤트 전달 순서가 상태 변경 순서와 다를 수 있으므로 persistence lock 안에서 최신
+coordinator snapshot을 읽고, writer lock 획득 뒤에도 현재 저장 대상인지 재검사한다.
+저장이 성공한 snapshot만 dirty를 해제하며, 그 사이 생긴 새 변경과 실패한 최신 저장은
+종료 flush 대상에 남긴다. 성공한 자동 저장을 종료 때 다시 써서 백업을 교체하지 않는다.
 `TerminalTabRegistry.AddRestored`는 `LaunchProfileId`로 기존 `TerminalLaunchProfile`을
 재구성한다. WSL 배포판은 nullable `ShellKind`와 함께 탭·snapshot·구성 복제에 동일 식별자로
 유지하며 별도 프로필 상태 저장소를 두지 않는다. coordinator는 첫 WSL 복원 탭에서 기존

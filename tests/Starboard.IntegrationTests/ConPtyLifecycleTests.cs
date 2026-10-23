@@ -17,6 +17,13 @@ public sealed class ConPtyLifecycleTests
     }
 
     [TestMethod]
+    [Timeout(20_000)]
+    public async Task GuiHostPausesResumesOutputAndDisposesPausedConPty()
+    {
+        await RunHostAsync("output-flow", TimeSpan.FromSeconds(15));
+    }
+
+    [TestMethod]
     [DataRow("powershell-bootstrap-pwsh")]
     [DataRow("powershell-bootstrap-windows")]
     [Timeout(25_000)]

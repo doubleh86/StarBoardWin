@@ -15,6 +15,7 @@ internal enum RendererMessageType
     SelectNext,
     SelectPrevious,
     Input,
+    OutputAcknowledged,
     Resize,
     Copy,
     PasteRequest,
@@ -65,4 +66,5 @@ internal sealed record RendererMessage(RendererMessageType Type, TerminalSession
                                        TerminalNewTabRequest? NewTabRequest = null,
                                        TerminalTabDuplicateRequest? TabDuplicateRequest = null,
                                        TerminalCollapsedHeightChangeRequest? CollapsedHeightChangeRequest = null,
-                                       TerminalTabReorderRequest? ReorderRequest = null);
+                                       TerminalTabReorderRequest? ReorderRequest = null,
+                                       long OutputSequence = 0);

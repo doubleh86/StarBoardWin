@@ -110,6 +110,8 @@ public sealed class WorkspaceStartupIntegrationTests
         public event Action<string>? OutputReceived { add { } remove { } }
         public event Action<uint>? Exited { add { } remove { } }
         public event Action<TerminalSessionCommandSignal>? CommandLifecycleChanged { add { } remove { } }
+        public void SetOutputPaused(bool paused) { }
+
         public void BeginReading() { }
         public ValueTask WriteAsync(string data, CancellationToken cancellationToken) => ValueTask.CompletedTask;
         public void Resize(int columns, int rows) { }

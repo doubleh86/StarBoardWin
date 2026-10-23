@@ -6,6 +6,24 @@ namespace Starboard.IntegrationTests;
 public sealed class TerminalFailureRecoveryIntegrationTests
 {
     [TestMethod]
+    public void OutputFlowWiringUsesParserAcknowledgementAndReleasesPausedReadsOnRecovery()
+    {
+        // Native WebView2 dispatch is separate manual QA; buffer/gate and renderer callbacks execute in other tests.
+        var source = ReadRepositoryFile("src", "Modules", "Starboard.Modules.Terminal", "Presentation", "TerminalView.xaml.cs");
+        StringAssert.Contains(source, "case RendererMessageType.OutputAcknowledged:");
+        StringAssert.Contains(source, "message.RendererInstanceId != rendererInstanceId");
+        StringAssert.Contains(source, "buffer.Generation != message.SessionGeneration");
+        StringAssert.Contains(source, "buffer.Acknowledge(message.OutputSequence)");
+        StringAssert.Contains(source, "sessionOutput.TakeBatch()");
+        StringAssert.Contains(source, "buffer.ShouldPauseReading(_outputDeliveryAvailable)");
+        StringAssert.Contains(source, "sessionCoordinator.SetOutputPaused(");
+        var start = source.IndexOf("private void InvalidateRendererOperations()", StringComparison.Ordinal);
+        var end = source.IndexOf("private async void RetryButton_Click", start, StringComparison.Ordinal);
+        StringAssert.Contains(source[start..end], "SetOutputDeliveryAvailable(false)");
+        StringAssert.Contains(source, "buffer.ResetDelivery()");
+    }
+
+    [TestMethod]
     public void ConfirmedPasteUsesRendererPasteAndRevalidatesClipboardLifetime()
     {
         // Native WebView2 dispatch is not exercised by this host wiring guard.

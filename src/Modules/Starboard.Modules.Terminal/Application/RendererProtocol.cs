@@ -38,7 +38,10 @@ internal static class RendererProtocol
     ];
 
     internal const int CurrentVersion = 2;
-    internal const int MaximumMessageLength = 1_048_576;
+    internal const int MaximumDataLength = 1_048_576;
+    // xterm may add ESC[200~ and ESC[201~. JSON can escape each UTF-16 code unit as six characters.
+    internal const int MaximumInputLength = MaximumDataLength + 12;
+    internal const int MaximumMessageLength = MaximumInputLength * 6 + 4096;
 
     internal static string SerializeGlobalMessage(string type, object payload)
     {
@@ -219,7 +222,8 @@ internal static class RendererProtocol
                 "select-session" => ParseSession(RendererMessageType.SelectSession, root, payload),
                 "select-next" => ParseGlobal(RendererMessageType.SelectNext, root, payload),
                 "select-previous" => ParseGlobal(RendererMessageType.SelectPrevious, root, payload),
-                "input" => ParseData(RendererMessageType.Input, root, payload),
+                "input" => ParseData(RendererMessageType.Input, root, payload, maximumLength: MaximumInputLength),
+                "output-ack" => ParseOutputAcknowledgement(root, payload),
                 "resize" => ParseResize(root, payload),
                 "copy" => ParseData(RendererMessageType.Copy, root, payload),
                 "paste-request" => ParseSession(RendererMessageType.PasteRequest, root, payload),
@@ -252,13 +256,32 @@ internal static class RendererProtocol
         }
     }
 
+    private static RendererMessage? ParseOutputAcknowledgement(JsonElement root, JsonElement payload)
+    {
+        if (TryParseSessionId(root, out var sessionId) == false || payload.ValueKind != JsonValueKind.Object ||
+            TryParseSessionGeneration(payload, out var generation) == false ||
+            payload.TryGetProperty("rendererInstanceId", out var instanceElement) == false ||
+            instanceElement.ValueKind != JsonValueKind.String ||
+            TryParseCompactGuid(instanceElement.GetString(), out var instanceId) == false ||
+            payload.TryGetProperty("sequence", out var sequenceElement) == false ||
+            sequenceElement.ValueKind != JsonValueKind.Number || sequenceElement.TryGetInt64(out var sequence) == false ||
+            sequence <= 0 || sequence > 9_007_199_254_740_991)
+        {
+            return null;
+        }
+
+        return new RendererMessage(RendererMessageType.OutputAcknowledged, sessionId,
+                                   RendererInstanceId: instanceId, SessionGeneration: generation,
+                                   OutputSequence: sequence);
+    }
+
     private static RendererMessage? ParseReorder(JsonElement root, JsonElement payload)
     {
         if (TryParseSessionId(root, out var sessionId) == false || payload.ValueKind != JsonValueKind.Object ||
             payload.TryGetProperty("rendererInstanceId", out var instanceElement) == false ||
             instanceElement.ValueKind != JsonValueKind.String ||
             TryParseCompactGuid(instanceElement.GetString(), out var instanceId) == false ||
-            TryParseReorderGeneration(payload, out var generation) == false ||
+            TryParseSessionGeneration(payload, out var generation) == false ||
             payload.TryGetProperty("targetSessionId", out var targetElement) == false ||
             targetElement.ValueKind != JsonValueKind.String ||
             TryParseCompactGuid(targetElement.GetString(), out var targetId) == false ||
@@ -286,7 +309,7 @@ internal static class RendererProtocol
         foreach (var entry in orderElement.EnumerateArray())
         {
             if (entry.ValueKind != JsonValueKind.Object || TryParseSessionId(entry, out var entryId) == false ||
-                TryParseReorderGeneration(entry, out var entryGeneration) == false ||
+                TryParseSessionGeneration(entry, out var entryGeneration) == false ||
                 identifiers.Add(entryId) == false)
             {
                 return null;
@@ -310,7 +333,7 @@ internal static class RendererProtocol
                                    RendererInstanceId: instanceId, SessionGeneration: generation, ReorderRequest: request);
     }
 
-    private static bool TryParseReorderGeneration(JsonElement element, out long generation)
+    private static bool TryParseSessionGeneration(JsonElement element, out long generation)
     {
         generation = 0;
         return element.TryGetProperty("sessionGeneration", out var value) == true &&
@@ -696,7 +719,7 @@ internal static class RendererProtocol
     }
 
     private static RendererMessage? ParseData(RendererMessageType type, JsonElement root, JsonElement payload,
-                                              string propertyName = "data", int maximumLength = MaximumMessageLength)
+                                              string propertyName = "data", int maximumLength = MaximumDataLength)
     {
         if (TryParseSessionId(root, out var sessionId) == false)
         {
